@@ -12,15 +12,9 @@ class sql_connection():
     def __init__(self, db_id, db_path):
         self.cursor = get_cursor(db_path)
         self.db_id = db_id
-        self.started_transaction = False
 
     def __enter__(self): 
-        conn = self.cursor.getconnection()
-
-        if not conn.in_transaction:
-            self.cursor.execute("BEGIN")
-            self.started_transaction = True
-
+        self.cursor.execute("BEGIN")
         return this_cursor(self.cursor, self.db_id)
 
     def __exit__(self, exception_type, exception_value, traceback_val):
@@ -31,13 +25,13 @@ class sql_connection():
                 pass # Rollback best-effort; connection will be closed next
             self.cursor.close()
 
-            if exception_type == apsw.ReadOnlyError:
-                raise Exception("Sorry!, You have Read Only access.")
+            if issubclass(exception_type, apsw.ReadOnlyError):
+                raise apsw.ReadOnlyError("Sorry!, You have Read Only access.") from exception_value
             print(f"some error happened {exception_type} {exception_value} {str(traceback_val)}")
             traceback.print_exc()
             traceback_str = ''.join(traceback.format_exception(exception_type, exception_value,traceback_val))
             print(traceback_str)
-            raise Exception(str(exception_value))
+            raise
         else:
             ex = None
             try:
@@ -71,7 +65,7 @@ def init_db(db_path, db_access=1):
     if db_access==0:
         conn = apsw.Connection(db_path,flags=apsw.SQLITE_OPEN_READONLY)
     else:
-        conn = apsw.Connection(db_path)
+        conn = apsw.Connection(db_path,flags=apsw.SQLITE_OPEN_READWRITE)
     conn.setbusytimeout(30000)
     conn.cursor().execute("PRAGMA journal_mode=WAL;")          
     conn.cursor().execute("PRAGMA synchronous=NORMAL;")
