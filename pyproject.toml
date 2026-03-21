@@ -8,6 +8,8 @@ dependencies = [
     "fastapi",
     "uvicorn[standard]",
     "pydantic-settings",
+    "apsw>=3.51.3.0",
+    "dotenv>=0.9.9",
 ]
 
 [dependency-groups]
