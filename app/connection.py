@@ -1,11 +1,11 @@
 import apsw, threading
 import os, traceback
-#from ..core.config import master_db
-from app.CONFIG.config import master_db
+from .config import master_db
 from fastapi import HTTPException
 from fastapi.exceptions import RequestValidationError
 
 connection_pool = {}
+_pool_lock = threading.Lock()
 
 
 class sql_connection():
@@ -28,24 +28,16 @@ class sql_connection():
             try:
                 self.cursor.execute("ROLLBACK")
             except:
-                pass
+                pass # Rollback best-effort; connection will be closed next
             self.cursor.close()
 
-            # Added, Darshan Shrimali
-            if issubclass(exception_type, HTTPException):
-                return False   # re-raise original exception
-
-            # Added, Darshan Shrimali
-            if issubclass(exception_type, RequestValidationError):
-                return False   # re-raise original exception
-
             if exception_type == apsw.ReadOnlyError:
-                raise UserError("Sorry!, You have Read Only access.")
+                raise Exception("Sorry!, You have Read Only access.")
             print(f"some error happened {exception_type} {exception_value} {str(traceback_val)}")
             traceback.print_exc()
             traceback_str = ''.join(traceback.format_exception(exception_type, exception_value,traceback_val))
             print(traceback_str)
-            raise UserError(str(exception_value))
+            raise Exception(str(exception_value))
         else:
             ex = None
             try:
@@ -59,22 +51,23 @@ class sql_connection():
 
 def get_cursor(db_path):
     thread_id = threading.get_ident()
-    if db_path in connection_pool and thread_id in connection_pool[db_path] :
-        connection = connection_pool[db_path][thread_id]
-        return connection.cursor()    
+    with _pool_lock:
+        if db_path in connection_pool and thread_id in connection_pool[db_path] :
+            connection = connection_pool[db_path][thread_id]
+            return connection.cursor()    
 
-    connection = init_db(db_path)
-    if db_path in connection_pool:
-        connection_pool[db_path][thread_id] = connection
-    else:
-        connection_pool[db_path] = {thread_id: connection}
-    
-    return connection.cursor()
+        connection = init_db(db_path)
+        if db_path in connection_pool:
+            connection_pool[db_path][thread_id] = connection
+        else:
+            connection_pool[db_path] = {thread_id: connection}
+        
+        return connection.cursor()
 
 
 def init_db(db_path, db_access=1):
     if not os.path.isfile(db_path):
-        raise UserError(f"DBFile Doesn't exists in system, {db_path}")
+        raise Exception(f"DBFile Doesn't exists in system, {db_path}")
     if db_access==0:
         conn = apsw.Connection(db_path,flags=apsw.SQLITE_OPEN_READONLY)
     else:
@@ -124,14 +117,16 @@ class UserError(Exception):
 
 
 def close_all_conn():
-    for key in connection_pool:
-        for thread_id in connection_pool[key]:
-            connection_pool[key][thread_id].close()
+    with _pool_lock:
+        for key in connection_pool:
+            for thread_id in connection_pool[key]:
+                connection_pool[key][thread_id].close()
 
 def remove_connection_object(id):
-    if id in connection_pool:
-        for thread_id in connection_pool[id]:
-            conn = connection_pool[id][thread_id] 
+    with _pool_lock:
+        if id in connection_pool:
+            for thread_id in connection_pool[id]:
+                conn = connection_pool[id][thread_id] 
             conn.close()
         del connection_pool[id]
 
