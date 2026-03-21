@@ -1,0 +1,30 @@
+[project]
+name = "backend-v2"
+version = "0.1.0"
+description = "FastAPI backend with raw SQLite"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic-settings",
+]
+
+[dependency-groups]
+dev = [
+    "ruff",
+]
+
+[project.scripts]
+dev = "uvicorn app.main:app --reload"
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
