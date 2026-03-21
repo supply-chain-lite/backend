@@ -1,8 +1,5 @@
-import apsw, threading
-import os, traceback
+import apsw, threading, os, traceback
 from .config import master_db
-from fastapi import HTTPException
-from fastapi.exceptions import RequestValidationError
 
 connection_pool = {}
 _pool_lock = threading.Lock()
@@ -100,14 +97,6 @@ class this_cursor():
             self.conn.execute("BEGIN")
         except Exception as ex:
             raise
-    
-
-
-class UserError(Exception):
-    message: str
-
-    def __init__(self, msg):
-        self.message = msg
 
 
 def close_all_conn():
