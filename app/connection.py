@@ -39,7 +39,7 @@ class sql_connection():
             except Exception as ex:
                 print(f"again error occured {ex}")
                 self.cursor.close()
-                raise Exception(f"Error occured {ex}")
+                raise
             self.cursor.close()
 
 
@@ -88,7 +88,7 @@ class this_cursor():
             self.conn.execute(query, args)
         except Exception as ex:
             print(query)
-            raise ex
+            raise
         return self.conn
 
     def description(self):
@@ -99,7 +99,7 @@ class this_cursor():
             self.conn.execute("COMMIT")
             self.conn.execute("BEGIN")
         except Exception as ex:
-            raise Exception(f"Error occured {ex}")
+            raise
     
 
 
@@ -112,9 +112,12 @@ class UserError(Exception):
 
 def close_all_conn():
     with _pool_lock:
-        for key in connection_pool:
-            for thread_id in connection_pool[key]:
-                connection_pool[key][thread_id].close()
+        conns = list(conn for by_thread in connection_pool.values()
+                 for conn in by_thread.values())
+        
+        connection_pool.clear()
+    for conn in conns:
+        conn.close()
 
 def remove_connection_object(id):
     with _pool_lock:
