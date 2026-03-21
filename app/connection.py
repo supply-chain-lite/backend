@@ -127,8 +127,8 @@ def remove_connection_object(id):
         if id in connection_pool:
             for thread_id in connection_pool[id]:
                 conn = connection_pool[id][thread_id] 
-            conn.close()
-        del connection_pool[id]
+                conn.close()
+            del connection_pool[id]
 
 def master_connection():
     return sql_connection("master", master_db)
