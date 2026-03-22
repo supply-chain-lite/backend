@@ -1,52 +1,128 @@
-import sqlite3
-from collections.abc import Generator
-from typing import Any
+from .connection import master_connection
 
-from app.config import settings
+create_user_table = """CREATE TABLE IF NOT EXISTS S_Users (
+                            UserEmail TEXT PRIMARY KEY UNIQUE,
+                            RoleId INTEGER NOT NULL,
+                            DisplayName TEXT,
+                            PasswordHash TEXT,
+                            PasswordSalt BLOB,
+                            token_v INTEGER DEFAULT 0,
+                            ActivationCode TEXT,
+                            failed_attempts INTEGER DEFAULT 0,
+                            locked_until DATETIME DEFAULT NULL,
+                            is_active INTEGER DEFAULT 0,
+                            AccessTemplates TEXT,
+                            CreatedAt TEXT NOT NULL DEFAULT (datetime('now')),
+                            UpdatedAt TEXT NOT NULL DEFAULT (datetime('now'))
+                        )"""
 
-_INIT_SQL = """
-CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+create_user_role_table = """CREATE TABLE IF NOT EXISTS S_UserRoles (
+                                    RoleId INTEGER PRIMARY KEY AUTOINCREMENT,
+                                    RoleName TEXT NOT NULL UNIQUE,
+                                    RoleDescription TEXT,
+                                    CreatedAt TEXT NOT NULL DEFAULT (datetime('now')),
+                                    UpdatedAt TEXT NOT NULL DEFAULT (datetime('now'))
+                            )"""
 
-CREATE TABLE IF NOT EXISTS models (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    description TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+insert_user_role = """INSERT INTO S_UserRoles (RoleID, RoleName, RoleDescription)
+                        SELECT ?, ?, ?
+                        WHERE NOT EXISTS (
+                            SELECT 1 FROM S_UserRoles WHERE RoleName = ?
+                        )"""
 
-CREATE TABLE IF NOT EXISTS projects (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    description TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-"""
+create_projects_table = """CREATE TABLE IF NOT EXISTS S_Projects (
+                                    ProjectId INTEGER PRIMARY KEY,
+                                    UserEmail TEXT NOT NULL,
+                                    ProjectName TEXT NOT NULL,
+                                    ProjectStatus TEXT,
+                                    CreatedAt TEXT NOT NULL DEFAULT (datetime('now')),
+                                    UpdatedAt TEXT NOT NULL DEFAULT (datetime('now')),
+                                    UNIQUE (UserEmail, ProjectName)
+                                )"""
 
+create_user_error_table = """CREATE TABLE IF NOT EXISTS S_UserErrors (
+                                    MethodName TEXT NOT NULL,
+                                    UserEmail TEXT,
+                                    RequestBody TEXT,
+                                    ErrorType TEXT,
+                                    ErrorCode INTEGER NOT NULL,
+                                    ErrorDetail TEXT
+                                )"""
+create_user_models_table = """CREATE TABLE IF NOT EXISTS S_UserModels (
+                                    ModelId     INTEGER,
+                                    UserEmail      TEXT,
+                                    ProjectId   INTEGER,
+                                    AccessLevel TEXT    NOT NULL,
+                                    ModelName TEXT      NOT NULL,
+                                    GrantedAt   TEXT    NOT NULL
+                                                DEFAULT (datetime('now')),
+                                    PRIMARY KEY (
+                                        ModelId,
+                                        UserEmail,
+                                        ProjectId
+                                    )
+                                )"""
+create_models_table = """CREATE TABLE IF NOT EXISTS S_Models (
+                                ModelId     INTEGER PRIMARY KEY AUTOINCREMENT,
+                                ModelUID    TEXT    NOT NULL
+                                            UNIQUE,
+                                ModelPath   TEXT,
+                                TemplateName TEXT,
+                                CreatedAt   TEXT    NOT NULL
+                                            DEFAULT (datetime('now')),
+                                OwnerEmail  TEXT
+                            )"""
 
-def get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(settings.sqlite_db_path)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL;")
-    return conn
+create_models_backup_table = """CREATE TABLE IF NOT EXISTS S_ModelBackups (
+                                        BackupId   INTEGER PRIMARY KEY AUTOINCREMENT,
+                                        BackupText TEXT NOT NULL,
+                                        ModelId    INTEGER NOT NULL,
+                                        BackupPath TEXT NOT NULL,
+                                        CreatedAt  TEXT NOT NULL DEFAULT (datetime('now')),
+                                        LastUsedAt TEXT NOT NULL DEFAULT (datetime('now'))
+                                    )"""
 
+create_model_templates_table = """ CREATE TABLE IF NOT EXISTS S_ModelTemplates (
+                                            TemplateName               TEXT PRIMARY KEY,
+                                            TemplateSQL                TEXT NOT NULL,
+                                            TemplateWithDataSQL        TEXT NOT NULL,
+                                            CreatedAt    TEXT NOT NULL DEFAULT (datetime('now'))
+                                        )  """
+
+insert_model_template = """INSERT INTO S_ModelTemplates (TemplateName, TemplateSQL, TemplateWithDataSQL)
+                            SELECT ?, ?, ?
+                            WHERE NOT EXISTS (
+                                SELECT 1 FROM S_ModelTemplates WHERE TemplateName = ?
+                            )"""
+
+create_user_notifications_table = """CREATE TABLE IF NOT EXISTS S_UserNotifications (
+                                            NotificationId INTEGER PRIMARY KEY AUTOINCREMENT,
+                                            FromUserEmail TEXT NOT NULL,
+                                            ToUserEmail TEXT NOT NULL,
+                                            Title TEXT NOT NULL,
+                                            Message TEXT NOT NULL,
+                                            NotificationType TEXT,
+                                            NotificationParams TEXT,
+                                            IsRead INTEGER DEFAULT 0,
+                                            CreatedAt TEXT NOT NULL DEFAULT (datetime('now')),
+                                            ReadAt TEXT DEFAULT NULL,
+                                            IsAccepted INTEGER DEFAULT 0
+                                        )"""
 
 def init_db() -> None:
-    conn = get_connection()
-    try:
-        conn.executescript(_INIT_SQL)
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def get_db() -> Generator[sqlite3.Connection, Any, None]:
-    conn = get_connection()
-    try:
-        yield conn
-    finally:
-        conn.close()
+    with master_connection() as cursor:
+        cursor.execute(create_user_table)
+        cursor.execute(create_user_role_table)
+        cursor.execute(insert_user_role, (1, 'Admin', 'Administrator with full access', 'Admin'))
+        cursor.execute(insert_user_role, (2, 'User', 'Regular user with limited access', 'User'))
+        cursor.execute(create_projects_table)
+        cursor.execute(create_user_error_table)
+        cursor.execute(create_user_models_table)
+        cursor.execute(create_models_table)
+        cursor.execute(create_models_backup_table)
+        cursor.execute(create_model_templates_table)
+        cursor.execute(insert_model_template, ("Generic Data Model", "generic_data_model.sql", 
+                                               "generic_data_model_with_data.sql", "Generic Data Model"))
+        cursor.execute(insert_model_template, ("Supply Planning", "supply_planning.sql", 
+                                               "supply_planning_with_data.sql", "Supply Planning"))
+        cursor.execute(create_user_notifications_table)
