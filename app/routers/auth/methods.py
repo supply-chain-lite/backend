@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 import smtplib
+from urllib.parse import urlencode
 from email.mime.text import MIMEText
 
 from fastapi import HTTPException
@@ -72,8 +73,8 @@ def register_user(cursor, useremail: str, username: str, password: str, request_
     cursor.intermediate_commit()
     # Even if the email fails to send, the user is created, so we don't want to rollback the transaction.
     # The user can request a new activation code if needed.
-
-    activation_link = f"{request_url}/activate-account.html?useremail={useremail}&activationcode={activation_code}"
+    params = urlencode({"useremail": useremail, "activationcode": activation_code})
+    activation_link = f"{request_url}/activate-account.html?{params}"
 
     subject = "Welcome to Supply Chain Lite"
     body = f"Hello {username},\n\nThank you for registering with Supply Chain Lite! "
