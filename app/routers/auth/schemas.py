@@ -11,6 +11,9 @@ class ActivateRequest(BaseModel):
     email: EmailStr
     activation_code: str
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+    base_url: str
 
 class LoginRequest(BaseModel):
     username: str

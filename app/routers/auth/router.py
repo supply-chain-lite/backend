@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, status
 from app.connection import master_connection
 
 from . import methods as auth_methods
-from .schemas import ActivateRequest, MessageResponse, RegisterRequest
+from .schemas import ActivateRequest, ForgotPasswordRequest, MessageResponse, RegisterRequest
 
 router = APIRouter()
 
@@ -42,3 +42,14 @@ def activate(request: ActivateRequest) -> MessageResponse:
     with master_connection() as cursor:
         auth_methods.activate_user(cursor, email, activation_code)
         return MessageResponse(message="User activated successfully")
+
+@router.post("/forgot-password", response_model=MessageResponse)
+def forgot_password(request: ForgotPasswordRequest) -> MessageResponse:
+    email = request.email.strip().lower()
+
+    if not email:
+        raise HTTPException(status_code=400, detail="email is required")
+
+    with master_connection() as cursor:
+        auth_methods.forgot_password(cursor, email, request.base_url)
+        return MessageResponse(message="Password reset instructions sent")
