@@ -55,6 +55,13 @@ def register_user(cursor, useremail: str, username: str, password: str):
 
     activation_code = os.urandom(3).hex()
 
+    subject = "Welcome to Supply Chain Lite"
+    body = f"Hello {username},\n\nThank you for registering with Supply Chain Lite! "
+    body = f"{body}Please activate your account using the following code: {activation_code}\n\n"
+    body = f"{body}Best regards,\nSCL Team\n"
+
+    _send_email(useremail, subject, body)
+
     cursor.execute(
         queries.create_user,
         (
@@ -68,10 +75,3 @@ def register_user(cursor, useremail: str, username: str, password: str):
             json.dumps(model_templates),
         ),
     )
-
-    subject = "Welcome to Supply Chain Lite"
-    body = f"Hello {username},\n\nThank you for registering with Supply Chain Lite! "
-    body = f"{body}Please activate your account using the following code: {activation_code}\n\n"
-    body = f"{body}Best regards,\nSCL Team\n"
-
-    _send_email(useremail, subject, body)
