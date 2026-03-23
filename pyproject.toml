@@ -21,7 +21,7 @@ dev = [
 dev = "uvicorn app.main:app --reload"
 
 [tool.ruff]
-line-length = 88
+line-length = 120
 target-version = "py313"
 
 [tool.ruff.lint]

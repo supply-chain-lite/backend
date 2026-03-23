@@ -109,20 +109,39 @@ create_user_notifications_table = """CREATE TABLE IF NOT EXISTS S_UserNotificati
                                             IsAccepted INTEGER DEFAULT 0
                                         )"""
 
+
 def init_db() -> None:
     with master_connection() as cursor:
         cursor.execute(create_user_table)
         cursor.execute(create_user_role_table)
-        cursor.execute(insert_user_role, (1, 'Admin', 'Administrator with full access', 'Admin'))
-        cursor.execute(insert_user_role, (2, 'User', 'Regular user with limited access', 'User'))
+        cursor.execute(
+            insert_user_role, (1, "Admin", "Administrator with full access", "Admin")
+        )
+        cursor.execute(
+            insert_user_role, (2, "User", "Regular user with limited access", "User")
+        )
         cursor.execute(create_projects_table)
         cursor.execute(create_user_error_table)
         cursor.execute(create_user_models_table)
         cursor.execute(create_models_table)
         cursor.execute(create_models_backup_table)
         cursor.execute(create_model_templates_table)
-        cursor.execute(insert_model_template, ("Generic Data Model", "generic_data_model.sql", 
-                                               "generic_data_model_with_data.sql", "Generic Data Model"))
-        cursor.execute(insert_model_template, ("Supply Planning", "supply_planning.sql", 
-                                               "supply_planning_with_data.sql", "Supply Planning"))
+        cursor.execute(
+            insert_model_template,
+            (
+                "Generic Data Model",
+                "generic_data_model.sql",
+                "generic_data_model_with_data.sql",
+                "Generic Data Model",
+            ),
+        )
+        cursor.execute(
+            insert_model_template,
+            (
+                "Supply Planning",
+                "supply_planning.sql",
+                "supply_planning_with_data.sql",
+                "Supply Planning",
+            ),
+        )
         cursor.execute(create_user_notifications_table)
