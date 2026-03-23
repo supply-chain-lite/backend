@@ -1,6 +1,7 @@
 import os
-from dotenv import load_dotenv
 from pathlib import Path
+
+from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -20,7 +21,9 @@ master_db = os.getenv("SQLITE_DB_PATH")
 if not master_db:
     raise Exception("SQLITE_DB_PATH is not set in environment variables.")
 if not os.path.isfile(master_db):
-    raise Exception(f"Database file not found at {master_db}. Please check the path and try again.")
+    raise Exception(
+        f"Database file not found at {master_db}. Please check the path and try again."
+    )
 
 _data_folder_env = os.getenv("DATA_FOLDER")
 if not _data_folder_env:

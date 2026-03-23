@@ -10,6 +10,7 @@ dependencies = [
     "pydantic-settings",
     "apsw>=3.51.3.0",
     "python-dotenv>=1.2.2",
+    "pydantic[email]>=2.12.5",
 ]
 
 [dependency-groups]
@@ -21,7 +22,7 @@ dev = [
 dev = "uvicorn app.main:app --reload"
 
 [tool.ruff]
-line-length = 88
+line-length = 120
 target-version = "py313"
 
 [tool.ruff.lint]
