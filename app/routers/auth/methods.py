@@ -41,7 +41,7 @@ def _get_model_templates(cursor):
     return [t[0] for t in templates]
 
 
-def register_user(cursor, useremail: str, username: str, password: str):
+def register_user(cursor, useremail: str, username: str, password: str, request_url: str):
     salt = os.urandom(16)
     password_hash = _hash_password(password, salt)
 
@@ -70,12 +70,29 @@ def register_user(cursor, useremail: str, username: str, password: str):
     )
 
     cursor.intermediate_commit()
-    # Even if the email fails to send, the user is created, so we don't want to rollback the transaction. 
+    # Even if the email fails to send, the user is created, so we don't want to rollback the transaction.
     # The user can request a new activation code if needed.
+
+    activation_link = f"{request_url}/activate-account.html?useremail={useremail}&activationcode={activation_code}"
 
     subject = "Welcome to Supply Chain Lite"
     body = f"Hello {username},\n\nThank you for registering with Supply Chain Lite! "
-    body = f"{body}Please activate your account using the following code: {activation_code}\n\n"
+    body = f"{body}Please activate your account using the following code: {activation_code}\n"
+    body = f"{body}You can also activate your account by clicking the following link: {activation_link}\n\n"
     body = f"{body}Best regards,\nSCL Team\n"
 
     _send_email(useremail, subject, body)
+
+
+def activate_user(cursor, useremail: str, activation_code: str):
+    row = cursor.execute(queries.get_status_activation_code, (useremail,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="User not found")
+    status, activation_code_db = row
+    if status == 1:
+        raise HTTPException(status_code=400, detail="User already active")
+    if activation_code_db != activation_code:
+        raise HTTPException(status_code=400, detail="Invalid activation code")
+
+    cursor.execute(queries.update_user_activation, (useremail,))
+    cursor.intermediate_commit()

@@ -5,3 +5,7 @@ create_user = """ INSERT INTO S_Users
                     AccessTemplates) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"""
 
 get_template_names = """select distinct templatename from S_ModelTemplates"""
+
+get_status_activation_code = "SELECT IsActive, ActivationCode FROM S_Users WHERE UserEmail = ?"
+
+update_user_activation = "UPDATE S_Users SET IsActive = 1 WHERE UserEmail = ?"
