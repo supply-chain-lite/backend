@@ -5,6 +5,11 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
     username: str
+    base_url: str
+
+class ActivateRequest(BaseModel):
+    email: EmailStr
+    activation_code: str
 
 
 class LoginRequest(BaseModel):
