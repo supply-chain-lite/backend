@@ -11,3 +11,6 @@ get_status_activation_code = "SELECT IsActive, ActivationCode FROM S_Users WHERE
 update_user_activation = "UPDATE S_Users SET IsActive = 1 WHERE UserEmail = ?"
 
 update_password_reset_code = "UPDATE S_Users SET ActivationCode = ? WHERE UserEmail = ?"
+
+update_user_password = """UPDATE S_Users SET PasswordHash = ?, UpdatedAt = CURRENT_TIMESTAMP,
+                            PasswordSalt = ? WHERE UserEmail = ?"""

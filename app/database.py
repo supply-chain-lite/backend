@@ -114,12 +114,8 @@ def init_db() -> None:
     with master_connection() as cursor:
         cursor.execute(create_user_table)
         cursor.execute(create_user_role_table)
-        cursor.execute(
-            insert_user_role, (1, "Admin", "Administrator with full access", "Admin")
-        )
-        cursor.execute(
-            insert_user_role, (2, "User", "Regular user with limited access", "User")
-        )
+        cursor.execute(insert_user_role, (1, "Admin", "Administrator with full access", "Admin"))
+        cursor.execute(insert_user_role, (2, "User", "Regular user with limited access", "User"))
         cursor.execute(create_projects_table)
         cursor.execute(create_user_error_table)
         cursor.execute(create_user_models_table)
