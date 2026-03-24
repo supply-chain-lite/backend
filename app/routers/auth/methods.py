@@ -126,12 +126,12 @@ def forgot_password(cursor, useremail: str):
 def reset_password(cursor, useremail: str, verification_code: str, password: str):
     row = cursor.execute(queries.get_status_activation_code, (useremail,)).fetchone()
     if not row:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="Password reset request unsuccessful")
     status, verification_code_db = row
     if status == 0:
-        raise HTTPException(status_code=400, detail="User account is not active")
+        raise HTTPException(status_code=400, detail="Password reset request unsuccessful")
     if verification_code_db != verification_code:
-        raise HTTPException(status_code=400, detail="Invalid verification code")
+        raise HTTPException(status_code=400, detail="Password reset request unsuccessful")
 
     salt = os.urandom(16)
     password_hash = _hash_password(password, salt)
