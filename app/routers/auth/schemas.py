@@ -5,21 +5,37 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
     username: str
-    base_url: str
+
 
 class ActivateRequest(BaseModel):
     email: EmailStr
     activation_code: str
 
 
-class LoginRequest(BaseModel):
-    username: str
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    verification_code: str
     password: str
 
 
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class UserDetailsResponse(BaseModel):
+    role_name: str
+    display_name: str
+    email: EmailStr
 
 
 class MessageResponse(BaseModel):

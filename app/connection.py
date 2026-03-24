@@ -28,18 +28,10 @@ class sql_connection:
             self.cursor.close()
 
             if issubclass(exception_type, apsw.ReadOnlyError):
-                raise apsw.ReadOnlyError(
-                    "Sorry!, You have Read Only access."
-                ) from exception_value
-            print(
-                f"some error happened {exception_type} {exception_value} {str(traceback_val)}"
-            )
+                raise apsw.ReadOnlyError("Sorry!, You have Read Only access.") from exception_value
+            print(f"some error happened {exception_type} {exception_value} {str(traceback_val)}")
             traceback.print_exc()
-            traceback_str = "".join(
-                traceback.format_exception(
-                    exception_type, exception_value, traceback_val
-                )
-            )
+            traceback_str = "".join(traceback.format_exception(exception_type, exception_value, traceback_val))
             print(traceback_str)
             raise
         else:
@@ -113,11 +105,7 @@ class this_cursor:
 
 def close_all_conn():
     with _pool_lock:
-        conns = list(
-            conn
-            for by_thread in connection_pool.values()
-            for conn in by_thread.values()
-        )
+        conns = list(conn for by_thread in connection_pool.values() for conn in by_thread.values())
 
         connection_pool.clear()
     for conn in conns:
