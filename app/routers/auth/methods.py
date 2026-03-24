@@ -186,6 +186,8 @@ def login_user(cursor, useremail: str, password: str):
 
 def _get_user_from_token(request: Request):
     token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
     payload = _verify_token(token)
     useremail = payload.get("useremail")
     if not useremail:
@@ -224,7 +226,7 @@ def change_password(cursor, useremail: str, current_password: str, new_password:
     row = cursor.execute(queries.get_user_password, (useremail,)).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="User not found")
-    password_hash_db, salt_db, is_active, failed_attempts, token_version, is_locked = row
+    password_hash_db, salt_db, is_active, _, _, is_locked = row
     if is_active == 0:
         raise HTTPException(status_code=400, detail="User account is not active")
     if is_locked:

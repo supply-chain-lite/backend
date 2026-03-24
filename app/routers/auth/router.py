@@ -54,15 +54,20 @@ def forgot_password(request: ForgotPasswordRequest) -> auth_schemas.MessageRespo
         raise HTTPException(status_code=400, detail="email is required")
 
     with master_connection() as cursor:
-        auth_methods.forgot_password(cursor, email)
-        return auth_schemas.MessageResponse(message="Password reset instructions sent")
+        try:
+            auth_methods.forgot_password(cursor, email)
+        except HTTPException as ex:
+            if ex.status_code not in (400, 404):
+                raise
+            pass
+        return auth_schemas.MessageResponse(message="If the account exists, password reset instructions have been sent")
 
 
 @router.post("/reset-password", response_model=auth_schemas.MessageResponse)
 def reset_password(request: ResetPasswordRequest) -> auth_schemas.MessageResponse:
     email = request.email.strip().lower()
     verification_code = request.verification_code.strip()
-    password = request.password.strip()
+    password = request.password
 
     if not email:
         raise HTTPException(status_code=400, detail="email is required")
@@ -79,7 +84,7 @@ def reset_password(request: ResetPasswordRequest) -> auth_schemas.MessageRespons
 @router.post("/login", response_model=auth_schemas.MessageResponse)
 def login(request: LoginRequest, response: Response) -> auth_schemas.MessageResponse:
     email = request.email.strip().lower()
-    password = request.password.strip()
+    password = request.password
     if not email:
         raise HTTPException(status_code=400, detail="email is required")
     if not password:
@@ -102,8 +107,9 @@ def get_current_user(user_data: tuple = Depends(auth_methods._get_user_from_toke
     try:
         with master_connection() as cursor:
             role_name, display_name = auth_methods.get_user_details(cursor, useremail, token_version)
-    except Exception:
-        response.delete_cookie(key="access_token")
+    except HTTPException as exc:
+        if exc.status_code in {400, 401, 404}:
+            response.delete_cookie(key="access_token", path="/")
         return auth_schemas.MessageResponse(message="Invalid token, please login again")
     return auth_schemas.UserDetailsResponse(role_name=role_name, display_name=display_name, email=useremail)
 
@@ -113,8 +119,8 @@ def change_password(
     request: auth_schemas.ChangePasswordRequest, user_data: tuple = Depends(auth_methods._get_user_from_token)
 ) -> auth_schemas.MessageResponse:
     useremail, token_version = user_data
-    current_password = request.current_password.strip()
-    new_password = request.new_password.strip()
+    current_password = request.current_password
+    new_password = request.new_password
 
     if not current_password:
         raise HTTPException(status_code=400, detail="current password is required")

@@ -13,6 +13,7 @@ update_user_activation = "UPDATE S_Users SET IsActive = 1 WHERE UserEmail = ?"
 update_password_reset_code = "UPDATE S_Users SET ActivationCode = ? WHERE UserEmail = ?"
 
 update_user_password = """UPDATE S_Users SET PasswordHash = ?, UpdatedAt = DATETIME('now'),
+                            TokenVersion = TokenVersion + 1,
                             PasswordSalt = ? WHERE UserEmail = ?"""
 
 get_user_password = """SELECT PasswordHash, PasswordSalt, IsActive, FailedAttempts, TokenVersion,
