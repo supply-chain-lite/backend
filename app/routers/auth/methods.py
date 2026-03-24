@@ -2,12 +2,14 @@ import hashlib
 import json
 import os
 import smtplib
+from datetime import datetime, timedelta, timezone
 from email.mime.text import MIMEText
 from urllib.parse import urlencode
 
-from fastapi import HTTPException
+import jwt
+from fastapi import HTTPException, Request
 
-from app.config import BASE_URL, SECRET_KEY, SMTP_PORT, SMTP_PWD, SMTP_URL, SMTP_USER
+from app.config import BASE_URL, LOCK_TIME_MINUTES, MAX_ATTEMPTS, SECRET_KEY, SMTP_PORT, SMTP_PWD, SMTP_URL, SMTP_USER
 
 from . import queries as queries
 
@@ -144,5 +146,99 @@ def reset_password(cursor, useremail: str, verification_code: str, password: str
     cursor.execute(
         queries.update_user_password,
         (password_hash, salt, useremail),
+    )
+    cursor.intermediate_commit()
+
+
+def _generate_token(token_version: int, useremail: str) -> str:
+    expiration = datetime.now(timezone.utc) + timedelta(hours=1)
+    payload = {"token_version": token_version, "useremail": useremail, "exp": expiration.timestamp()}
+    token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
+    return token
+
+
+def login_user(cursor, useremail: str, password: str):
+    row = cursor.execute(queries.get_user_password, (useremail,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Invalid credentials")
+    password_hash_db, salt_db, is_active, failed_attempts, token_version, is_locked = row
+    if is_active == 0:
+        raise HTTPException(status_code=400, detail="User account is not active")
+    if is_locked:
+        raise HTTPException(status_code=400, detail="User account is locked")
+
+    if token_version is None:
+        token_version = 0
+
+    password_hash = _hash_password(password, salt_db)
+    lock_minutes = "+0 minutes"
+    if password_hash != password_hash_db:
+        failed_attempts += 1
+        if failed_attempts >= MAX_ATTEMPTS:
+            lock_minutes = f"+{LOCK_TIME_MINUTES} minutes"
+        cursor.execute(queries.lock_user_account, (lock_minutes, token_version, failed_attempts, useremail))
+        cursor.intermediate_commit()
+        raise HTTPException(status_code=400, detail="Invalid credentials")
+    cursor.execute(queries.lock_user_account, (lock_minutes, token_version + 1, 0, useremail))
+    access_token = _generate_token(token_version + 1, useremail)
+    return access_token
+
+
+def _get_user_from_token(request: Request):
+    token = request.cookies.get("access_token")
+    payload = _verify_token(token)
+    useremail = payload.get("useremail")
+    if not useremail:
+        raise HTTPException(status_code=401, detail="Invalid token: missing user email")
+    token_version = payload.get("token_version")
+    if token_version is None or int(token_version) < 1:
+        raise HTTPException(status_code=401, detail="Token has been revoked")
+    return useremail, token_version
+
+
+def get_user_details(cursor, useremail: str, token_version: int):
+    row = cursor.execute(queries.get_user_details, (useremail,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="User not found")
+    role_name, display_name, token_version_db, is_active, is_locked = row
+    if token_version_db != token_version:
+        raise HTTPException(status_code=401, detail="Token has been revoked")
+    if is_active == 0:
+        raise HTTPException(status_code=400, detail="User account is not active")
+    if is_locked:
+        raise HTTPException(status_code=400, detail="User account is locked")
+    return role_name, display_name
+
+
+def _verify_token(token: str):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+def change_password(cursor, useremail: str, current_password: str, new_password: str):
+    row = cursor.execute(queries.get_user_password, (useremail,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="User not found")
+    password_hash_db, salt_db, is_active, failed_attempts, token_version, is_locked = row
+    if is_active == 0:
+        raise HTTPException(status_code=400, detail="User account is not active")
+    if is_locked:
+        raise HTTPException(status_code=400, detail="User account is locked")
+
+    current_password_hash = _hash_password(current_password, salt_db)
+    if current_password_hash != password_hash_db:
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+
+    new_salt = os.urandom(16)
+    new_password_hash = _hash_password(new_password, new_salt)
+
+    cursor.execute(
+        queries.update_user_password,
+        (new_password_hash, new_salt, useremail),
     )
     cursor.intermediate_commit()

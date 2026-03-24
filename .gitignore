@@ -23,4 +23,3 @@ wheels/
 .idea/
 
 # UV scaffold file (not needed)
-main.py

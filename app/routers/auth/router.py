@@ -1,15 +1,22 @@
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from app.connection import master_connection
 
 from . import methods as auth_methods
-from .schemas import ActivateRequest, ForgotPasswordRequest, MessageResponse, RegisterRequest, ResetPasswordRequest
+from . import schemas as auth_schemas
+from .schemas import (
+    ActivateRequest,
+    ForgotPasswordRequest,
+    LoginRequest,
+    RegisterRequest,
+    ResetPasswordRequest,
+)
 
 router = APIRouter()
 
 
-@router.post("/register", response_model=MessageResponse, status_code=status.HTTP_201_CREATED)
-def register(request: RegisterRequest) -> MessageResponse:
+@router.post("/register", response_model=auth_schemas.MessageResponse, status_code=status.HTTP_201_CREATED)
+def register(request: RegisterRequest) -> auth_schemas.MessageResponse:
     email = request.email.strip().lower()
     username = request.username.strip()
     if not email:
@@ -21,11 +28,11 @@ def register(request: RegisterRequest) -> MessageResponse:
 
     with master_connection() as cursor:
         auth_methods.register_user(cursor, email, username, request.password)
-        return MessageResponse(message="User registered successfully")
+        return auth_schemas.MessageResponse(message="User registered successfully")
 
 
-@router.post("/activate", response_model=MessageResponse)
-def activate(request: ActivateRequest) -> MessageResponse:
+@router.post("/activate", response_model=auth_schemas.MessageResponse)
+def activate(request: ActivateRequest) -> auth_schemas.MessageResponse:
     email = request.email.strip().lower()
     activation_code = request.activation_code.strip()
 
@@ -36,11 +43,11 @@ def activate(request: ActivateRequest) -> MessageResponse:
 
     with master_connection() as cursor:
         auth_methods.activate_user(cursor, email, activation_code)
-        return MessageResponse(message="User activated successfully")
+        return auth_schemas.MessageResponse(message="User activated successfully")
 
 
-@router.post("/forgot-password", response_model=MessageResponse)
-def forgot_password(request: ForgotPasswordRequest) -> MessageResponse:
+@router.post("/forgot-password", response_model=auth_schemas.MessageResponse)
+def forgot_password(request: ForgotPasswordRequest) -> auth_schemas.MessageResponse:
     email = request.email.strip().lower()
 
     if not email:
@@ -48,11 +55,11 @@ def forgot_password(request: ForgotPasswordRequest) -> MessageResponse:
 
     with master_connection() as cursor:
         auth_methods.forgot_password(cursor, email)
-        return MessageResponse(message="Password reset instructions sent")
+        return auth_schemas.MessageResponse(message="Password reset instructions sent")
 
 
-@router.post("/reset-password", response_model=MessageResponse)
-def reset_password(request: ResetPasswordRequest) -> MessageResponse:
+@router.post("/reset-password", response_model=auth_schemas.MessageResponse)
+def reset_password(request: ResetPasswordRequest) -> auth_schemas.MessageResponse:
     email = request.email.strip().lower()
     verification_code = request.verification_code.strip()
     password = request.password.strip()
@@ -66,11 +73,55 @@ def reset_password(request: ResetPasswordRequest) -> MessageResponse:
 
     with master_connection() as cursor:
         auth_methods.reset_password(cursor, email, verification_code, password)
-        return MessageResponse(message="Password reset successfully")
+        return auth_schemas.MessageResponse(message="Password reset successfully")
 
 
-@router.post("/login")
-def login(request: Request):
-    print("Login endpoint hit")
-    print(request.url)
-    return {"message": "Login endpoint - to be implemented"}
+@router.post("/login", response_model=auth_schemas.MessageResponse)
+def login(request: LoginRequest, response: Response) -> auth_schemas.MessageResponse:
+    email = request.email.strip().lower()
+    password = request.password.strip()
+    if not email:
+        raise HTTPException(status_code=400, detail="email is required")
+    if not password:
+        raise HTTPException(status_code=400, detail="password is required")
+    with master_connection() as cursor:
+        access_token = auth_methods.login_user(cursor, email, password)
+    response.set_cookie(key="access_token", value=access_token, httponly=True, secure=True, samesite="Lax")
+    return auth_schemas.MessageResponse(message="Login successful")
+
+
+@router.post("/logout", response_model=auth_schemas.MessageResponse)
+def logout(response: Response) -> auth_schemas.MessageResponse:
+    response.delete_cookie(key="access_token", httponly=True, secure=True, samesite="lax", path="/")
+    return auth_schemas.MessageResponse(message="Logout successful")
+
+
+@router.post("/me")
+def get_current_user(user_data: tuple = Depends(auth_methods._get_user_from_token), response: Response = None):
+    useremail, token_version = user_data
+    try:
+        with master_connection() as cursor:
+            role_name, display_name = auth_methods.get_user_details(cursor, useremail, token_version)
+    except Exception:
+        response.delete_cookie(key="access_token")
+        return auth_schemas.MessageResponse(message="Invalid token, please login again")
+    return auth_schemas.UserDetailsResponse(role_name=role_name, display_name=display_name, email=useremail)
+
+
+@router.post("/change-password", response_model=auth_schemas.MessageResponse)
+def change_password(
+    request: auth_schemas.ChangePasswordRequest, user_data: tuple = Depends(auth_methods._get_user_from_token)
+) -> auth_schemas.MessageResponse:
+    useremail, token_version = user_data
+    current_password = request.current_password.strip()
+    new_password = request.new_password.strip()
+
+    if not current_password:
+        raise HTTPException(status_code=400, detail="current password is required")
+    if not new_password:
+        raise HTTPException(status_code=400, detail="new password is required")
+
+    with master_connection() as cursor:
+        auth_methods.get_user_details(cursor, useremail, token_version)
+        auth_methods.change_password(cursor, useremail, current_password, new_password)
+        return auth_schemas.MessageResponse(message="Password changed successfully")

@@ -22,14 +22,20 @@ class ResetPasswordRequest(BaseModel):
     password: str
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
 class LoginRequest(BaseModel):
-    username: str
+    email: EmailStr
     password: str
 
 
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
+class UserDetailsResponse(BaseModel):
+    role_name: str
+    display_name: str
+    email: EmailStr
 
 
 class MessageResponse(BaseModel):
