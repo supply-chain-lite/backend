@@ -4,6 +4,10 @@ create_user = """ INSERT INTO S_Users
                     (UserEmail, RoleId, DisplayName, PasswordHash, PasswordSalt, ActivationCode, IsActive,
                     AccessTemplates) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"""
 
+add_default_project = """INSERT INTO S_Projects(UserEmail, ProjectName, ProjectStatus)
+                        SELECT ?, 'Default', 'Active'
+                        WHERE NOT EXISTS (SELECT 1 FROM S_Projects WHERE UserEmail = ? AND ProjectName = 'Default');"""
+
 get_template_names = """select distinct templatename from S_ModelTemplates"""
 
 get_status_activation_code = "SELECT IsActive, ActivationCode FROM S_Users WHERE UserEmail = ?"

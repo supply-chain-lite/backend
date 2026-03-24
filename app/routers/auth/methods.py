@@ -4,12 +4,14 @@ import os
 import smtplib
 from datetime import datetime, timedelta, timezone
 from email.mime.text import MIMEText
+from time import sleep
 from urllib.parse import urlencode
 
 import jwt
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Request, Response
 
 from app.config import BASE_URL, LOCK_TIME_MINUTES, MAX_ATTEMPTS, SECRET_KEY, SMTP_PORT, SMTP_PWD, SMTP_URL, SMTP_USER
+from app.connection import master_connection
 
 from . import queries as queries
 
@@ -71,7 +73,7 @@ def register_user(cursor, useremail: str, username: str, password: str):
             json.dumps(model_templates),
         ),
     )
-
+    cursor.execute(queries.add_default_project, (useremail, useremail))
     cursor.intermediate_commit()
     # Even if the email fails to send, the user is created, so we don't want to rollback the transaction.
     # The user can request a new activation code if needed.
@@ -184,7 +186,7 @@ def login_user(cursor, useremail: str, password: str):
     return access_token
 
 
-def _get_user_from_token(request: Request):
+def _get_user_from_token(request: Request, response: Response):
     token = request.cookies.get("access_token")
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -195,21 +197,25 @@ def _get_user_from_token(request: Request):
     token_version = payload.get("token_version")
     if token_version is None or int(token_version) < 1:
         raise HTTPException(status_code=401, detail="Token has been revoked")
-    return useremail, token_version
+    with master_connection() as cursor:
+        row = cursor.execute(queries.get_user_details, (useremail,)).fetchone()
+        if not row:
+            _delete_cookie_and_raise(response, 404, "User not found")
+        role_name, display_name, token_version_db, is_active, is_locked = row
+        if token_version_db != token_version:
+            _delete_cookie_and_raise(response, 401, "Token has been revoked")
+        if is_active == 0:
+            _delete_cookie_and_raise(response, 400, "User account is not active")
+        if is_locked:
+            _delete_cookie_and_raise(response, 400, "User account is locked")
+    return useremail, display_name, role_name
 
 
-def get_user_details(cursor, useremail: str, token_version: int):
-    row = cursor.execute(queries.get_user_details, (useremail,)).fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="User not found")
-    role_name, display_name, token_version_db, is_active, is_locked = row
-    if token_version_db != token_version:
-        raise HTTPException(status_code=401, detail="Token has been revoked")
-    if is_active == 0:
-        raise HTTPException(status_code=400, detail="User account is not active")
-    if is_locked:
-        raise HTTPException(status_code=400, detail="User account is locked")
-    return role_name, display_name
+def _delete_cookie_and_raise(response: Response, status_code: int, detail: str):
+    response.delete_cookie(key="access_token", path="/")
+    set_cookie_header = response.headers.get("set-cookie")
+    headers = {"set-cookie": set_cookie_header} if set_cookie_header else None
+    raise HTTPException(status_code=status_code, detail=detail, headers=headers)
 
 
 def _verify_token(token: str):
@@ -238,7 +244,7 @@ def change_password(cursor, useremail: str, current_password: str, new_password:
 
     new_salt = os.urandom(16)
     new_password_hash = _hash_password(new_password, new_salt)
-
+    sleep(2)  # Add delay to test account lock functionality
     cursor.execute(
         queries.update_user_password,
         (new_password_hash, new_salt, useremail),

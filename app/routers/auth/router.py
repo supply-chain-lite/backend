@@ -101,16 +101,9 @@ def logout(response: Response) -> auth_schemas.MessageResponse:
     return auth_schemas.MessageResponse(message="Logout successful")
 
 
-@router.post("/me")
-def get_current_user(user_data: tuple = Depends(auth_methods._get_user_from_token), response: Response = None):
-    useremail, token_version = user_data
-    try:
-        with master_connection() as cursor:
-            role_name, display_name = auth_methods.get_user_details(cursor, useremail, token_version)
-    except HTTPException as exc:
-        if exc.status_code in {400, 401, 404}:
-            response.delete_cookie(key="access_token", path="/")
-        return auth_schemas.MessageResponse(message="Invalid token, please login again")
+@router.post("/me", response_model=auth_schemas.UserDetailsResponse)
+def get_current_user(user_data: tuple = Depends(auth_methods._get_user_from_token)) -> auth_schemas.UserDetailsResponse:
+    useremail, display_name, role_name = user_data
     return auth_schemas.UserDetailsResponse(role_name=role_name, display_name=display_name, email=useremail)
 
 
@@ -118,7 +111,7 @@ def get_current_user(user_data: tuple = Depends(auth_methods._get_user_from_toke
 def change_password(
     request: auth_schemas.ChangePasswordRequest, user_data: tuple = Depends(auth_methods._get_user_from_token)
 ) -> auth_schemas.MessageResponse:
-    useremail, token_version = user_data
+    useremail, _display_name, _role_name = user_data
     current_password = request.current_password
     new_password = request.new_password
 
@@ -128,6 +121,5 @@ def change_password(
         raise HTTPException(status_code=400, detail="new password is required")
 
     with master_connection() as cursor:
-        auth_methods.get_user_details(cursor, useremail, token_version)
         auth_methods.change_password(cursor, useremail, current_password, new_password)
         return auth_schemas.MessageResponse(message="Password changed successfully")
