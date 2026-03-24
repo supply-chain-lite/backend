@@ -126,7 +126,7 @@ def forgot_password(cursor, useremail: str):
 def reset_password(cursor, useremail: str, verification_code: str, password: str):
     row = cursor.execute(queries.get_status_activation_code, (useremail,)).fetchone()
     if not row:
-        raise HTTPException(status_code=404, detail="Password reset request unsuccessful")
+        raise HTTPException(status_code=400, detail="Password reset request unsuccessful")
     status, verification_code_db = row
     if status == 0:
         raise HTTPException(status_code=400, detail="Password reset request unsuccessful")
