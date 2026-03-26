@@ -4,19 +4,12 @@ from app.connection import master_connection
 
 from . import methods as auth_methods
 from . import schemas as auth_schemas
-from .schemas import (
-    ActivateRequest,
-    ForgotPasswordRequest,
-    LoginRequest,
-    RegisterRequest,
-    ResetPasswordRequest,
-)
 
 router = APIRouter()
 
 
 @router.post("/register", response_model=auth_schemas.MessageResponse, status_code=status.HTTP_201_CREATED)
-def register(request: RegisterRequest) -> auth_schemas.MessageResponse:
+def register(request: auth_schemas.RegisterRequest) -> auth_schemas.MessageResponse:
     email = request.email.strip().lower()
     username = request.username.strip()
     if not email:
@@ -32,7 +25,7 @@ def register(request: RegisterRequest) -> auth_schemas.MessageResponse:
 
 
 @router.post("/activate", response_model=auth_schemas.MessageResponse)
-def activate(request: ActivateRequest) -> auth_schemas.MessageResponse:
+def activate(request: auth_schemas.ActivateRequest) -> auth_schemas.MessageResponse:
     email = request.email.strip().lower()
     activation_code = request.activation_code.strip()
 
@@ -47,7 +40,7 @@ def activate(request: ActivateRequest) -> auth_schemas.MessageResponse:
 
 
 @router.post("/forgot-password", response_model=auth_schemas.MessageResponse)
-def forgot_password(request: ForgotPasswordRequest) -> auth_schemas.MessageResponse:
+def forgot_password(request: auth_schemas.ForgotPasswordRequest) -> auth_schemas.MessageResponse:
     email = request.email.strip().lower()
 
     if not email:
@@ -64,7 +57,7 @@ def forgot_password(request: ForgotPasswordRequest) -> auth_schemas.MessageRespo
 
 
 @router.post("/reset-password", response_model=auth_schemas.MessageResponse)
-def reset_password(request: ResetPasswordRequest) -> auth_schemas.MessageResponse:
+def reset_password(request: auth_schemas.ResetPasswordRequest) -> auth_schemas.MessageResponse:
     email = request.email.strip().lower()
     verification_code = request.verification_code.strip()
     password = request.password
@@ -82,7 +75,7 @@ def reset_password(request: ResetPasswordRequest) -> auth_schemas.MessageRespons
 
 
 @router.post("/login", response_model=auth_schemas.MessageResponse)
-def login(request: LoginRequest, response: Response) -> auth_schemas.MessageResponse:
+def login(request: auth_schemas.LoginRequest, response: Response) -> auth_schemas.MessageResponse:
     email = request.email.strip().lower()
     password = request.password
     if not email:

@@ -1,7 +1,8 @@
-from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from app.database import init_db
 from app.routers.auth.router import router as auth_router
@@ -24,9 +25,10 @@ app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(models_router, prefix="/api/models", tags=["models"])
 app.include_router(projects_router, prefix="/api/projects", tags=["projects"])
 
-# @app.exception_handler(Exception)
-# async def global_exception_handler(request: Request, exc: Exception):
-#     return JSONResponse(
-#         status_code=500,
-#         content={"detail": str(exc)},
-#     )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc)},
+    )
