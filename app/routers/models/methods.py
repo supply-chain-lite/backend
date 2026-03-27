@@ -172,7 +172,7 @@ def delete_model(cursor, user_email: str, model_name: str, project_name: str):
     return 1
 
 
-def create_model_backup(cursor, user_email: str, model_name: str, project_name: str):
+def create_model_backup(cursor, user_email: str, model_name: str, project_name: str, backup_comment: str):
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
@@ -200,7 +200,7 @@ def create_model_backup(cursor, user_email: str, model_name: str, project_name: 
 
     cursor.execute(
         "INSERT INTO S_ModelBackups (ModelId, BackupPath, BackupText) VALUES (?, ?, ?)",
-        (model_id, backup_path, model_name),
+        (model_id, backup_path, backup_comment),
     )
 
 
@@ -219,7 +219,7 @@ def get_model_backups(cursor, user_email: str, model_name: str, project_name: st
     return all_backups
 
 
-def restore_model_from_backup(cursor, user_email: str, model_name: str, project_name: str, backup_id: str):
+def restore_model_from_backup(cursor, user_email: str, model_name: str, project_name: str, backup_id: int):
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
@@ -360,14 +360,6 @@ def get_user_notifications(cursor, user_email: str):
         is_read,
         is_accepted,
     ) in rows:
-        is_read = bool(is_read)
-        if is_accepted == 1:
-            is_accepted = True
-        if is_accepted == 0:
-            is_accepted = False
-        if is_accepted == -1:
-            is_accepted = None
-
         params_dict = json.loads(params) if params else {}
         project_name = params_dict.get("project_name")
         model_name = params_dict.get("model_name")
