@@ -129,7 +129,7 @@ def save_as_model(
         connection.execute(f"VACUUM INTO '{new_model_path}'")
         connection.close()
         return 1
-    raise Exception("Failed to create new model")
+    raise HTTPException(status_code=500, detail="Failed to create new model")
 
 
 def rename_model(cursor, user_email: str, model_name: str, project_name: str, new_model_name: str):
@@ -176,12 +176,12 @@ def delete_model(cursor, user_email: str, model_name: str, project_name: str):
 def create_model_backup(cursor, user_email: str, model_name: str, project_name: str):
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
-        raise Exception("Model not found")
+        raise HTTPException(status_code=404, detail="Model not found")
 
     access_level = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()[0]
 
     if access_level != "owner":
-        raise Exception("Only owner can create backup")
+        raise HTTPException(status_code=403, detail="Only owner can create backup")
 
     all_backups = cursor.execute(model_queries.get_model_backups, (model_id,)).fetchall()
 
@@ -194,7 +194,7 @@ def create_model_backup(cursor, user_email: str, model_name: str, project_name: 
     backup_uid = str(uuid.uuid4())
     backup_path = os.path.join(BACKUP_FOLDER, f"{backup_uid}.sqlite3")
     if os.path.exists(backup_path):
-        raise Exception("Backup with same UID already exists")
+        raise HTTPException(status_code=500, detail="Backup with same UID already exists")
 
     connection = apsw.Connection(model_path)
     connection.execute(f"VACUUM INTO '{backup_path}'")
@@ -231,7 +231,7 @@ def restore_model_from_backup(cursor, user_email: str, model_name: str, project_
     if access_level != "owner":
         raise HTTPException(status_code=403, detail="Only owner can restore from backup")
 
-    backup_row = cursor.execute(model_queries.get_model_backup_path, (backup_id,)).fetchone()
+    backup_row = cursor.execute(model_queries.get_model_backup_path, (backup_id, user_email)).fetchone()
     if not backup_row:
         raise HTTPException(status_code=404, detail="Backup not found")
 
@@ -305,8 +305,8 @@ def accept_model_share(
     cursor,
     notification_id: int,
     accept: bool,
-    new_model_name: str | None = None,
-    new_project_name: str | None = None,
+    new_model_name: str,
+    new_project_name: str,
     create_copy: bool = False,
     user_email: str = "",
 ):
@@ -369,7 +369,12 @@ def get_user_notifications(cursor, user_email: str):
         is_accepted,
     ) in rows:
         is_read = bool(is_read)
-        is_accepted = bool(is_accepted) if is_accepted is not None else None
+        if is_accepted == 1:
+            is_accepted = True
+        if is_accepted == 0:
+            is_accepted = False
+        if is_accepted == -1:
+            is_accepted = None
 
         params_dict = json.loads(params) if params else {}
         project_name = params_dict.get("project_name")
