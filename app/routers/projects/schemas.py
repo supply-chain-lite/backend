@@ -3,10 +3,21 @@ from pydantic import BaseModel
 
 class ProjectCreateRequest(BaseModel):
     name: str
-    description: str | None = None
+    create_and_open: bool = True
 
 
-class ProjectCreateResponse(BaseModel):
-    id: int
-    name: str
-    message: str = "Project created successfully"
+class CurrentProjectResponse(BaseModel):
+    project_name: str
+
+
+class OpenProjectRequest(BaseModel):
+    project_name: str
+
+
+class MessageResponse(BaseModel):
+    message: str
+
+
+class RenameProjectRequest(BaseModel):
+    old_project_name: str
+    new_project_name: str
