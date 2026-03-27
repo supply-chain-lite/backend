@@ -335,7 +335,7 @@ CREATE TABLE O_Inventory (
     ProductionQuantity      NUMERIC,
     OrderedQuantity         NUMERIC,
     ConsumedQuantity        NUMERIC,
-    ExpiredQuanity          NUMERIC,
+    ExpiredQuantity          NUMERIC,
     SatisfiedDemand         NUMERIC,
     Demand                  NUMERIC,
     RegistrationOutbound    NUMERIC,
@@ -412,7 +412,7 @@ INSERT INTO S_TableGroup (GroupName, TableName, TableDisplayName, TableType, Col
 
 INSERT INTO S_TableGroup (GroupName, TableName, TableDisplayName, TableType, ColumnOrder, Table_Status, Freeze_Col_Num) VALUES ('Output Tables', 'O_ModelValidation', 'Validation Output', 'Output', NULL, 'Active', NULL);
 INSERT INTO S_TableGroup (GroupName, TableName, TableDisplayName, TableType, ColumnOrder, Table_Status, Freeze_Col_Num) VALUES ('Output Tables', 'O_Period', 'Periods', 'Output', NULL, 'Active', NULL);
-INSERT INTO S_TableGroup (GroupName, TableName, TableDisplayName, TableType, ColumnOrder, Table_Status, Freeze_Col_Num) VALUES ('Output Tables', 'O_Inventory', 'Inventory Ouput', 'Output', NULL, 'Active', NULL);
+INSERT INTO S_TableGroup (GroupName, TableName, TableDisplayName, TableType, ColumnOrder, Table_Status, Freeze_Col_Num) VALUES ('Output Tables', 'O_Inventory', 'Inventory Output', 'Output', NULL, 'Active', NULL);
 INSERT INTO S_TableGroup (GroupName, TableName, TableDisplayName, TableType, ColumnOrder, Table_Status, Freeze_Col_Num) VALUES ('Output Tables', 'O_Transportation', 'Transportation Output', 'Output', NULL, 'Active', NULL);
 INSERT INTO S_TableGroup (GroupName, TableName, TableDisplayName, TableType, ColumnOrder, Table_Status, Freeze_Col_Num) VALUES ('Output Tables', 'O_Production', 'Production Output', 'Output', NULL, 'Active', NULL);
 INSERT INTO S_TableGroup (GroupName, TableName, TableDisplayName, TableType, ColumnOrder, Table_Status, Freeze_Col_Num) VALUES ('Output Tables', 'O_Objective', 'Objective Output', 'Output', NULL, 'Active', NULL);

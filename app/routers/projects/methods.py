@@ -1,5 +1,6 @@
 from fastapi import HTTPException
 
+from ..models.methods import delete_model
 from . import queries as project_queries
 
 
@@ -41,8 +42,7 @@ def delete_project(cursor, user_email: str, project_name: str):
 
     all_models = cursor.execute(project_queries.get_project_models, (user_email, project_name)).fetchall()
     for (model_name,) in all_models:
-        pass
-        # delete_model(cursor, user_email, project_name, model_name)
+        delete_model(cursor, user_email, project_name, model_name)
 
     cursor.execute(project_queries.delete_project, (user_email, project_name))
     row = cursor.execute(project_queries.get_current_project, (user_email,)).fetchone()
@@ -60,7 +60,7 @@ def rename_project(cursor, user_email: str, old_project_name: str, new_project_n
 
     new_project_id = _get_project_id(cursor, user_email, new_project_name)
     if new_project_id:
-        raise HTTPException(status_code=400, detail="New project name must be different.")
+        raise HTTPException(status_code=400, detail="Project name already exists")
 
     cursor.execute(project_queries.rename_project, (new_project_name, user_email, old_project_name))
     project_id_ = _get_project_id(cursor, user_email, new_project_name)

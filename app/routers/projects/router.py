@@ -27,7 +27,7 @@ def create_project(
     if open_after_create is None:
         open_after_create = True
     with master_connection() as cursor:
-        project_methods.add_new_project(cursor, useremail, project_name, open_after_create=request.create_and_open)
+        project_methods.add_new_project(cursor, useremail, project_name, open_after_create)
         return project_schemas.MessageResponse(message="Project created successfully")
 
 

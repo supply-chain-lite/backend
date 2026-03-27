@@ -4,7 +4,7 @@ from pathlib import Path
 # folder_name = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-SCHEMA_DIR = os.path.join(PROJECT_ROOT, "SCHEMA")
+SCHEMA_DIR = os.path.join(PROJECT_ROOT, "schemas")
 
 schema_info = {
     "Supply Planning": {

@@ -95,7 +95,7 @@ get_user_notifications = """SELECT NotificationId, FromUserEmail, Title, Message
                             -- keep notifications for 7 days or until accepted/rejected"""
 
 
-get_model_details = """select OwnerEmail, TemplateName from S_Models
+get_model_info = """select OwnerEmail, TemplateName from S_Models
                         where ModelId = ?"""
 
 get_users_for_model = """SELECT S_UserModels.UserEmail, S_UserModels.AccessLevel

@@ -6,7 +6,7 @@ import tempfile
 import uuid
 
 import apsw
-from fastapi import File, HTTPException, UploadFile, responses
+from fastapi import BackgroundTasks, File, HTTPException, UploadFile, responses
 
 from app.config import BACKUP_FOLDER, DATA_FOLDER, MAX_BACKUPS, TEMP_FOLDER
 
@@ -310,7 +310,6 @@ def accept_model_share(
     create_copy: bool = False,
     user_email: str = "",
 ):
-    print(notification_id, user_email)
     notification_row = cursor.execute(model_queries.get_notification_params, (notification_id, user_email)).fetchone()
     if not notification_row:
         raise HTTPException(status_code=404, detail=f"Notification not found; {user_email}, {notification_id}")
@@ -373,7 +372,6 @@ def get_user_notifications(cursor, user_email: str):
         is_accepted = bool(is_accepted) if is_accepted is not None else None
 
         params_dict = json.loads(params) if params else {}
-        print(params_dict)
         project_name = params_dict.get("project_name")
         model_name = params_dict.get("model_name")
 
@@ -412,7 +410,7 @@ def download_model(cursor, user_email: str, model_name: str, project_name: str):
     connection = apsw.Connection(model_path)
     connection.execute(f"VACUUM INTO '{tmp.name}'")
     connection.close()
-
+    BackgroundTasks.add_task(_clean_up_temp_file, tmp.name)
     # 3. Return file
     return responses.FileResponse(
         path=tmp.name,
@@ -451,6 +449,7 @@ def upload_model(
 
     this_connection.close()
     backup_connection.close()
+    BackgroundTasks.add_task(_clean_up_temp_file, tmp.name)
 
 
 def get_model_info(cursor, user_email: str, model_name: str, project_name: str):
@@ -464,10 +463,10 @@ def get_model_info(cursor, user_email: str, model_name: str, project_name: str):
 
     access_user_list = []
     if owner_email != user_email:
-        for user_id, access_level in cursor.execute(
+        for user_id, user_access_level in cursor.execute(
             model_queries.get_users_for_model, (model_id, owner_email)
         ).fetchall():
-            access_user_list.append({"user_email": user_id, "access_level": access_level})
+            access_user_list.append({"user_email": user_id, "access_level": user_access_level})
 
     return {
         "model_name": model_name,
@@ -554,3 +553,8 @@ def get_template_sql_file(cursor, user_email: str, template_name: str, with_data
         raise HTTPException(status_code=404, detail="SQL file for template not found")
 
     return sql_file
+
+
+def _clean_up_temp_file(file_path: str):
+    if os.path.exists(file_path):
+        os.remove(file_path)
