@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from enum import Enum
 
 
 class ModelListResponse(BaseModel):
@@ -68,7 +69,10 @@ class shareModelRequest(BaseModel):
     model_name: str
     project_name: str
     target_user_email: str
-    access_level: str
+    class access_level(str, Enum):
+        READ = "read"
+        WRITE = "write"
+        EXECUTE = "execute"
 
 
 class notificationBaseModel(BaseModel):
