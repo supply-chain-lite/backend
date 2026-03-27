@@ -62,7 +62,7 @@ get_model_backup_details = """SELECT BackupId, BackupText, CreatedAt
                                 WHERE ModelId = ?
                                 ORDER BY BackupId DESC"""
 
-get_model_backup_path = "SELECT BackupPath FROM S_ModelBackups WHERE BackupId = ? AND OwnerEmail = ?"
+get_model_backup_path = "SELECT BackupPath FROM S_ModelBackups WHERE BackupId = ? AND ModelId = ?"
 
 add_user_notifications = """INSERT INTO S_UserNotifications (
                                         FromUserEmail,

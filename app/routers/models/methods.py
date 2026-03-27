@@ -125,9 +125,8 @@ def save_as_model(
     )
 
     if model_id:
-        connection = apsw.Connection(old_model_path)
-        connection.execute(f"VACUUM INTO '{new_model_path}'")
-        connection.close()
+        with apsw.Connection(old_model_path) as connection:
+            connection.execute(f"VACUUM INTO '{new_model_path}'")
         return 1
     raise HTTPException(status_code=500, detail="Failed to create new model")
 
@@ -196,9 +195,8 @@ def create_model_backup(cursor, user_email: str, model_name: str, project_name: 
     if os.path.exists(backup_path):
         raise HTTPException(status_code=500, detail="Backup with same UID already exists")
 
-    connection = apsw.Connection(model_path)
-    connection.execute(f"VACUUM INTO '{backup_path}'")
-    connection.close()
+    with apsw.Connection(model_path) as connection:
+        connection.execute(f"VACUUM INTO '{backup_path}'")
 
     cursor.execute(
         "INSERT INTO S_ModelBackups (ModelId, BackupPath, BackupText) VALUES (?, ?, ?)",
@@ -231,7 +229,7 @@ def restore_model_from_backup(cursor, user_email: str, model_name: str, project_
     if access_level != "owner":
         raise HTTPException(status_code=403, detail="Only owner can restore from backup")
 
-    backup_row = cursor.execute(model_queries.get_model_backup_path, (backup_id, user_email)).fetchone()
+    backup_row = cursor.execute(model_queries.get_model_backup_path, (backup_id, model_id)).fetchone()
     if not backup_row:
         raise HTTPException(status_code=404, detail="Backup not found")
 
@@ -240,15 +238,9 @@ def restore_model_from_backup(cursor, user_email: str, model_name: str, project_
     if not os.path.exists(backup_path):
         raise HTTPException(status_code=404, detail="Backup file not found on disk")
 
-    backup_connection = apsw.Connection(backup_path)
-
-    this_connection = apsw.Connection(model_path)
-
-    with this_connection.backup("main", backup_connection, "main") as backup:
-        backup.step()  # copy entire database in one step
-
-    this_connection.close()
-    backup_connection.close()
+    with apsw.Connection(backup_path) as backup_connection, apsw.Connection(model_path) as this_connection:
+        with this_connection.backup("main", backup_connection, "main") as backup:
+            backup.step()  # copy entire database in one step
 
 
 def share_model(
@@ -553,7 +545,6 @@ def get_template_sql_file(cursor, user_email: str, template_name: str, with_data
     schema_dir = os.path.join(this_parent_dir, "schemas")
 
     sql_file = os.path.join(schema_dir, file_name)
-    print(sql_file)
     if not os.path.isfile(sql_file):
         raise HTTPException(status_code=404, detail="SQL file for template not found")
 
