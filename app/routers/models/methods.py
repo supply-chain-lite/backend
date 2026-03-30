@@ -126,8 +126,12 @@ def save_as_model(
 
     if model_id:
         connection = apsw.Connection(old_model_path)
-        connection.execute(f"VACUUM INTO '{new_model_path}'")
-        connection.close()
+        try:
+            connection.execute(f"VACUUM INTO '{new_model_path}'")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to copy model database: {str(e)}")
+        finally:
+            connection.close()
         return 1
     raise HTTPException(status_code=500, detail="Failed to create new model")
 
@@ -197,8 +201,12 @@ def create_model_backup(cursor, user_email: str, model_name: str, project_name: 
         raise HTTPException(status_code=500, detail="Backup with same UID already exists")
 
     connection = apsw.Connection(model_path)
-    connection.execute(f"VACUUM INTO '{backup_path}'")
-    connection.close()
+    try:
+        connection.execute(f"VACUUM INTO '{backup_path}'")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create backup: {str(e)}")
+    finally:
+        connection.close()
 
     cursor.execute(
         "INSERT INTO S_ModelBackups (ModelId, BackupPath, BackupText) VALUES (?, ?, ?)",
@@ -399,8 +407,12 @@ def download_model(cursor, user_email: str, model_name: str, project_name: str):
     tmp.close()  # Close the file so that it can be used by other processes
 
     connection = apsw.Connection(model_path)
-    connection.execute(f"VACUUM INTO '{tmp.name}'")
-    connection.close()
+    try:
+        connection.execute(f"VACUUM INTO '{tmp.name}'")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create a copy of the model for download: {str(e)}")
+    finally:
+        connection.close()
     BackgroundTasks.add_task(_clean_up_temp_file, tmp.name)
     # 3. Return file
     return responses.FileResponse(
@@ -435,11 +447,12 @@ def upload_model(
     backup_connection = apsw.Connection(tmp.name)
     this_connection = apsw.Connection(model_path)
 
-    with this_connection.backup("main", backup_connection, "main") as backup:
-        backup.step()  # copy entire database in one step
-
-    this_connection.close()
-    backup_connection.close()
+    try:
+        with this_connection.backup("main", backup_connection, "main") as backup:
+            backup.step()  # copy entire database in one step
+    finally:
+        this_connection.close()
+        backup_connection.close()
     BackgroundTasks.add_task(_clean_up_temp_file, tmp.name)
 
 
