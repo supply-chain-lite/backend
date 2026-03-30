@@ -247,10 +247,18 @@ def restore_model_from_backup(cursor, user_email: str, model_name: str, project_
 
     if not os.path.exists(backup_path):
         raise HTTPException(status_code=404, detail="Backup file not found on disk")
+    
+    backup_connection = apsw.Connection(backup_path)
+    this_connection = apsw.Connection(model_path)
 
-    with apsw.Connection(backup_path) as backup_connection, apsw.Connection(model_path) as this_connection:
+    try:
         with this_connection.backup("main", backup_connection, "main") as backup:
             backup.step()  # copy entire database in one step
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to restore backup: {str(e)}")
+    finally:
+        this_connection.close()
+        backup_connection.close()
 
 
 def share_model(
