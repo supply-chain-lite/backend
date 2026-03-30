@@ -1,5 +1,6 @@
-from pydantic import BaseModel
 from enum import Enum
+
+from pydantic import BaseModel
 
 
 class ModelListResponse(BaseModel):
@@ -63,6 +64,7 @@ class restoreModelRequest(BaseModel):
     model_name: str
     project_name: str
     backup_id: int
+
 
 class accessLevel(str, Enum):
     READ = "read"

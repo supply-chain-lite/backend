@@ -98,6 +98,7 @@ def move_model(
         model_methods.move_model_to_project(cursor, useremail, model_name, project_name, new_project_name)
     return model_schemas.MessageResponse(message="Model moved successfully to the new project")
 
+
 @router.post("/add-existing", response_model=model_schemas.MessageResponse)
 def add_existing_model(
     request: model_schemas.addExistingModelRequest, user_data: tuple = Depends(_get_user_from_token)
@@ -118,6 +119,7 @@ def download_model(request: model_schemas.modelRequest, user_data: tuple = Depen
     project_name = request.project_name
     with master_connection() as cursor:
         return model_methods.download_model(cursor, useremail, model_name, project_name)
+
 
 @router.post("/upload", response_model=model_schemas.MessageResponse)
 def upload_model(
