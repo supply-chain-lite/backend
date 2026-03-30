@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import FileResponse
 
 from app.connection import master_connection
@@ -98,6 +98,18 @@ def move_model(
         model_methods.move_model_to_project(cursor, useremail, model_name, project_name, new_project_name)
     return model_schemas.MessageResponse(message="Model moved successfully to the new project")
 
+@router.post("/add-existing", response_model=model_schemas.MessageResponse)
+def add_existing_model(
+    request: model_schemas.addExistingModelRequest, user_data: tuple = Depends(_get_user_from_token)
+) -> model_schemas.MessageResponse:
+    useremail, _display_name, _role_name = user_data
+    new_project_name = request.project_name
+    model_project_pairs = request.model_project_pairs
+    with master_connection() as cursor:
+        for model_name, old_project_name in model_project_pairs:
+            model_methods.move_model_to_project(cursor, useremail, model_name, old_project_name, new_project_name)
+    return model_schemas.MessageResponse(message="Existing model added successfully to the project")
+
 
 @router.post("/download", response_class=FileResponse)
 def download_model(request: model_schemas.modelRequest, user_data: tuple = Depends(_get_user_from_token)):
@@ -109,15 +121,14 @@ def download_model(request: model_schemas.modelRequest, user_data: tuple = Depen
 
 @router.post("/upload", response_model=model_schemas.MessageResponse)
 def upload_model(
-    request: model_schemas.modelRequest,
+    model_name: str = Form(...),
+    project_name: str = Form(...),
     user_data: tuple = Depends(_get_user_from_token),
     upload_file: UploadFile = File(...),
 ) -> model_schemas.MessageResponse:
     useremail, _display_name, _role_name = user_data
-    model_name = request.model_name
-    project_name = request.project_name
     with master_connection() as cursor:
-        model_methods.upload_model(cursor, model_name, project_name, useremail, upload_file)
+        model_methods.upload_model(cursor, useremail, project_name, model_name, upload_file)
     return model_schemas.MessageResponse(message="Model uploaded successfully")
 
 

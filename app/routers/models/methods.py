@@ -125,8 +125,9 @@ def save_as_model(
     )
 
     if model_id:
-        with apsw.Connection(old_model_path) as connection:
-            connection.execute(f"VACUUM INTO '{new_model_path}'")
+        connection = apsw.Connection(old_model_path)
+        connection.execute(f"VACUUM INTO '{new_model_path}'")
+        connection.close()
         return 1
     raise HTTPException(status_code=500, detail="Failed to create new model")
 
@@ -195,8 +196,9 @@ def create_model_backup(cursor, user_email: str, model_name: str, project_name: 
     if os.path.exists(backup_path):
         raise HTTPException(status_code=500, detail="Backup with same UID already exists")
 
-    with apsw.Connection(model_path) as connection:
-        connection.execute(f"VACUUM INTO '{backup_path}'")
+    connection = apsw.Connection(model_path)
+    connection.execute(f"VACUUM INTO '{backup_path}'")
+    connection.close()
 
     cursor.execute(
         "INSERT INTO S_ModelBackups (ModelId, BackupPath, BackupText) VALUES (?, ?, ?)",

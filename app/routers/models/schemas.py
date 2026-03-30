@@ -64,15 +64,17 @@ class restoreModelRequest(BaseModel):
     project_name: str
     backup_id: int
 
+class accessLevel(str, Enum):
+    READ = "read"
+    WRITE = "write"
+    EXECUTE = "execute"
+
 
 class shareModelRequest(BaseModel):
     model_name: str
     project_name: str
     target_user_email: str
-    class access_level(str, Enum):
-        READ = "read"
-        WRITE = "write"
-        EXECUTE = "execute"
+    access_level: accessLevel
 
 
 class notificationBaseModel(BaseModel):
