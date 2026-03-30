@@ -125,8 +125,13 @@ def save_as_model(
     )
 
     if model_id:
-        with apsw.Connection(old_model_path) as connection:
+        connection = apsw.Connection(old_model_path)
+        try:
             connection.execute(f"VACUUM INTO '{new_model_path}'")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to copy model database: {str(e)}")
+        finally:
+            connection.close()
         return 1
     raise HTTPException(status_code=500, detail="Failed to create new model")
 
@@ -172,7 +177,7 @@ def delete_model(cursor, user_email: str, model_name: str, project_name: str):
     return 1
 
 
-def create_model_backup(cursor, user_email: str, model_name: str, project_name: str):
+def create_model_backup(cursor, user_email: str, model_name: str, project_name: str, backup_comment: str):
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
@@ -195,12 +200,17 @@ def create_model_backup(cursor, user_email: str, model_name: str, project_name: 
     if os.path.exists(backup_path):
         raise HTTPException(status_code=500, detail="Backup with same UID already exists")
 
-    with apsw.Connection(model_path) as connection:
+    connection = apsw.Connection(model_path)
+    try:
         connection.execute(f"VACUUM INTO '{backup_path}'")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create backup: {str(e)}")
+    finally:
+        connection.close()
 
     cursor.execute(
         "INSERT INTO S_ModelBackups (ModelId, BackupPath, BackupText) VALUES (?, ?, ?)",
-        (model_id, backup_path, model_name),
+        (model_id, backup_path, backup_comment),
     )
 
 
@@ -219,7 +229,7 @@ def get_model_backups(cursor, user_email: str, model_name: str, project_name: st
     return all_backups
 
 
-def restore_model_from_backup(cursor, user_email: str, model_name: str, project_name: str, backup_id: str):
+def restore_model_from_backup(cursor, user_email: str, model_name: str, project_name: str, backup_id: int):
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
@@ -237,10 +247,18 @@ def restore_model_from_backup(cursor, user_email: str, model_name: str, project_
 
     if not os.path.exists(backup_path):
         raise HTTPException(status_code=404, detail="Backup file not found on disk")
+    
+    backup_connection = apsw.Connection(backup_path)
+    this_connection = apsw.Connection(model_path)
 
-    with apsw.Connection(backup_path) as backup_connection, apsw.Connection(model_path) as this_connection:
+    try:
         with this_connection.backup("main", backup_connection, "main") as backup:
             backup.step()  # copy entire database in one step
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to restore backup: {str(e)}")
+    finally:
+        this_connection.close()
+        backup_connection.close()
 
 
 def share_model(
@@ -360,14 +378,6 @@ def get_user_notifications(cursor, user_email: str):
         is_read,
         is_accepted,
     ) in rows:
-        is_read = bool(is_read)
-        if is_accepted == 1:
-            is_accepted = True
-        if is_accepted == 0:
-            is_accepted = False
-        if is_accepted == -1:
-            is_accepted = None
-
         params_dict = json.loads(params) if params else {}
         project_name = params_dict.get("project_name")
         model_name = params_dict.get("model_name")
@@ -405,8 +415,12 @@ def download_model(cursor, user_email: str, model_name: str, project_name: str):
     tmp.close()  # Close the file so that it can be used by other processes
 
     connection = apsw.Connection(model_path)
-    connection.execute(f"VACUUM INTO '{tmp.name}'")
-    connection.close()
+    try:
+        connection.execute(f"VACUUM INTO '{tmp.name}'")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create a copy of the model for download: {str(e)}")
+    finally:
+        connection.close()
     BackgroundTasks.add_task(_clean_up_temp_file, tmp.name)
     # 3. Return file
     return responses.FileResponse(
@@ -441,11 +455,12 @@ def upload_model(
     backup_connection = apsw.Connection(tmp.name)
     this_connection = apsw.Connection(model_path)
 
-    with this_connection.backup("main", backup_connection, "main") as backup:
-        backup.step()  # copy entire database in one step
-
-    this_connection.close()
-    backup_connection.close()
+    try:
+        with this_connection.backup("main", backup_connection, "main") as backup:
+            backup.step()  # copy entire database in one step
+    finally:
+        this_connection.close()
+        backup_connection.close()
     BackgroundTasks.add_task(_clean_up_temp_file, tmp.name)
 
 
