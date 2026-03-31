@@ -1,3 +1,5 @@
+"""API routes for managing models, templates, sharing, and backups."""
+
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import FileResponse
 
@@ -12,6 +14,7 @@ router = APIRouter()
 
 @router.post("/list", response_model=model_schemas.ModelListResponse)
 def get_user_models_by_project(user_data: tuple = Depends(_get_user_from_token)) -> model_schemas.ModelListResponse:
+    """Return all models grouped by project that are visible to the authenticated user."""
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:
         project_models = model_methods.get_user_models_by_project(cursor, useremail)
@@ -20,6 +23,7 @@ def get_user_models_by_project(user_data: tuple = Depends(_get_user_from_token))
 
 @router.post("/templates", response_model=model_schemas.ModelTemplatesResponse)
 def get_model_templates(user_data: tuple = Depends(_get_user_from_token)) -> model_schemas.ModelTemplatesResponse:
+    """Return model templates the authenticated user can use to create models."""
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:
         model_templates = model_methods.get_model_templates(cursor, useremail)
@@ -30,6 +34,7 @@ def get_model_templates(user_data: tuple = Depends(_get_user_from_token)) -> mod
 def add_new_model(
     request: model_schemas.createModelRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> model_schemas.MessageResponse:
+    """Create a new model in a project, optionally seeded with sample data."""
     useremail, _display_name, _role_name = user_data
     model_template = request.model_template
     model_name = request.model_name
@@ -44,6 +49,7 @@ def add_new_model(
 def save_as_model(
     request: model_schemas.saveAsModelRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> model_schemas.MessageResponse:
+    """Save an existing model as a new model copy for the authenticated user."""
     useremail, _display_name, _role_name = user_data
     model_name = request.model_name
     project_name = request.project_name
@@ -62,6 +68,7 @@ def save_as_model(
 def rename_model(
     request: model_schemas.renameModelRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> model_schemas.MessageResponse:
+    """Rename a model owned by or shared with the authenticated user."""
     useremail, _display_name, _role_name = user_data
     model_name = request.model_name
     project_name = request.project_name
@@ -76,6 +83,7 @@ def rename_model(
 def delete_model(
     request: model_schemas.modelRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> model_schemas.MessageResponse:
+    """Delete a model from the specified project."""
     useremail, _display_name, _role_name = user_data
     model_name = request.model_name
     project_name = request.project_name
@@ -89,6 +97,7 @@ def delete_model(
 def move_model(
     request: model_schemas.moveModelRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> model_schemas.MessageResponse:
+    """Move a model from one project to another for the authenticated user."""
     useremail, _display_name, _role_name = user_data
     model_name = request.model_name
     project_name = request.project_name
@@ -103,6 +112,7 @@ def move_model(
 def add_existing_model(
     request: model_schemas.addExistingModelRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> model_schemas.MessageResponse:
+    """Attach existing models from other projects into the target project."""
     useremail, _display_name, _role_name = user_data
     new_project_name = request.project_name
     model_project_pairs = request.model_project_pairs
@@ -114,6 +124,7 @@ def add_existing_model(
 
 @router.post("/download", response_class=FileResponse)
 def download_model(request: model_schemas.modelRequest, user_data: tuple = Depends(_get_user_from_token)):
+    """Download a model artifact file for the authenticated user."""
     useremail, _, _ = user_data
     model_name = request.model_name
     project_name = request.project_name
@@ -128,6 +139,7 @@ def upload_model(
     user_data: tuple = Depends(_get_user_from_token),
     upload_file: UploadFile = File(...),
 ) -> model_schemas.MessageResponse:
+    """Upload a model artifact and register it under the specified project and model name."""
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:
         model_methods.upload_model(cursor, useremail, project_name, model_name, upload_file)
@@ -138,6 +150,7 @@ def upload_model(
 def backup_model(
     request: model_schemas.backupModelRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> model_schemas.MessageResponse:
+    """Create a backup snapshot for a model with an optional comment."""
     useremail, _display_name, _role_name = user_data
     model_name = request.model_name
     project_name = request.project_name
@@ -152,6 +165,7 @@ def backup_model(
 def get_model_backups(
     request: model_schemas.modelRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> model_schemas.getBackupsResponse:
+    """Return all backup snapshots available for the requested model."""
     useremail, _display_name, _role_name = user_data
     model_name = request.model_name
     project_name = request.project_name
@@ -166,6 +180,7 @@ def get_model_backups(
 def restore_model(
     request: model_schemas.restoreModelRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> model_schemas.MessageResponse:
+    """Restore a model to the state captured in a selected backup snapshot."""
     useremail, _display_name, _role_name = user_data
     model_name = request.model_name
     project_name = request.project_name
@@ -181,6 +196,7 @@ def restore_model(
 def share_model(
     request: model_schemas.shareModelRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> model_schemas.MessageResponse:
+    """Share a model with another user and assign the requested access level."""
     useremail, _display_name, _role_name = user_data
     model_name = request.model_name
     project_name = request.project_name
@@ -194,6 +210,7 @@ def share_model(
 
 @router.post("/get-notifications", response_model=model_schemas.getNotificationsResponse)
 def get_user_notifications(user_data: tuple = Depends(_get_user_from_token)) -> model_schemas.getNotificationsResponse:
+    """Return incoming model-sharing notifications for the authenticated user."""
     useremail, _display_name, _role_name = user_data
 
     with master_connection() as cursor:
@@ -206,6 +223,7 @@ def get_user_notifications(user_data: tuple = Depends(_get_user_from_token)) -> 
 def accept_model_share(
     request: model_schemas.acceptModelRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> model_schemas.MessageResponse:
+    """Accept or reject a model-sharing request and optionally create a personal copy."""
     useremail, _display_name, _role_name = user_data
     notification_id = request.notification_id
     accept = request.accept
