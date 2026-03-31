@@ -18,9 +18,9 @@ app/
 ├── config.py           # Settings loaded from .env
 ├── database.py         # SQLite connection & init
 └── routers/
-    ├── auth/           # POST /api/auth/register, /api/auth/login
-    ├── models/         # POST /api/models/create
-    └── projects/       # POST /api/projects/create
+    ├── auth/           # Authentication & account management
+    ├── models/         # Model CRUD, sharing, backups & templates
+    └── projects/       # Project lifecycle management
 ```
 
 ## Getting Started
@@ -67,12 +67,50 @@ uv run ruff format
 
 All routes accept **POST** only and are prefixed with `/api`.
 
+### Auth (`/api/auth`)
+
 | Route | Description |
 |---|---|
-| `POST /api/auth/register` | Register a new user |
-| `POST /api/auth/login` | Login and get access token |
+| `POST /api/auth/register` | Register a new user account |
+| `POST /api/auth/activate` | Activate account using activation code |
+| `POST /api/auth/login` | Login and set access-token cookie |
+| `POST /api/auth/logout` | Logout and clear access-token cookie |
+| `POST /api/auth/me` | Get current user profile & role |
+| `POST /api/auth/forgot-password` | Initiate password-reset flow |
+| `POST /api/auth/reset-password` | Reset password with verification code |
+| `POST /api/auth/change-password` | Change password (authenticated) |
+
+### Models (`/api/models`)
+
+| Route | Description |
+|---|---|
+| `POST /api/models/list` | List all models grouped by project |
+| `POST /api/models/templates` | List available model templates |
 | `POST /api/models/create` | Create a new model |
+| `POST /api/models/save-as` | Save a copy of an existing model |
+| `POST /api/models/rename` | Rename a model |
+| `POST /api/models/delete` | Delete a model |
+| `POST /api/models/move` | Move a model to another project |
+| `POST /api/models/add-existing` | Attach existing models into a project |
+| `POST /api/models/download` | Download a model artifact file |
+| `POST /api/models/upload` | Upload a model artifact (multipart form) |
+| `POST /api/models/backup` | Create a backup snapshot |
+| `POST /api/models/get-backups` | List backup snapshots for a model |
+| `POST /api/models/restore` | Restore a model from a backup |
+| `POST /api/models/share` | Share a model with another user |
+| `POST /api/models/get-notifications` | List incoming share notifications |
+| `POST /api/models/accept` | Accept or reject a share request |
+
+### Projects (`/api/projects`)
+
+| Route | Description |
+|---|---|
+| `POST /api/projects/current` | Get the current active project |
 | `POST /api/projects/create` | Create a new project |
+| `POST /api/projects/open` | Set a project as current |
+| `POST /api/projects/delete` | Delete a project |
+| `POST /api/projects/rename` | Rename a project |
+| `POST /api/projects/list` | List all projects |
 
 ## Environment Variables
 

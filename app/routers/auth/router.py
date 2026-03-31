@@ -1,3 +1,5 @@
+"""API routes for authentication, account recovery, and user profile actions."""
+
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from app.connection import master_connection
@@ -10,6 +12,7 @@ router = APIRouter()
 
 @router.post("/register", response_model=auth_schemas.MessageResponse, status_code=status.HTTP_201_CREATED)
 def register(request: auth_schemas.RegisterRequest) -> auth_schemas.MessageResponse:
+    """Register a new user account with email, username, and password."""
     email = request.email.strip().lower()
     username = request.username.strip()
     if not email:
@@ -26,6 +29,7 @@ def register(request: auth_schemas.RegisterRequest) -> auth_schemas.MessageRespo
 
 @router.post("/activate", response_model=auth_schemas.MessageResponse)
 def activate(request: auth_schemas.ActivateRequest) -> auth_schemas.MessageResponse:
+    """Activate a user account using the provided activation code."""
     email = request.email.strip().lower()
     activation_code = request.activation_code.strip()
 
@@ -41,6 +45,7 @@ def activate(request: auth_schemas.ActivateRequest) -> auth_schemas.MessageRespo
 
 @router.post("/forgot-password", response_model=auth_schemas.MessageResponse)
 def forgot_password(request: auth_schemas.ForgotPasswordRequest) -> auth_schemas.MessageResponse:
+    """Start password-reset flow without disclosing account existence."""
     email = request.email.strip().lower()
 
     if not email:
@@ -58,6 +63,7 @@ def forgot_password(request: auth_schemas.ForgotPasswordRequest) -> auth_schemas
 
 @router.post("/reset-password", response_model=auth_schemas.MessageResponse)
 def reset_password(request: auth_schemas.ResetPasswordRequest) -> auth_schemas.MessageResponse:
+    """Reset a user's password after verifying the reset code."""
     email = request.email.strip().lower()
     verification_code = request.verification_code.strip()
     password = request.password
@@ -76,6 +82,7 @@ def reset_password(request: auth_schemas.ResetPasswordRequest) -> auth_schemas.M
 
 @router.post("/login", response_model=auth_schemas.MessageResponse)
 def login(request: auth_schemas.LoginRequest, response: Response) -> auth_schemas.MessageResponse:
+    """Authenticate a user and set an access-token cookie."""
     email = request.email.strip().lower()
     password = request.password
     if not email:
@@ -90,12 +97,14 @@ def login(request: auth_schemas.LoginRequest, response: Response) -> auth_schema
 
 @router.post("/logout", response_model=auth_schemas.MessageResponse)
 def logout(response: Response) -> auth_schemas.MessageResponse:
+    """Log out the current user by clearing the access-token cookie."""
     response.delete_cookie(key="access_token", httponly=True, secure=True, samesite="lax", path="/")
     return auth_schemas.MessageResponse(message="Logout successful")
 
 
 @router.post("/me", response_model=auth_schemas.UserDetailsResponse)
 def get_current_user(user_data: tuple = Depends(auth_methods._get_user_from_token)) -> auth_schemas.UserDetailsResponse:
+    """Return profile and role details for the authenticated user."""
     useremail, display_name, role_name = user_data
     return auth_schemas.UserDetailsResponse(role_name=role_name, display_name=display_name, email=useremail)
 
@@ -104,6 +113,7 @@ def get_current_user(user_data: tuple = Depends(auth_methods._get_user_from_toke
 def change_password(
     request: auth_schemas.ChangePasswordRequest, user_data: tuple = Depends(auth_methods._get_user_from_token)
 ) -> auth_schemas.MessageResponse:
+    """Change the authenticated user's password after validating the current password."""
     useremail, _display_name, _role_name = user_data
     current_password = request.current_password
     new_password = request.new_password
