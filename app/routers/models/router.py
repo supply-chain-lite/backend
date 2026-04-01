@@ -200,7 +200,7 @@ def share_model(
     useremail, _display_name, _role_name = user_data
     model_name = request.model_name
     project_name = request.project_name
-    target_user_email = request.target_user_email
+    target_user_email = request.target_user_email.lower()
     access_level = request.access_level.value
 
     with master_connection() as cursor:

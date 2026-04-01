@@ -70,6 +70,7 @@ class accessLevel(str, Enum):
     READ = "read"
     WRITE = "write"
     EXECUTE = "execute"
+    ADMIN = "admin"
 
 
 class shareModelRequest(BaseModel):

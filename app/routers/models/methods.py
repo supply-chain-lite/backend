@@ -269,6 +269,10 @@ def share_model(
     project_name: str,
     access_level: str,
 ):
+    if from_user_email == to_user_email:
+        raise HTTPException(status_code=400, detail="Cannot share model with yourself")
+    if not cursor.execute(model_queries.check_user_email, (to_user_email,)).fetchone():
+        raise HTTPException(status_code=404, detail="Target user not found")
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, from_user_email)
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
@@ -281,6 +285,12 @@ def share_model(
     row = cursor.execute(model_queries.get_access_level, (model_id, to_user_email)).fetchone()
     if row:
         raise HTTPException(status_code=400, detail="Model already shared with the user")
+
+    row = cursor.execute(
+        model_queries.check_if_model_shared_with_user, (to_user_email, from_user_email, model_id)
+    ).fetchone()
+    if row:
+        raise HTTPException(status_code=400, detail="Model share request already sent to the user")
 
     notification_data = {
         "model_id": model_id,
