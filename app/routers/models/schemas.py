@@ -99,6 +99,6 @@ class getNotificationsResponse(BaseModel):
 class acceptModelRequest(BaseModel):
     notification_id: int
     accept: bool
-    model_name: str
-    project_name: str
-    create_new_copy: bool
+    model_name: str = ""
+    project_name: str = ""
+    create_new_copy: bool = False

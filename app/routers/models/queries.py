@@ -87,11 +87,20 @@ accept_notification = """UPDATE S_UserNotifications SET IsAccepted = ?, IsRead =
 get_notification_params = """SELECT FromUserEmail, NotificationParams FROM S_UserNotifications
                                     WHERE NotificationId = ? AND ToUserEmail = ?"""
 
-get_user_notifications = """SELECT NotificationId, FromUserEmail, Title, Message, NotificationType, NotificationParams,
+get_user_notifications = """ select * FROM (
+                            SELECT NotificationId, FromUserEmail, Title, Message, NotificationType, NotificationParams,
                                     IsRead, IsAccepted
                             FROM S_UserNotifications
                             WHERE ToUserEmail = ?
-                            AND   (CreatedAt > datetime('now', '-7 days') OR IsAccepted = 0)
+                            AND   CreatedAt > datetime('now', '-7 days') 
+                            AND IsAccepted = 0
+                            UNION
+                            SELECT NotificationId, FromUserEmail, Title, Message, NotificationType, NotificationParams,
+                                    IsRead, IsAccepted
+                            FROM S_UserNotifications
+                            WHERE ToUserEmail = ?
+                            AND IsAccepted = 0
+                            ) ORDER BY 1 DESC
                             -- keep notifications for 7 days or until accepted/rejected"""
 
 
