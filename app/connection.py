@@ -1,13 +1,14 @@
 import os
 import threading
-import traceback
 
 import apsw
 
 from .config import master_db
+from .logging_config import get_logger
 
 connection_pool = {}
 _pool_lock = threading.Lock()
+logger = get_logger(__name__)
 
 
 class sql_connection:
@@ -24,22 +25,25 @@ class sql_connection:
             try:
                 self.cursor.execute("ROLLBACK")
             except Exception as _e:
-                pass  # Rollback best-effort; connection will be closed next
+                logger.warning("Rollback failed for connection %s", self.db_id, exc_info=_e)
             self.cursor.close()
 
             if issubclass(exception_type, apsw.ReadOnlyError):
+                logger.warning("Read-only access denied on connection %s", self.db_id)
                 raise apsw.ReadOnlyError("Sorry!, You have Read Only access.") from exception_value
-            print(f"some error happened {exception_type} {exception_value} {str(traceback_val)}")
-            traceback.print_exc()
-            traceback_str = "".join(traceback.format_exception(exception_type, exception_value, traceback_val))
-            print(traceback_str)
+
+            logger.error(
+                "Database transaction failed on connection %s",
+                self.db_id,
+                exc_info=(exception_type, exception_value, traceback_val),
+            )
             raise
         else:
             try:
                 self.cursor.execute("COMMIT")
-            except Exception as ex:
-                print(f"again error occured {ex}")
+            except Exception:
                 self.cursor.close()
+                logger.exception("Commit failed on connection %s", self.db_id)
                 raise
             self.cursor.close()
 
@@ -88,7 +92,7 @@ class this_cursor:
         try:
             self.conn.execute(query, args)
         except Exception:
-            print(query)
+            logger.exception("Query execution failed: %s", query)
             raise
         return self.conn
 
