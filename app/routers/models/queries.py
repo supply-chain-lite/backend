@@ -91,7 +91,8 @@ get_user_notifications = """SELECT NotificationId, FromUserEmail, Title, Message
                                     IsRead, IsAccepted
                             FROM S_UserNotifications
                             WHERE ToUserEmail = ?
-                            AND   (CreatedAt > datetime('now', '-7 days') OR IsAccepted = 0)
+                            AND   CreatedAt > datetime('now', '-7 days') 
+                            AND IsAccepted = 0
                             -- keep notifications for 7 days or until accepted/rejected"""
 
 

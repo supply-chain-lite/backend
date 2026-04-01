@@ -370,6 +370,10 @@ def accept_model_share(
 
     if old_model_id != model_id:
         raise HTTPException(status_code=400, detail="Model ID mismatch")
+    
+    row = cursor.execute(model_queries.get_access_level, (old_model_id, user_email)).fetchone()
+    if row:
+        raise HTTPException(status_code=400, detail="Model already shared with the user")
 
     if create_copy:
         save_as_model(
