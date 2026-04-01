@@ -132,7 +132,7 @@ The application configures standard library logging during FastAPI startup and u
 
 - Request logging in [app/main.py](app/main.py) for method, path, status code, duration, and request ID.
 - Exception logging in [app/connection.py](app/connection.py) and [app/main.py](app/main.py) for failed DB operations and unhandled API errors.
-- Business-event logging in [app/routers/auth/methods.py](app/routers/projects/methods.py) as an example of feature-level usage.
+- Business-event logging in [app/routers/auth/methods.py](app/routers/auth/methods.py) as an example of feature-level usage.
 
 ### Example Usage
 
