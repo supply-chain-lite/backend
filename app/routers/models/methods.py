@@ -269,6 +269,24 @@ def share_model(
     project_name: str,
     access_level: str,
 ):
+    """
+    Create and send a model share request by inserting a notification for the target user.
+    
+    Parameters:
+        cursor: Database cursor used to perform queries and insert the notification.
+        from_user_email (str): Email of the user sharing the model (must be the owner).
+        to_user_email (str): Email of the recipient user to receive the share request.
+        model_name (str): Name of the model to be shared.
+        project_name (str): Name of the project containing the model.
+        access_level (str): Access level being requested for the recipient (e.g., "viewer", "editor").
+    
+    Raises:
+        HTTPException 400: If attempting to share to self, if the recipient already has access,
+            or if an identical share request was already sent.
+        HTTPException 403: If the sharer is not the owner of the model.
+        HTTPException 404: If the target user or the specified model cannot be found.
+        HTTPException 500: If creating the notification record fails.
+    """
     if from_user_email == to_user_email:
         raise HTTPException(status_code=400, detail="Cannot share model with yourself")
     if not cursor.execute(model_queries.check_user_email, (to_user_email,)).fetchone():

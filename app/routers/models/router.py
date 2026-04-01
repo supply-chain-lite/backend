@@ -196,7 +196,17 @@ def restore_model(
 def share_model(
     request: model_schemas.shareModelRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> model_schemas.MessageResponse:
-    """Share a model with another user and assign the requested access level."""
+    """
+    Share a model with another user and assign a specific access level.
+    
+    The target user's email is normalized to lowercase before the share is recorded.
+    
+    Parameters:
+        request (shareModelRequest): Contains `model_name`, `project_name`, `target_user_email`, and `access_level`.
+    
+    Returns:
+        MessageResponse: A response containing a confirmation message that the model was shared.
+    """
     useremail, _display_name, _role_name = user_data
     model_name = request.model_name
     project_name = request.project_name
