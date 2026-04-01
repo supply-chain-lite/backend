@@ -108,3 +108,14 @@ update_user_access_level = """UPDATE S_UserModels
                                 WHERE ModelId = ?
                                 AND UserEmail = ?"""
 fetch_all_user_emails = " SELECT UserEmail FROM S_Users WHERE UserEmail != ?"
+
+check_user_email = "SELECT 1 FROM S_Users WHERE UserEmail = ?"
+
+check_if_model_shared_with_user = """select 1
+                                    from S_UserNotifications, json_each(S_UserNotifications.NotificationParams) AS AT
+                                    where S_UserNotifications.ToUserEmail = ?
+                                    AND   S_UserNotifications.FromUserEmail = ?
+                                    and S_UserNotifications.NotificationType = 'model_share_request'
+                                    AND  AT.key = 'model_id'
+                                    AND  AT.value = ?
+                                    AND  S_UserNotifications.IsAccepted = 0;"""
