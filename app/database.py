@@ -1,4 +1,7 @@
 from .connection import master_connection
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 
 create_user_table = """CREATE TABLE IF NOT EXISTS S_Users (
                             UserEmail TEXT PRIMARY KEY UNIQUE,
@@ -111,6 +114,7 @@ create_user_notifications_table = """CREATE TABLE IF NOT EXISTS S_UserNotificati
 
 
 def init_db() -> None:
+    logger.info("Initializing database schema")
     with master_connection() as cursor:
         cursor.execute(create_user_table)
         cursor.execute(create_user_role_table)
@@ -141,3 +145,4 @@ def init_db() -> None:
             ),
         )
         cursor.execute(create_user_notifications_table)
+    logger.info("Database schema initialization finished")

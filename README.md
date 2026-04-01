@@ -53,6 +53,8 @@ uv run uvicorn app.main:app --reload
 
 The API will be available at `http://127.0.0.1:8000`. Interactive docs at `http://127.0.0.1:8000/docs`.
 
+Logs are written to the console and, by default, to `./data/logs/app.log` with log rotation enabled.
+
 ### Linting & Formatting
 
 ```bash
@@ -121,3 +123,31 @@ Defined in `.env` (see `.env.example`):
 | `SECRET_KEY` | — | Secret key for password hashing & tokens |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | Token expiry in minutes |
 | `SQLITE_DB_PATH` | `./data.db` | Path to SQLite database file |
+| `LOG_LEVEL` | `INFO` | Minimum log level for console and file logging |
+| `LOG_FILE` | `./data/logs/app.log` | Log file path for the rotating file handler |
+
+## Logging
+
+The application configures standard library logging during FastAPI startup and uses it in three places:
+
+- Request logging in [app/main.py](app/main.py) for method, path, status code, duration, and request ID.
+- Exception logging in [app/connection.py](app/connection.py) and [app/main.py](app/main.py) for failed DB operations and unhandled API errors.
+- Business-event logging in [app/routers/projects/methods.py](app/routers/projects/methods.py) as an example of feature-level usage.
+
+### Example Usage
+
+```python
+from app.logging_config import get_logger
+
+logger = get_logger(__name__)
+
+
+def create_project(...):
+    logger.info("Creating project '%s' for user '%s'", project_name, user_email)
+```
+
+Example request log:
+
+```text
+2026-04-01 10:22:14,381 | INFO | app.main | Request completed [8d97d7f2-9357-4f7c-9a31-e9f5a4e7f0d2] POST /api/projects/create -> 200 in 18.47 ms
+```

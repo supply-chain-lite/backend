@@ -6,7 +6,7 @@ import tempfile
 import uuid
 
 import apsw
-from fastapi import BackgroundTasks, File, HTTPException, UploadFile, responses
+from fastapi import File, HTTPException, UploadFile, responses
 
 from app.config import BACKUP_FOLDER, DATA_FOLDER, MAX_BACKUPS, TEMP_FOLDER
 
@@ -247,7 +247,7 @@ def restore_model_from_backup(cursor, user_email: str, model_name: str, project_
 
     if not os.path.exists(backup_path):
         raise HTTPException(status_code=404, detail="Backup file not found on disk")
-    
+
     backup_connection = apsw.Connection(backup_path)
     this_connection = apsw.Connection(model_path)
 
@@ -421,7 +421,7 @@ def download_model(cursor, user_email: str, model_name: str, project_name: str):
         raise HTTPException(status_code=500, detail=f"Failed to create a copy of the model for download: {str(e)}")
     finally:
         connection.close()
-    BackgroundTasks.add_task(_clean_up_temp_file, tmp.name)
+
     # 3. Return file
     return responses.FileResponse(
         path=tmp.name,
@@ -461,7 +461,6 @@ def upload_model(
     finally:
         this_connection.close()
         backup_connection.close()
-    BackgroundTasks.add_task(_clean_up_temp_file, tmp.name)
 
 
 def get_model_info(cursor, user_email: str, model_name: str, project_name: str):

@@ -27,12 +27,15 @@ if not os.path.isfile(master_db):
 _data_folder_env = os.getenv("DATA_FOLDER")
 if not _data_folder_env:
     raise Exception("DATA_FOLDER is not set in environment variables.")
-DATA_FOLDER = Path(_data_folder_env)
+ROOT_DATA_FOLDER = Path(_data_folder_env)
 
 MAX_BACKUPS = int(os.getenv("MAX_BACKUPS", 10))
-TEMP_FOLDER = DATA_FOLDER / "temp"
-BACKUP_FOLDER = DATA_FOLDER / "backup"
-DATA_FOLDER = DATA_FOLDER / "models"
+TEMP_FOLDER = ROOT_DATA_FOLDER / "temp"
+BACKUP_FOLDER = ROOT_DATA_FOLDER / "backup"
+LOG_FOLDER = ROOT_DATA_FOLDER / "logs"
+DATA_FOLDER = ROOT_DATA_FOLDER / "models"
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+LOG_FILE = Path(os.getenv("LOG_FILE", str(LOG_FOLDER / "app.log")))
 
 if not os.path.exists(DATA_FOLDER):
     os.makedirs(DATA_FOLDER)
@@ -42,3 +45,6 @@ if not os.path.exists(BACKUP_FOLDER):
 
 if not os.path.exists(TEMP_FOLDER):
     os.makedirs(TEMP_FOLDER)
+
+if not os.path.exists(LOG_FILE.parent):
+    os.makedirs(LOG_FILE.parent)

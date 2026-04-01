@@ -10,10 +10,23 @@ from urllib.parse import urlencode
 import jwt
 from fastapi import HTTPException, Request, Response
 
-from app.config import BASE_URL, LOCK_TIME_MINUTES, MAX_ATTEMPTS, SECRET_KEY, SMTP_PORT, SMTP_PWD, SMTP_URL, SMTP_USER
+from app.config import (
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    BASE_URL,
+    LOCK_TIME_MINUTES,
+    MAX_ATTEMPTS,
+    SECRET_KEY,
+    SMTP_PORT,
+    SMTP_PWD,
+    SMTP_URL,
+    SMTP_USER,
+)
 from app.connection import master_connection
+from app.logging_config import get_logger
 
 from . import queries as queries
+
+logger = get_logger(__name__)
 
 
 def _hash_password(password: str, salt: bytes) -> str:
@@ -128,11 +141,14 @@ def forgot_password(cursor, useremail: str):
 def reset_password(cursor, useremail: str, verification_code: str, password: str):
     row = cursor.execute(queries.get_status_activation_code, (useremail,)).fetchone()
     if not row:
+        logger.warning("Password reset attempt failed for non-existent user: %s", useremail)
         raise HTTPException(status_code=400, detail="Password reset request unsuccessful")
     status, verification_code_db = row
     if status == 0:
+        logger.warning("Password reset attempt failed for inactive user: %s", useremail)
         raise HTTPException(status_code=400, detail="Password reset request unsuccessful")
     if verification_code_db != verification_code:
+        logger.warning("Password reset attempt failed due to invalid verification code for user: %s", useremail)
         raise HTTPException(status_code=400, detail="Password reset request unsuccessful")
 
     salt = os.urandom(16)
@@ -153,7 +169,7 @@ def reset_password(cursor, useremail: str, verification_code: str, password: str
 
 
 def _generate_token(token_version: int, useremail: str) -> str:
-    expiration = datetime.now(timezone.utc) + timedelta(hours=1)
+    expiration = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     payload = {"token_version": token_version, "useremail": useremail, "exp": expiration.timestamp()}
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
     return token
