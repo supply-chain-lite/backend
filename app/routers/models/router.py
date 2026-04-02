@@ -198,12 +198,12 @@ def share_model(
 ) -> model_schemas.MessageResponse:
     """
     Share a model with another user and assign a specific access level.
-    
+
     The target user's email is normalized to lowercase before the share is recorded.
-    
+
     Parameters:
         request (shareModelRequest): Contains `model_name`, `project_name`, `target_user_email`, and `access_level`.
-    
+
     Returns:
         MessageResponse: A response containing a confirmation message that the model was shared.
     """
