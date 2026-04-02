@@ -16,7 +16,7 @@ jobs:
       - name: Copy app to VPS
         uses: burnett01/rsync-deployments@17e355a20fdb63db23eaa29d8e3b9ca4f18a0f4a # v8
         with:
-          switches: -avz --delete --exclude='.git' --exclude='.github' --exclude='.venv' --exclude='__pycache__' --exclude='*.pyc' --exclude='.env' --exclude='data/'
+          switches: -avz --delete --exclude='.git' --exclude='.github' --exclude='.venv' --exclude='__pycache__' --exclude='*.pyc' --exclude='.env' --exclude='gunicorn.conf.py' --exclude='data/'
           path: ./
           remote_path: ${{ secrets.VPS_DEPLOY_PATH }}
           remote_host: ${{ secrets.VPS_HOST }}
