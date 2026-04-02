@@ -8,7 +8,9 @@ import uuid
 import apsw
 from fastapi import File, HTTPException, UploadFile, responses
 
+from app.commons.methods import get_table_groups as _get_table_groups
 from app.config import BACKUP_FOLDER, DATA_FOLDER, MAX_BACKUPS, TEMP_FOLDER
+from app.connection import remove_connection_object, sql_connection
 
 from . import queries as model_queries
 
@@ -173,6 +175,7 @@ def delete_model(cursor, user_email: str, model_name: str, project_name: str):
         if os.path.exists(backup_path):
             os.remove(backup_path)
     cursor.execute(model_queries.delete_model_backup, (model_id, "NA"))
+    remove_connection_object(model_id)
 
     return 1
 
@@ -613,6 +616,17 @@ def get_template_sql_file(cursor, user_email: str, template_name: str, with_data
         raise HTTPException(status_code=404, detail="SQL file for template not found")
 
     return sql_file
+
+
+def get_table_groups(cursor, user_email: str, model_name: str, project_name: str):
+    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
+    if not model_id:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    with sql_connection(model_id, model_path) as model_cursor:
+        table_groups = _get_table_groups(model_cursor)
+
+    return table_groups
 
 
 def _clean_up_temp_file(file_path: str):

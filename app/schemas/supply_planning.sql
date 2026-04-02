@@ -70,37 +70,6 @@ CREATE TABLE S_DataFiles (
     UNIQUE(FileName,FileType)	
 );
 
--- Table: S_NotebookContent
-CREATE TABLE S_NotebookContent (
-    CellId         INTEGER NOT NULL
-                           PRIMARY KEY AUTOINCREMENT,
-    Name           VARCHAR,
-    NotebookId     INTEGER NOT NULL,
-    CellContent    VARCHAR,
-    CellType       VARCHAR,
-    CreationDate   VARCHAR DEFAULT (datetime('now', 'localtime') ),
-    LastUpdateDate VARCHAR DEFAULT (datetime('now', 'localtime') ) 
-);
-
-
--- Table: S_Notebooks
-CREATE TABLE S_Notebooks (
-    NotebookId     INTEGER NOT NULL
-                           PRIMARY KEY AUTOINCREMENT,
-    Name           VARCHAR,
-    Type           VARCHAR,
-    Status         VARCHAR DEFAULT 'Active',
-    CreationDate   VARCHAR DEFAULT (datetime('now', 'localtime') ),
-    LastUpdateDate VARCHAR DEFAULT (datetime('now', 'localtime') ) 
-);
-
-
-CREATE TABLE S_PackageWheels (
-	WheelId	            INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-	WheelName	        VARCHAR UNIQUE,
-    WheelBlob            BLOB NOT NULL,
-	Status	            VARCHAR DEFAULT ('Active')	
-);
 
 CREATE VIEW V_TEMPV
 AS SELECT 1;

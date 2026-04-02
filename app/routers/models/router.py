@@ -247,3 +247,16 @@ def accept_model_share(
         )
 
     return model_schemas.MessageResponse(message="Model share request response recorded successfully")
+
+
+@router.post("/table-groups", response_model=model_schemas.tableGroupResponse)
+def get_table_groups(
+    request: model_schemas.modelRequest, user_data: tuple = Depends(_get_user_from_token)
+) -> model_schemas.tableGroupResponse:
+    useremail, _display_name, _role_name = user_data
+    model_name = request.model_name
+    project_name = request.project_name
+    with master_connection() as cursor:
+        table_groups = model_methods.get_table_groups(cursor, useremail, model_name, project_name)
+
+    return model_schemas.tableGroupResponse(table_groups=table_groups)

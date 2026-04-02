@@ -130,8 +130,8 @@ def init_db() -> None:
             insert_model_template,
             (
                 "Generic Data Model",
-                "generic_data_model.sql",
-                "generic_data_model_with_data.sql",
+                "generic_model.sql",
+                "generic_model.sql",
                 "Generic Data Model",
             ),
         )
