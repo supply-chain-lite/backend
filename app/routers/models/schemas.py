@@ -102,3 +102,7 @@ class acceptModelRequest(BaseModel):
     model_name: str = ""
     project_name: str = ""
     create_new_copy: bool = False
+
+
+class tableGroupResponse(BaseModel):
+    table_groups: dict[str, list[tuple[str, str]]]

@@ -233,7 +233,15 @@ def get_user_notifications(user_data: tuple = Depends(_get_user_from_token)) -> 
 def accept_model_share(
     request: model_schemas.acceptModelRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> model_schemas.MessageResponse:
-    """Accept or reject a model-sharing request and optionally create a personal copy."""
+    """
+    Accept or reject a model-sharing request and optionally create a personal copy.
+
+    Parameters:
+        request (acceptModelRequest): Contains `notification_id`, `accept` (boolean), `model_name`, `project_name`, and `create_new_copy` (boolean).
+
+    Returns:
+        MessageResponse: Confirmation message that the share request response was recorded.
+    """
     useremail, _display_name, _role_name = user_data
     notification_id = request.notification_id
     accept = request.accept
@@ -247,3 +255,26 @@ def accept_model_share(
         )
 
     return model_schemas.MessageResponse(message="Model share request response recorded successfully")
+
+
+@router.post("/table-groups", response_model=model_schemas.tableGroupResponse)
+def get_table_groups(
+    request: model_schemas.modelRequest, user_data: tuple = Depends(_get_user_from_token)
+) -> model_schemas.tableGroupResponse:
+    """
+    Retrieve table groups associated with a model within a project.
+
+    Parameters:
+        request (model_schemas.modelRequest): Request containing `model_name` and `project_name` identifying the model.
+        user_data (tuple): Injected authentication tuple (email, display name, role); only the email is used.
+
+    Returns:
+        model_schemas.tableGroupResponse: Response containing the list of table groups for the specified model and project.
+    """
+    useremail, _display_name, _role_name = user_data
+    model_name = request.model_name
+    project_name = request.project_name
+    with master_connection() as cursor:
+        table_groups = model_methods.get_table_groups(cursor, useremail, model_name, project_name)
+
+    return model_schemas.tableGroupResponse(table_groups=table_groups)
