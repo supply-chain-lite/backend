@@ -116,7 +116,7 @@ create_user_notifications_table = """CREATE TABLE IF NOT EXISTS S_UserNotificati
 def init_db() -> None:
     """
     Initialize the application's database schema and seed default user roles and model templates.
-    
+
     Creates all required tables (users, roles, projects, errors, models, backups, templates, notifications) if they do not exist and inserts two user roles ("Admin", "User") and two model templates ("Generic Data Model", "Supply Planning") using guarded inserts to avoid duplicates. This function does not handle database errors; any exceptions from the underlying DB operations will propagate to the caller.
     """
     logger.info("Initializing database schema")

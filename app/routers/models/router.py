@@ -235,10 +235,10 @@ def accept_model_share(
 ) -> model_schemas.MessageResponse:
     """
     Accept or reject a model-sharing request and optionally create a personal copy.
-    
+
     Parameters:
         request (acceptModelRequest): Contains `notification_id`, `accept` (boolean), `model_name`, `project_name`, and `create_new_copy` (boolean).
-    
+
     Returns:
         MessageResponse: Confirmation message that the share request response was recorded.
     """
@@ -263,11 +263,11 @@ def get_table_groups(
 ) -> model_schemas.tableGroupResponse:
     """
     Retrieve table groups associated with a model within a project.
-    
+
     Parameters:
         request (model_schemas.modelRequest): Request containing `model_name` and `project_name` identifying the model.
         user_data (tuple): Injected authentication tuple (email, display name, role); only the email is used.
-    
+
     Returns:
         model_schemas.tableGroupResponse: Response containing the list of table groups for the specified model and project.
     """
