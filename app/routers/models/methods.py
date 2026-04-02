@@ -271,7 +271,7 @@ def share_model(
 ):
     """
     Create and send a model share request by inserting a notification for the target user.
-    
+
     Parameters:
         cursor: Database cursor used to perform queries and insert the notification.
         from_user_email (str): Email of the user sharing the model (must be the owner).
@@ -279,7 +279,7 @@ def share_model(
         model_name (str): Name of the model to be shared.
         project_name (str): Name of the project containing the model.
         access_level (str): Access level being requested for the recipient (e.g., "viewer", "editor").
-    
+
     Raises:
         HTTPException 400: If attempting to share to self, if the recipient already has access,
             or if an identical share request was already sent.
@@ -350,9 +350,9 @@ def accept_model_share(
 ):
     """
     Handle a share notification by accepting or rejecting a model-share request.
-    
+
     When accepted, either create a copy of the shared model for the recipient or associate the existing model with the recipient's project and access level; when rejected, mark the notification as rejected.
-    
+
     Parameters:
         notification_id (int): ID of the notification to process.
         accept (bool): If False, mark the notification as rejected; if True, process acceptance.
@@ -360,7 +360,7 @@ def accept_model_share(
         new_project_name (str): Destination project name for the new or associated model.
         create_copy (bool): If True, create a new copy of the shared model for the recipient; if False, grant access to the existing model.
         user_email (str): Email of the user accepting or rejecting the share.
-    
+
     Raises:
         HTTPException(status_code=404): If the notification or the shared model cannot be found.
         HTTPException(status_code=400): If the model ID in the notification does not match the source model, if the recipient already has access to the model, or if the recipient already has a model with the same name in the target project.
@@ -388,7 +388,7 @@ def accept_model_share(
 
     if old_model_id != model_id:
         raise HTTPException(status_code=400, detail="Model ID mismatch")
-    
+
     row = cursor.execute(model_queries.get_access_level, (old_model_id, user_email)).fetchone()
     if row:
         raise HTTPException(status_code=400, detail="Model already shared with the user")
@@ -416,7 +416,7 @@ def accept_model_share(
 
 
 def get_user_notifications(cursor, user_email: str):
-    rows = cursor.execute(model_queries.get_user_notifications, (user_email,)).fetchall()
+    rows = cursor.execute(model_queries.get_user_notifications, (user_email, user_email)).fetchall()
     notifications = []
     for (
         notification_id,

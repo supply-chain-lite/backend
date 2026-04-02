@@ -92,7 +92,7 @@ get_user_notifications = """ select * FROM (
                                     IsRead, IsAccepted
                             FROM S_UserNotifications
                             WHERE ToUserEmail = ?
-                            AND   CreatedAt > datetime('now', '-7 days') 
+                            AND   CreatedAt > datetime('now', '-7 days')
                             AND IsAccepted = 0
                             UNION
                             SELECT NotificationId, FromUserEmail, Title, Message, NotificationType, NotificationParams,
