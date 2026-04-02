@@ -35,7 +35,7 @@ jobs:
           script: |
             set -e
             cd "$DEPLOY_PATH"
-            uv sync --frozen
+            $HOME/.local/bin/uv sync --frozen
             sudo systemctl restart new_scl_app.service
         env:
           DEPLOY_PATH: ${{ secrets.VPS_DEPLOY_PATH }}
