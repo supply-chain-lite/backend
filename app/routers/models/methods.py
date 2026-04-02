@@ -152,6 +152,21 @@ def rename_model(cursor, user_email: str, model_name: str, project_name: str, ne
 
 
 def delete_model(cursor, user_email: str, model_name: str, project_name: str):
+    """
+    Delete a model or, if the caller is not the owner, remove the caller's association with the model.
+    
+    Parameters:
+        cursor: Database cursor used to execute queries.
+        user_email (str): Email of the requesting user (used to determine access and associations).
+        model_name (str): Name of the model to delete.
+        project_name (str): Name of the project the model belongs to.
+    
+    Returns:
+        int: `1` on successful deletion or successful removal of the user's association.
+    
+    Raises:
+        fastapi.HTTPException: 404 if the specified model cannot be found.
+    """
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
@@ -594,6 +609,21 @@ def get_model_id_and_path(cursor, model_name: str, project_name: str, user_name:
 
 
 def get_template_sql_file(cursor, user_email: str, template_name: str, with_data: bool = False):
+    """
+    Return the filesystem path to the SQL template file for a given template name.
+    
+    Parameters:
+        user_email (str): Email of the user requesting the template (used to check template access).
+        template_name (str): Name of the template to locate.
+        with_data (bool): If True, select the template that includes sample data SQL; otherwise select the schema-only SQL.
+    
+    Returns:
+        sql_file (str): Absolute filesystem path to the requested SQL file.
+    
+    Raises:
+        HTTPException: 403 if the user does not have access to the template.
+        HTTPException: 404 if the template record or the SQL file cannot be found on disk.
+    """
     all_templates = get_model_templates(cursor, user_email)
     if template_name not in all_templates:
         raise HTTPException(status_code=403, detail="User dont have access to the template")
@@ -619,6 +649,15 @@ def get_template_sql_file(cursor, user_email: str, template_name: str, with_data
 
 
 def get_table_groups(cursor, user_email: str, model_name: str, project_name: str):
+    """
+    Retrieve table groups and their metadata for the specified model.
+    
+    Returns:
+        table_groups: A data structure describing groups of tables and their associated metadata for the model.
+    
+    Raises:
+        HTTPException: Raised with status_code=404 when the specified model cannot be found.
+    """
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
@@ -630,5 +669,11 @@ def get_table_groups(cursor, user_email: str, model_name: str, project_name: str
 
 
 def _clean_up_temp_file(file_path: str):
+    """
+    Remove a temporary file at the given path if it exists.
+    
+    Parameters:
+        file_path (str): Path to the temporary file to remove. If the file does not exist, the function does nothing.
+    """
     if os.path.exists(file_path):
         os.remove(file_path)
