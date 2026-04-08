@@ -8,7 +8,9 @@ from app.routers.models.methods import get_model_id_and_path
 from . import queries as table_queries
 
 
-def get_table_headers(cursor, user_email: str, model_name: str, project_name: str, table_name: str) -> list[str]:
+def get_table_headers(
+    cursor, user_email: str, model_name: str, project_name: str, table_name: str
+) -> list[tuple[str, str]]:
     """Return the headers of the specified table for the authenticated user."""
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
