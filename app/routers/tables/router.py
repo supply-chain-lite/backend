@@ -15,7 +15,12 @@ router = APIRouter()
 def get_table_headers(
     request: table_schemas.TableHeaderRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> table_schemas.TableHeaderResponse:
-    """Return the headers of the specified table for the authenticated user."""
+    """
+    Retrieve the column headers for the specified table for the authenticated user.
+    
+    Returns:
+        table_schemas.TableHeaderResponse: An object containing the table's column headers.
+    """
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:
         headers = table_methods.get_table_headers(
@@ -28,7 +33,15 @@ def get_table_headers(
 def get_table_data(
     request: table_schemas.TableDataRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> table_schemas.TableDataResponse:
-    """Return the data of the specified table for the authenticated user."""
+    """
+    Retrieve table rows using the request's column selection, filters, and pagination for the authenticated user.
+    
+    Parameters:
+        request (TableDataRequest): Request containing model/project/table identifiers, column_names, select_filters, text_filters, page_number, and page_size.
+    
+    Returns:
+        table_data_response (TableDataResponse): The requested rows and pagination metadata.
+    """
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:
         data = table_methods.get_table_data(
@@ -50,7 +63,12 @@ def get_table_data(
 def get_distinct_column_values(
     request: table_schemas.DistinctColumnValuesRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> table_schemas.DistinctColumnValuesResponse:
-    """Return the distinct values of the specified column in the specified table for the authenticated user."""
+    """
+    Get distinct values for the specified column in the given table for the authenticated user, applying any provided select/text filters and the requested page size.
+    
+    Returns:
+        DistinctColumnValuesResponse: response containing the list of distinct column values.
+    """
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:
         values = table_methods.get_distinct_column_values(
