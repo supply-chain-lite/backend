@@ -1,4 +1,4 @@
-"""API routes for project lifecycle and project context operations."""
+"""API routes for table-related operations."""
 
 from fastapi import APIRouter, Depends
 

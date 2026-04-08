@@ -35,7 +35,8 @@ def get_table_headers(
     for col_name in column_order:
         if col_name in table_columns:
             table_headers.append((col_name, table_columns[col_name]))
-
+    if len(table_headers) == 0:
+        return all_rows
     return table_headers
 
 
