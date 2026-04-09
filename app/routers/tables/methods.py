@@ -12,11 +12,13 @@ def get_table_headers(
     cursor, user_email: str, model_name: str, project_name: str, table_name: str
 ) -> list[tuple[str, str]]:
     """
-    Get column names and types for a table within the user's model, honoring any persisted column order when available.
-
+    Resolve a table's columns and return them in a persisted column order when available.
+    
+    If a persisted column order exists, returns only the columns from that order that are present in the table. If no persisted order exists or the persisted order yields no matching columns, returns the full list of table columns.
+    
     Returns:
-        list[tuple[str, str]]: A list of (column_name, column_type) tuples. If a persisted column order exists, columns are returned in that order filtered to existing columns; otherwise the full column list is returned.
-
+        list[tuple[str, str]]: List of (column_name, column_type) tuples.
+    
     Raises:
         HTTPException(404): If the model cannot be resolved or the table does not exist.
     """
@@ -94,8 +96,8 @@ def get_distinct_column_values(
     page_size: int,
 ) -> list[str | int | float | bool | None]:
     """
-    Return the distinct values for a given column in a table, applying selection/text filters and limited by page_size.
-
+    Get distinct values for a specific column in a table, applying selection and text filters and limiting results to page_size.
+    
     Parameters:
         cursor: Database cursor or connection used to resolve the target model.
         user_email (str): Email of the authenticated user owning the model.
@@ -103,13 +105,13 @@ def get_distinct_column_values(
         project_name (str): Project name containing the model.
         table_name (str): Table to query.
         column_name (str): Column whose distinct values to retrieve.
-        select_filters (dict[str, list[str]]): Exact-match filters keyed by column name; each key maps to allowed values for that column.
+        select_filters (dict[str, list[str]]): Exact-match filters keyed by column name.
         text_filters (dict[str, str]): Full-text or substring filters keyed by column name.
         page_size (int): Maximum number of distinct values to return.
-
+    
     Returns:
-        list[str | int | float | bool | None]: A list of distinct values (each taken from the first column of query rows), ordered as produced by the database and limited by page_size.
-
+        list[str | int | float | bool | None]: Distinct values (each taken from the first column of each result row) in the order produced by the database, limited to page_size.
+    
     Raises:
         HTTPException: Raised with status_code 404 and detail "Model not found" when the model cannot be resolved for the given user.
     """
@@ -136,20 +138,19 @@ def get_row_count(
     text_filters: dict[str, str],
 ) -> int:
     """
-    Return the count of rows in a table that match the provided selection and text filters.
-
+    Compute the number of rows in a table that match the given selection and text filters.
+    
     Parameters:
-        cursor: Database cursor or connection used to resolve the target model.
         user_email (str): Email of the authenticated user owning the model.
         model_name (str): Name of the model containing the table.
         project_name (str): Project name containing the model.
         table_name (str): Table to query.
         select_filters (dict[str, list[str]]): Exact-match filters keyed by column name; each key maps to allowed values for that column.
         text_filters (dict[str, str]): Full-text or substring filters keyed by column name.
-
+    
     Returns:
-        int: The count of rows matching the filters.
-
+        int: Count of rows matching the filters.
+    
     Raises:
         HTTPException: Raised with status_code 404 and detail "Model not found" when the model cannot be resolved for the given user.
     """
