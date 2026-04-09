@@ -17,7 +17,7 @@ def get_table_headers(
 ) -> table_schemas.TableHeaderResponse:
     """
     Get the column headers for the specified table for the authenticated user.
-    
+
     Returns:
         table_schemas.TableHeaderResponse: Response object containing the table's column headers.
     """
@@ -65,7 +65,7 @@ def get_distinct_column_values(
 ) -> table_schemas.DistinctColumnValuesResponse:
     """
     Return the distinct values for a specified column in a table, filtered and limited by the request.
-    
+
     Returns:
         table_schemas.DistinctColumnValuesResponse: response containing the list of distinct values for the requested column.
     """
@@ -91,7 +91,7 @@ def get_row_count(
 ) -> table_schemas.RowCountResponse:
     """
     Retrieve the number of rows in the specified table for the authenticated user, applying any provided select and text filters.
-    
+
     Returns:
         RowCountResponse: contains `row_count`, the number of rows that match the request's identifiers and filters.
     """

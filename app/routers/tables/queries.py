@@ -1,6 +1,6 @@
 from fastapi import HTTPException
 
-get_table_columns = "select name, type from pragma_table_xinfo(?) "
+get_table_columns = "select name, type from pragma_table_xinfo(?) where UPPER(type) != 'BLOB' "
 
 get_column_order = "select ifnull(ColumnOrder, '[]') as ColumnOrder from S_TableGroup WHERE TableName = ?"
 
@@ -46,9 +46,7 @@ def get_table_query(
     for filter_col, filter_values in select_filters.items():
         if not filter_values:
             continue  # Skip empty filter lists to avoid syntax errors in the SQL query
-        select_query += (
-            f"AND [{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in filter_values)}) "
-        )
+        select_query += f"AND [{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in filter_values)}) "
         params.extend(filter_values)
 
     for column_name, text in text_filters.items():
@@ -73,17 +71,17 @@ def get_distinct_column_values_query(
 ) -> tuple[str, list]:
     """
     Retrieve distinct values for a single column from a table with optional exact-match and case-insensitive substring filters and a result limit.
-    
+
     Parameters:
         table_name (str): Table to query.
         column_name (str): Column whose distinct values to return; must be non-empty.
         select_filters (dict[str, list[str]]): Exact-match filters rendered as `AND [col] IN (?, ...)`. Entries whose column name matches `column_name` (case-insensitive) are ignored.
         text_filters (dict[str, str]): Substring filters rendered as `AND UPPER([col]) LIKE ?` with the filter wrapped as `%VALUE%` and uppercased.
         page_size (int): Maximum number of distinct values to return; must be greater than 0.
-    
+
     Returns:
         tuple[str, list]: A pair of the SQL query string (with `?` placeholders) and the ordered list of parameter values to bind.
-    
+
     Raises:
         HTTPException: status 400 if `column_name` is missing/empty or if `page_size` is not greater than 0.
     """

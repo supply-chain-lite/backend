@@ -13,12 +13,12 @@ def get_table_headers(
 ) -> list[tuple[str, str]]:
     """
     Resolve a table's columns and return them in a persisted column order when available.
-    
+
     If a persisted column order exists, returns only the columns from that order that are present in the table. If no persisted order exists or the persisted order yields no matching columns, returns the full list of table columns.
-    
+
     Returns:
         list[tuple[str, str]]: List of (column_name, column_type) tuples.
-    
+
     Raises:
         HTTPException(404): If the model cannot be resolved or the table does not exist.
     """
@@ -97,7 +97,7 @@ def get_distinct_column_values(
 ) -> list[str | int | float | bool | None]:
     """
     Get distinct values for a specific column in a table, applying selection and text filters and limiting results to page_size.
-    
+
     Parameters:
         cursor: Database cursor or connection used to resolve the target model.
         user_email (str): Email of the authenticated user owning the model.
@@ -108,10 +108,10 @@ def get_distinct_column_values(
         select_filters (dict[str, list[str]]): Exact-match filters keyed by column name.
         text_filters (dict[str, str]): Full-text or substring filters keyed by column name.
         page_size (int): Maximum number of distinct values to return.
-    
+
     Returns:
         list[str | int | float | bool | None]: Distinct values (each taken from the first column of each result row) in the order produced by the database, limited to page_size.
-    
+
     Raises:
         HTTPException: Raised with status_code 404 and detail "Model not found" when the model cannot be resolved for the given user.
     """
@@ -139,7 +139,7 @@ def get_row_count(
 ) -> int:
     """
     Compute the number of rows in a table that match the given selection and text filters.
-    
+
     Parameters:
         user_email (str): Email of the authenticated user owning the model.
         model_name (str): Name of the model containing the table.
@@ -147,10 +147,10 @@ def get_row_count(
         table_name (str): Table to query.
         select_filters (dict[str, list[str]]): Exact-match filters keyed by column name; each key maps to allowed values for that column.
         text_filters (dict[str, str]): Full-text or substring filters keyed by column name.
-    
+
     Returns:
         int: Count of rows matching the filters.
-    
+
     Raises:
         HTTPException: Raised with status_code 404 and detail "Model not found" when the model cannot be resolved for the given user.
     """
