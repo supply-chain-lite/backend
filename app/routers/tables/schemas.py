@@ -38,3 +38,15 @@ class DistinctColumnValuesRequest(BaseModel):
 
 class DistinctColumnValuesResponse(BaseModel):
     values: list[str | int | float | bool | None]
+
+
+class RowCountRequest(BaseModel):
+    model_name: str
+    project_name: str
+    table_name: str
+    select_filters: dict[str, list[str]]
+    text_filters: dict[str, str]
+
+
+class RowCountResponse(BaseModel):
+    row_count: int

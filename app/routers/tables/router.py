@@ -17,7 +17,7 @@ def get_table_headers(
 ) -> table_schemas.TableHeaderResponse:
     """
     Retrieve the column headers for the specified table for the authenticated user.
-    
+
     Returns:
         table_schemas.TableHeaderResponse: An object containing the table's column headers.
     """
@@ -35,10 +35,10 @@ def get_table_data(
 ) -> table_schemas.TableDataResponse:
     """
     Retrieve table rows using the request's column selection, filters, and pagination for the authenticated user.
-    
+
     Parameters:
         request (TableDataRequest): Request containing model/project/table identifiers, column_names, select_filters, text_filters, page_number, and page_size.
-    
+
     Returns:
         table_data_response (TableDataResponse): The requested rows and pagination metadata.
     """
@@ -65,7 +65,7 @@ def get_distinct_column_values(
 ) -> table_schemas.DistinctColumnValuesResponse:
     """
     Get distinct values for the specified column in the given table for the authenticated user, applying any provided select/text filters and the requested page size.
-    
+
     Returns:
         DistinctColumnValuesResponse: response containing the list of distinct column values.
     """
@@ -83,3 +83,27 @@ def get_distinct_column_values(
             request.page_size,
         )
         return table_schemas.DistinctColumnValuesResponse(values=values)
+
+
+@router.post("/row-count", response_model=table_schemas.RowCountResponse)
+def get_row_count(
+    request: table_schemas.RowCountRequest, user_data: tuple = Depends(_get_user_from_token)
+) -> table_schemas.RowCountResponse:
+    """
+    Get the count of rows in the specified table for the authenticated user, applying any provided select/text filters.
+
+    Returns:
+        RowCountResponse: response containing the row count.
+    """
+    useremail, _display_name, _role_name = user_data
+    with master_connection() as cursor:
+        row_count = table_methods.get_row_count(
+            cursor,
+            useremail,
+            request.model_name,
+            request.project_name,
+            request.table_name,
+            request.select_filters,
+            request.text_filters,
+        )
+        return table_schemas.RowCountResponse(row_count=row_count)
