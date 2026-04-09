@@ -40,7 +40,7 @@ def get_table_data(
         request (TableDataRequest): Request containing model/project/table identifiers, column_names, select_filters, text_filters, page_number, and page_size.
 
     Returns:
-        table_data_response (TableDataResponse): The requested rows and pagination metadata.
+        table_data_response (TableDataResponse): The requested rows.
     """
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:

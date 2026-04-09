@@ -43,13 +43,17 @@ def get_table_query(
 
     select_query = f"SELECT rowid, [{'], ['.join(_escape_identifier(col) for col in column_names)}] FROM [{_escape_identifier(table_name)}] WHERE 1=1 "
 
-    for column_name in select_filters:
+    for filter_col, filter_values in select_filters.items():
+        if not filter_values:
+            continue  # Skip empty filter lists to avoid syntax errors in the SQL query
         select_query += (
-            f"AND [{_escape_identifier(column_name)}] IN ({', '.join('?' for _ in select_filters[column_name])}) "
+            f"AND [{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in filter_values)}) "
         )
-        params.extend(select_filters[column_name])
+        params.extend(filter_values)
 
     for column_name, text in text_filters.items():
+        if not text:
+            continue  # Skip empty text filters to avoid unnecessary conditions
         select_query += f"AND UPPER([{_escape_identifier(column_name)}]) LIKE ? "
         params.append(f"%{text.upper()}%")
 
@@ -96,10 +100,14 @@ def get_distinct_column_values_query(
     for filter_col, filter_values in select_filters.items():
         if filter_col.upper() == column_name.upper():
             continue  # Skip filters on the target column for distinct values
+        if not filter_values:
+            continue  # Skip empty filter lists to avoid syntax errors in the SQL query
         query += f"AND [{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in filter_values)}) "
         params.extend(filter_values)
 
     for filter_col, text in text_filters.items():
+        if not text:
+            continue  # Skip empty text filters to avoid unnecessary conditions
         query += f"AND UPPER([{_escape_identifier(filter_col)}]) LIKE ? "
         params.append(f"%{text.upper()}%")
 
@@ -134,10 +142,14 @@ def get_row_count_query(
     query = f"SELECT COUNT(*) FROM [{_escape_identifier(table_name)}] WHERE 1=1 "
 
     for filter_col, filter_values in select_filters.items():
+        if not filter_values:
+            continue  # Skip empty filter lists to avoid syntax errors in the SQL query
         query += f"AND [{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in filter_values)}) "
         params.extend(filter_values)
 
     for filter_col, text in text_filters.items():
+        if not text:
+            continue  # Skip empty text filters to avoid unnecessary conditions
         query += f"AND UPPER([{_escape_identifier(filter_col)}]) LIKE ? "
         params.append(f"%{text.upper()}%")
 
