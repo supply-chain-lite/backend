@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class TableHeaderRequest(BaseModel):
@@ -38,3 +38,15 @@ class DistinctColumnValuesRequest(BaseModel):
 
 class DistinctColumnValuesResponse(BaseModel):
     values: list[str | int | float | bool | None]
+
+
+class RowCountRequest(BaseModel):
+    model_name: str
+    project_name: str
+    table_name: str
+    select_filters: dict[str, list[str]] = Field(default_factory=dict)
+    text_filters: dict[str, str] = Field(default_factory=dict)
+
+
+class RowCountResponse(BaseModel):
+    row_count: int
