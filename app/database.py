@@ -15,6 +15,7 @@ create_user_table = """CREATE TABLE IF NOT EXISTS S_Users (
                             LockedUntil DATETIME DEFAULT NULL,
                             IsActive INTEGER DEFAULT 0,
                             AccessTemplates TEXT,
+                            JsonData TEXT,
                             CreatedAt TEXT NOT NULL DEFAULT (datetime('now')),
                             UpdatedAt TEXT NOT NULL DEFAULT (datetime('now'))
                         )"""
@@ -23,6 +24,7 @@ create_user_role_table = """CREATE TABLE IF NOT EXISTS S_UserRoles (
                                     RoleId INTEGER PRIMARY KEY AUTOINCREMENT,
                                     RoleName TEXT NOT NULL UNIQUE,
                                     RoleDescription TEXT,
+                                    JsonData TEXT,
                                     CreatedAt TEXT NOT NULL DEFAULT (datetime('now')),
                                     UpdatedAt TEXT NOT NULL DEFAULT (datetime('now'))
                             )"""
@@ -38,6 +40,7 @@ create_projects_table = """CREATE TABLE IF NOT EXISTS S_Projects (
                                     UserEmail TEXT NOT NULL,
                                     ProjectName TEXT NOT NULL,
                                     ProjectStatus TEXT,
+                                    JsonData TEXT,
                                     CreatedAt TEXT NOT NULL DEFAULT (datetime('now')),
                                     UpdatedAt TEXT NOT NULL DEFAULT (datetime('now')),
                                     UNIQUE (UserEmail, ProjectName)
@@ -49,7 +52,9 @@ create_user_error_table = """CREATE TABLE IF NOT EXISTS S_UserErrors (
                                     RequestBody TEXT,
                                     ErrorType TEXT,
                                     ErrorCode INTEGER NOT NULL,
-                                    ErrorDetail TEXT
+                                    ErrorDetail TEXT,
+                                    JsonData TEXT,
+                                    CreatedAt TEXT NOT NULL DEFAULT (datetime('now'))
                                 )"""
 create_user_models_table = """CREATE TABLE IF NOT EXISTS S_UserModels (
                                     ModelId     INTEGER,
@@ -57,6 +62,7 @@ create_user_models_table = """CREATE TABLE IF NOT EXISTS S_UserModels (
                                     ProjectId   INTEGER,
                                     AccessLevel TEXT    NOT NULL,
                                     ModelName TEXT      NOT NULL,
+                                    JsonData TEXT,
                                     GrantedAt   TEXT    NOT NULL
                                                 DEFAULT (datetime('now')),
                                     PRIMARY KEY (
@@ -71,6 +77,7 @@ create_models_table = """CREATE TABLE IF NOT EXISTS S_Models (
                                             UNIQUE,
                                 ModelPath   TEXT,
                                 TemplateName TEXT,
+                                JsonData TEXT,
                                 CreatedAt   TEXT    NOT NULL
                                             DEFAULT (datetime('now')),
                                 OwnerEmail  TEXT
@@ -81,6 +88,7 @@ create_models_backup_table = """CREATE TABLE IF NOT EXISTS S_ModelBackups (
                                         BackupText TEXT NOT NULL,
                                         ModelId    INTEGER NOT NULL,
                                         BackupPath TEXT NOT NULL,
+                                        JsonData TEXT,
                                         CreatedAt  TEXT NOT NULL DEFAULT (datetime('now')),
                                         LastUsedAt TEXT NOT NULL DEFAULT (datetime('now'))
                                     )"""
@@ -89,6 +97,7 @@ create_model_templates_table = """ CREATE TABLE IF NOT EXISTS S_ModelTemplates (
                                             TemplateName               TEXT PRIMARY KEY,
                                             TemplateSQL                TEXT NOT NULL,
                                             TemplateWithDataSQL        TEXT NOT NULL,
+                                            JsonData TEXT,
                                             CreatedAt    TEXT NOT NULL DEFAULT (datetime('now'))
                                         )  """
 
@@ -107,10 +116,48 @@ create_user_notifications_table = """CREATE TABLE IF NOT EXISTS S_UserNotificati
                                             NotificationType TEXT,
                                             NotificationParams TEXT,
                                             IsRead INTEGER DEFAULT 0,
+                                            JsonData TEXT,
                                             CreatedAt TEXT NOT NULL DEFAULT (datetime('now')),
                                             ReadAt TEXT DEFAULT NULL,
                                             IsAccepted INTEGER DEFAULT 0
                                         )"""
+
+
+_MIGRATIONS = [
+    ("S_Users",             "JsonData",  "TEXT"),
+    ("S_UserRoles",         "JsonData",  "TEXT"),
+    ("S_Projects",          "JsonData",  "TEXT"),
+    ("S_UserErrors",        "JsonData",  "TEXT"),
+    ("S_UserErrors",        "CreatedAt", "TEXT NOT NULL DEFAULT (datetime('now'))"),
+    ("S_UserModels",        "JsonData",  "TEXT"),
+    ("S_Models",            "JsonData",  "TEXT"),
+    ("S_ModelBackups",      "JsonData",  "TEXT"),
+    ("S_ModelTemplates",    "JsonData",  "TEXT"),
+    ("S_UserNotifications", "JsonData",  "TEXT"),
+]
+
+
+def migrate_db() -> None:
+    """
+    Apply schema migrations to an existing database.
+
+    Adds any columns listed in _MIGRATIONS that are not yet present.
+    Safe to call repeatedly; already-present columns are skipped.
+    """
+    logger.info("Running database migrations")
+    with master_connection() as cursor:
+        for table, column, col_type in _MIGRATIONS:
+            rows = cursor.execute(
+                f"PRAGMA table_info({table})"
+            ).fetchall()
+            existing_columns = {row[1] for row in rows}
+            if column not in existing_columns:
+                stmt = f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"
+                cursor.execute(stmt)
+                logger.info("Migration applied: %s.%s", table, column)
+            else:
+                logger.debug("Column %s.%s already exists, skipping", table, column)
+    logger.info("Database migrations finished")
 
 
 def init_db() -> None:

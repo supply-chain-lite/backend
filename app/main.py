@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.config import TEMP_FOLDER
-from app.database import init_db
+from app.database import init_db, migrate_db
 from app.logging_config import configure_logging, get_logger
 from app.routers.auth.router import router as auth_router
 from app.routers.models.router import router as models_router
@@ -24,6 +24,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     configure_logging()
     logger.info("Starting Supply Chain Lite API")
     init_db()
+    migrate_db()
     if os.path.exists(TEMP_FOLDER):
         shutil.rmtree(TEMP_FOLDER)
     os.makedirs(TEMP_FOLDER, exist_ok=True)
