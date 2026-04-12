@@ -46,8 +46,16 @@ def get_table_query(
     for filter_col, filter_values in select_filters.items():
         if not filter_values:
             continue  # Skip empty filter lists to avoid syntax errors in the SQL query
-        select_query += f"AND [{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in filter_values)}) "
-        params.extend(filter_values)
+        if None in filter_values:
+            non_null_values = [value for value in filter_values if value is not None]
+            if non_null_values:
+                select_query += f"AND ([{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in non_null_values)}) OR [{_escape_identifier(filter_col)}] IS NULL) "
+                params.extend(non_null_values)
+            else:
+                select_query += f"AND [{_escape_identifier(filter_col)}] IS NULL "
+        else:
+            select_query += f"AND [{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in filter_values)}) "
+            params.extend(filter_values)
 
     for column_name, text in text_filters.items():
         if not text:
@@ -65,7 +73,7 @@ def get_table_query(
 def get_distinct_column_values_query(
     table_name: str,
     column_name: str,
-    select_filters: dict[str, list[str]],
+    select_filters: dict[str, list[str | int | float | bool | None]],
     text_filters: dict[str, str],
     page_size: int,
 ) -> tuple[str, list]:
@@ -75,7 +83,7 @@ def get_distinct_column_values_query(
     Parameters:
         table_name (str): Table to query.
         column_name (str): Column whose distinct values to return; must be non-empty.
-        select_filters (dict[str, list[str]]): Exact-match filters rendered as `AND [col] IN (?, ...)`. Entries whose column name matches `column_name` (case-insensitive) are ignored.
+        select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters rendered as `AND [col] IN (?, ...)`. Entries whose column name matches `column_name` (case-insensitive) are ignored.
         text_filters (dict[str, str]): Substring filters rendered as `AND UPPER([col]) LIKE ?` with the filter wrapped as `%VALUE%` and uppercased.
         page_size (int): Maximum number of distinct values to return; must be greater than 0.
 
@@ -100,8 +108,16 @@ def get_distinct_column_values_query(
             continue  # Skip filters on the target column for distinct values
         if not filter_values:
             continue  # Skip empty filter lists to avoid syntax errors in the SQL query
-        query += f"AND [{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in filter_values)}) "
-        params.extend(filter_values)
+        if None in filter_values:
+            non_null_values = [value for value in filter_values if value is not None]
+            if non_null_values:
+                query += f"AND ([{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in non_null_values)}) OR [{_escape_identifier(filter_col)}] IS NULL) "
+                params.extend(non_null_values)
+            else:
+                query += f"AND [{_escape_identifier(filter_col)}] IS NULL "
+        else:
+            query += f"AND [{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in filter_values)}) "
+            params.extend(filter_values)
 
     for filter_col, text in text_filters.items():
         if not text:
@@ -116,14 +132,14 @@ def get_distinct_column_values_query(
 
 
 def get_row_count_query(
-    table_name: str, select_filters: dict[str, list[str]], text_filters: dict[str, str]
+    table_name: str, select_filters: dict[str, list[str | int | float | bool | None]], text_filters: dict[str, str]
 ) -> tuple[str, list]:
     """
     Builds a parameterized SQL query to count rows in a table with optional exact-match and case-insensitive substring filters.
 
     Parameters:
         table_name (str): Name of the table to query.
-        select_filters (dict[str, list[str]]): Mapping of column names to lists of allowed exact-match values; each entry is rendered as `AND [col] IN (?, ..., ?)`.
+        select_filters (dict[str, list[str | int | float | bool | None]]): Mapping of column names to lists of allowed exact-match values; each entry is rendered as `AND [col] IN (?, ..., ?)`.
         text_filters (dict[str, str]): Mapping of column names to substring filters; each entry is rendered as `AND UPPER([col]) LIKE ?` with the filter value wrapped as `%VALUE%` and upper-cased.
 
     Returns:
@@ -142,8 +158,16 @@ def get_row_count_query(
     for filter_col, filter_values in select_filters.items():
         if not filter_values:
             continue  # Skip empty filter lists to avoid syntax errors in the SQL query
-        query += f"AND [{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in filter_values)}) "
-        params.extend(filter_values)
+        if None in filter_values:
+            non_null_values = [value for value in filter_values if value is not None]
+            if non_null_values:
+                query += f"AND ([{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in non_null_values)}) OR [{_escape_identifier(filter_col)}] IS NULL) "
+                params.extend(non_null_values)
+            else:
+                query += f"AND [{_escape_identifier(filter_col)}] IS NULL "
+        else:
+            query += f"AND [{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in filter_values)}) "
+            params.extend(filter_values)
 
     for filter_col, text in text_filters.items():
         if not text:
