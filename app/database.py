@@ -123,26 +123,14 @@ create_user_notifications_table = """CREATE TABLE IF NOT EXISTS S_UserNotificati
                                         )"""
 
 
-_MIGRATIONS = [
-    ("S_Users",             "JsonData",  "TEXT"),
-    ("S_UserRoles",         "JsonData",  "TEXT"),
-    ("S_Projects",          "JsonData",  "TEXT"),
-    ("S_UserErrors",        "JsonData",  "TEXT"),
-    ("S_UserErrors",        "CreatedAt", "TEXT NOT NULL DEFAULT (datetime('now'))"),
-    ("S_UserModels",        "JsonData",  "TEXT"),
-    ("S_Models",            "JsonData",  "TEXT"),
-    ("S_ModelBackups",      "JsonData",  "TEXT"),
-    ("S_ModelTemplates",    "JsonData",  "TEXT"),
-    ("S_UserNotifications", "JsonData",  "TEXT"),
-]
+_MIGRATIONS = []
 
 
 def migrate_db() -> None:
     """
-    Apply schema migrations to an existing database.
-
-    Adds any columns listed in _MIGRATIONS that are not yet present.
-    Safe to call repeatedly; already-present columns are skipped.
+    Apply schema migrations listed in _MIGRATIONS.
+    
+    For each (table, column, col_type) entry, add the column to the table if it does not yet exist; already-present columns are skipped so the function can be called repeatedly without adverse effects.
     """
     logger.info("Running database migrations")
     with master_connection() as cursor:

@@ -18,7 +18,7 @@ class TableDataRequest(BaseModel):
     page_number: int
     page_size: int
     column_names: list[str]
-    select_filters: dict[str, list[str]]
+    select_filters: dict[str, list[str | int | float | bool | None]]
     text_filters: dict[str, str]
 
 
@@ -32,7 +32,7 @@ class DistinctColumnValuesRequest(BaseModel):
     table_name: str
     column_name: str
     page_size: int
-    select_filters: dict[str, list[str]]
+    select_filters: dict[str, list[str | int | float | bool | None]]
     text_filters: dict[str, str]
 
 
@@ -44,7 +44,7 @@ class RowCountRequest(BaseModel):
     model_name: str
     project_name: str
     table_name: str
-    select_filters: dict[str, list[str]] = Field(default_factory=dict)
+    select_filters: dict[str, list[str | int | float | bool | None]] = Field(default_factory=dict)
     text_filters: dict[str, str] = Field(default_factory=dict)
 
 

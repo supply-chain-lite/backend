@@ -14,19 +14,22 @@ def get_table_query(
     page_size: int,
 ) -> tuple[str, list]:
     """
-    Builds a parameterized SQLite SELECT query for a table with optional exact-match and case-insensitive text filters, and applies pagination.
-
+    Builds a parameterized SQLite SELECT query for specified columns with optional exact-match and case-insensitive substring filters and pagination.
+    
     Parameters:
-        table_name (str): Table name to query.
-        column_names (list[str]): Columns to select; must contain at least one name.
-        select_filters (dict[str, list[str]]): Exact-match filters where each key is a column name and the value is a list of allowed values; each list element becomes a `?` placeholder inside an `IN (...)` predicate.
-        text_filters (dict[str, str]): Case-insensitive substring filters where each key is a column name and the value is the substring to match (translated to `UPPER(column) LIKE ?` with surrounding `%`).
-        page_number (int): 1-based page index used to compute OFFSET.
-        page_size (int): Number of rows per page used for LIMIT.
-
+        table_name (str): Target table name.
+        column_names (list[str]): Columns to include in the SELECT; must contain at least one name.
+        select_filters (dict[str, list[str | int | float | bool | None]]): Mapping of column names to allowed exact-match values. Empty lists are skipped. If a filter list contains `None`, the function emits either:
+            - `AND [col] IS NULL` when all values are `None`, or
+            - `AND ([col] IN (?, ...) OR [col] IS NULL)` when there are both non-null values and `None`.
+            Non-null values are appended to the parameter list in placeholder order.
+        text_filters (dict[str, str]): Case-insensitive substring filters mapping column -> substring; translated to `UPPER(column) LIKE '%...%'`.
+        page_number (int): 1-based page index used to compute OFFSET; must be greater than 0.
+        page_size (int): Number of rows per page for LIMIT; must be greater than 0.
+    
     Returns:
-        tuple[str, list]: A tuple of the SQL query string (with `?` placeholders) and the ordered list of parameters to bind.
-
+        tuple[str, list]: SQL query string with `?` placeholders and the ordered list of parameters to bind.
+    
     Raises:
         HTTPException: If `column_names` is empty, or if `page_size` or `page_number` is less than or equal to zero.
     """
@@ -46,8 +49,16 @@ def get_table_query(
     for filter_col, filter_values in select_filters.items():
         if not filter_values:
             continue  # Skip empty filter lists to avoid syntax errors in the SQL query
-        select_query += f"AND [{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in filter_values)}) "
-        params.extend(filter_values)
+        if None in filter_values:
+            non_null_values = [value for value in filter_values if value is not None]
+            if non_null_values:
+                select_query += f"AND ([{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in non_null_values)}) OR [{_escape_identifier(filter_col)}] IS NULL) "
+                params.extend(non_null_values)
+            else:
+                select_query += f"AND [{_escape_identifier(filter_col)}] IS NULL "
+        else:
+            select_query += f"AND [{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in filter_values)}) "
+            params.extend(filter_values)
 
     for column_name, text in text_filters.items():
         if not text:
@@ -65,25 +76,25 @@ def get_table_query(
 def get_distinct_column_values_query(
     table_name: str,
     column_name: str,
-    select_filters: dict[str, list[str]],
+    select_filters: dict[str, list[str | int | float | bool | None]],
     text_filters: dict[str, str],
     page_size: int,
 ) -> tuple[str, list]:
     """
-    Retrieve distinct values for a single column from a table with optional exact-match and case-insensitive substring filters and a result limit.
-
+    Return distinct values for a single column from a table with optional exact-match and case-insensitive substring filters, limited to a maximum number of results.
+    
     Parameters:
         table_name (str): Table to query.
-        column_name (str): Column whose distinct values to return; must be non-empty.
-        select_filters (dict[str, list[str]]): Exact-match filters rendered as `AND [col] IN (?, ...)`. Entries whose column name matches `column_name` (case-insensitive) are ignored.
-        text_filters (dict[str, str]): Substring filters rendered as `AND UPPER([col]) LIKE ?` with the filter wrapped as `%VALUE%` and uppercased.
-        page_size (int): Maximum number of distinct values to return; must be greater than 0.
-
+        column_name (str): Column whose distinct values to return; must be non-empty or a 400 HTTPException is raised.
+        select_filters (dict[str, list[str | int | float | bool | None]]): Mapping of column names to allowed exact-match values. Empty lists are skipped. If a filter list contains `None`, the function emits either:
+            - `AND [col] IS NULL` when all values are `None`, or
+            - `AND ([col] IN (?, ...) OR [col] IS NULL)` when there are both non-null values and `None`.
+            Non-null values are appended to the parameter list in placeholder order.
+        text_filters (dict[str, str]): Case-insensitive substring filters applied as UPPER([col]) LIKE `%VALUE%`. Empty or falsy entries are ignored.
+        page_size (int): Maximum number of distinct values to return; must be greater than 0 or a 400 HTTPException is raised.
+    
     Returns:
-        tuple[str, list]: A pair of the SQL query string (with `?` placeholders) and the ordered list of parameter values to bind.
-
-    Raises:
-        HTTPException: status 400 if `column_name` is missing/empty or if `page_size` is not greater than 0.
+        tuple[str, list]: SQL query string with `?` placeholders and the ordered list of parameters to bind.
     """
     params = []
 
@@ -100,8 +111,16 @@ def get_distinct_column_values_query(
             continue  # Skip filters on the target column for distinct values
         if not filter_values:
             continue  # Skip empty filter lists to avoid syntax errors in the SQL query
-        query += f"AND [{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in filter_values)}) "
-        params.extend(filter_values)
+        if None in filter_values:
+            non_null_values = [value for value in filter_values if value is not None]
+            if non_null_values:
+                query += f"AND ([{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in non_null_values)}) OR [{_escape_identifier(filter_col)}] IS NULL) "
+                params.extend(non_null_values)
+            else:
+                query += f"AND [{_escape_identifier(filter_col)}] IS NULL "
+        else:
+            query += f"AND [{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in filter_values)}) "
+            params.extend(filter_values)
 
     for filter_col, text in text_filters.items():
         if not text:
@@ -116,21 +135,24 @@ def get_distinct_column_values_query(
 
 
 def get_row_count_query(
-    table_name: str, select_filters: dict[str, list[str]], text_filters: dict[str, str]
+    table_name: str, select_filters: dict[str, list[str | int | float | bool | None]], text_filters: dict[str, str]
 ) -> tuple[str, list]:
     """
-    Builds a parameterized SQL query to count rows in a table with optional exact-match and case-insensitive substring filters.
-
+    Build a parameterized COUNT(*) SQL query for a table applying exact-match and case-insensitive substring filters.
+    
     Parameters:
-        table_name (str): Name of the table to query.
-        select_filters (dict[str, list[str]]): Mapping of column names to lists of allowed exact-match values; each entry is rendered as `AND [col] IN (?, ..., ?)`.
-        text_filters (dict[str, str]): Mapping of column names to substring filters; each entry is rendered as `AND UPPER([col]) LIKE ?` with the filter value wrapped as `%VALUE%` and upper-cased.
-
+        table_name (str): Target table name; must be non-empty.
+        select_filters (dict[str, list[str | int | float | bool | None]]): Mapping of column names to allowed exact-match values. Empty lists are skipped. If a filter list contains `None`, the function emits either:
+            - `AND [col] IS NULL` when all values are `None`, or
+            - `AND ([col] IN (?, ...) OR [col] IS NULL)` when there are both non-null values and `None`.
+            Non-null values are appended to the parameter list in placeholder order.
+        text_filters (dict[str, str]): Mapping of column names to substring filters; empty or falsy values are skipped. Each entry is rendered as `AND UPPER([col]) LIKE ?` with the parameter value `'%VALUE_UPPERCASE%'`.
+    
     Returns:
-        tuple[str, list]: A pair where the first element is the SQL query string (with `?` parameter placeholders) and the second element is the ordered list of parameter values to bind to the query.
-
+        tuple[str, list]: (query, params) where `query` is the SQL string containing `?` placeholders and `params` is the ordered list of parameter values to bind.
+    
     Raises:
-        HTTPException: status 400 if `table_name` is missing/empty.
+        HTTPException: status 400 if `table_name` is missing or empty.
     """
     params = []
 
@@ -142,8 +164,16 @@ def get_row_count_query(
     for filter_col, filter_values in select_filters.items():
         if not filter_values:
             continue  # Skip empty filter lists to avoid syntax errors in the SQL query
-        query += f"AND [{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in filter_values)}) "
-        params.extend(filter_values)
+        if None in filter_values:
+            non_null_values = [value for value in filter_values if value is not None]
+            if non_null_values:
+                query += f"AND ([{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in non_null_values)}) OR [{_escape_identifier(filter_col)}] IS NULL) "
+                params.extend(non_null_values)
+            else:
+                query += f"AND [{_escape_identifier(filter_col)}] IS NULL "
+        else:
+            query += f"AND [{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in filter_values)}) "
+            params.extend(filter_values)
 
     for filter_col, text in text_filters.items():
         if not text:
