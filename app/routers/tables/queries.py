@@ -19,7 +19,10 @@ def get_table_query(
     Parameters:
         table_name (str): Target table name.
         column_names (list[str]): Columns to include in the SELECT; must contain at least one name.
-        select_filters (dict[str, list[str]]): Exact-match filters mapping column -> list of allowed values. If a filter list contains None, the generated condition will match NULL values (either `col IS NULL` when all values are None, or `(col IN (...) OR col IS NULL)` when mixed).
+        select_filters (dict[str, list[str | int | float | bool | None]]): Mapping of column names to allowed exact-match values. Empty lists are skipped. If a filter list contains `None`, the function emits either:
+            - `AND [col] IS NULL` when all values are `None`, or
+            - `AND ([col] IN (?, ...) OR [col] IS NULL)` when there are both non-null values and `None`.
+            Non-null values are appended to the parameter list in placeholder order.
         text_filters (dict[str, str]): Case-insensitive substring filters mapping column -> substring; translated to `UPPER(column) LIKE '%...%'`.
         page_number (int): 1-based page index used to compute OFFSET; must be greater than 0.
         page_size (int): Number of rows per page for LIMIT; must be greater than 0.
@@ -83,7 +86,10 @@ def get_distinct_column_values_query(
     Parameters:
         table_name (str): Table to query.
         column_name (str): Column whose distinct values to return; must be non-empty or a 400 HTTPException is raised.
-        select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters for other columns. Filters targeting `column_name` (case-insensitive) are ignored. Lists may include `None` to match NULL values.
+        select_filters (dict[str, list[str | int | float | bool | None]]): Mapping of column names to allowed exact-match values. Empty lists are skipped. If a filter list contains `None`, the function emits either:
+            - `AND [col] IS NULL` when all values are `None`, or
+            - `AND ([col] IN (?, ...) OR [col] IS NULL)` when there are both non-null values and `None`.
+            Non-null values are appended to the parameter list in placeholder order.
         text_filters (dict[str, str]): Case-insensitive substring filters applied as UPPER([col]) LIKE `%VALUE%`. Empty or falsy entries are ignored.
         page_size (int): Maximum number of distinct values to return; must be greater than 0 or a 400 HTTPException is raised.
     
