@@ -249,7 +249,9 @@ def add_new_column(
         row = model_cursor.execute(table_queries.check_if_table_column_exists, (table_name, column_name)).fetchone()
         if row:
             raise HTTPException(status_code=400, detail=f"Cannot add column: Column already exists: {column_name}")
-        this_query = table_queries.add_new_column.format(
-            table_name=table_name, column_name=column_name, column_type=column_type
+        if column_type.upper() not in ("TEXT", "INTEGER", "REAL", "NUMERIC", "VARCHAR", "BOOLEAN"):
+            raise HTTPException(status_code=400, detail=f"Cannot add column: Invalid column type: {column_type}")
+        this_query = table_queries.add_new_column.format(table_name=table_name, 
+            column_name=table_queries._escape_identifier(column_name), column_type=column_type
         )
         model_cursor.execute(this_query)
