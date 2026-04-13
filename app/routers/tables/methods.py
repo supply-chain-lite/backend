@@ -167,10 +167,13 @@ def get_row_count(
 
 def get_table_columns_all(cursor, user_email: str, model_name: str, project_name: str, table_name: str) -> list[str]:
     """
-    Resolve a table's columns and return them in the order they are defined in the database, without applying any persisted column order.
+    Return column names for a table in the database-defined order.
+    
+    Does not apply any persisted or user-specific column ordering.
+    
     Returns:
-        list[str]: List of column names.
-
+        list[str]: Column names in the order defined by the database schema.
+    
     Raises:
         HTTPException(404): If the model cannot be resolved or the table does not exist.
     """
@@ -192,18 +195,22 @@ def set_columns_order(
     cursor, user_email: str, model_name: str, project_name: str, table_name: str, column_names: list[str]
 ) -> None:
     """
-    Persist a custom column order for a table. The persisted order is applied in get_table_headers to return columns in the specified order when available.
-
+    Persist a user-defined column ordering for a table.
+    
+    The specified order is stored and later applied by get_table_headers; column names that do not exist in the table will be ignored when the order is applied.
+    
     Parameters:
-        cursor: Database cursor or connection used to resolve the target model and persist the column order.
-        user_email (str): Email of the authenticated user owning the model.
+        cursor: Database cursor used to resolve the target model and check permissions.
+        user_email (str): Email of the authenticated user.
         model_name (str): Name of the model containing the table.
         project_name (str): Project name containing the model.
         table_name (str): Table for which to set the column order.
-        column_names (list[str]): List of column names in the desired order. Column names that do not exist in the table are ignored when applying the order.
-
+        column_names (list[str]): Column names in the desired order.
+    
     Raises:
-        HTTPException: Raised with status_code 404 and detail "Model not found" when the model cannot be resolved for the given user.
+        HTTPException: Raised with status_code=404 and detail "Model not found" when the model cannot be resolved.
+        HTTPException: Raised with status_code=403 and detail "User does not have permission to modify the model" when the user lacks required access.
+        HTTPException: Raised with status_code=404 and detail "Cannot set column order: Table not found: S_TableGroup" when the expected metadata table is missing.
     """
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:

@@ -114,10 +114,10 @@ def get_all_table_headers(
     request: table_schemas.TableHeaderRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> table_schemas.TableAllHeadersResponse:
     """
-    Get all column headers for the specified table for the authenticated user.
-
+    Fetches all column headers for the specified table belonging to the authenticated user.
+    
     Returns:
-        table_schemas.TableAllHeadersResponse: Response object containing the list of all column headers.
+        TableAllHeadersResponse: Contains the list of all column headers for the requested model, project, and table.
     """
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:
@@ -132,10 +132,13 @@ def set_columns_order(
     request: table_schemas.SetColumnOrderRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> table_schemas.MessageResponse:
     """
-    Set the order of columns for the specified table for the authenticated user.
-
+    Update and persist the column order for the authenticated user's specified table.
+    
+    Parameters:
+        request (table_schemas.SetColumnOrderRequest): Contains `model_name`, `project_name`, `table_name`, and `column_names` — the list of column names in the desired order.
+    
     Returns:
-        table_schemas.MessageResponse: Response object containing a message indicating the result of the operation.
+        table_schemas.MessageResponse: Response containing a confirmation message.
     """
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:

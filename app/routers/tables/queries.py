@@ -22,22 +22,19 @@ def get_table_query(
     page_size: int,
 ) -> tuple[str, list]:
     """
-    Builds a parameterized SQLite SELECT query for specified columns with optional exact-match and case-insensitive substring filters and pagination.
-
+    Builds a parameterized SQLite SELECT query that returns rowid and the specified columns, applying optional exact-match filters, case-insensitive substring filters, and pagination.
+    
     Parameters:
-        table_name (str): Target table name.
+        table_name (str): Name of the table to query.
         column_names (list[str]): Columns to include in the SELECT; must contain at least one name.
-        select_filters (dict[str, list[str | int | float | bool | None]]): Mapping of column names to allowed exact-match values. Empty lists are skipped. If a filter list contains `None`, the function emits either:
-            - `AND [col] IS NULL` when all values are `None`, or
-            - `AND ([col] IN (?, ...) OR [col] IS NULL)` when there are both non-null values and `None`.
-            Non-null values are appended to the parameter list in placeholder order.
-        text_filters (dict[str, str]): Case-insensitive substring filters mapping column -> substring; translated to `UPPER(column) LIKE '%...%'`.
-        page_number (int): 1-based page index used to compute OFFSET; must be greater than 0.
-        page_size (int): Number of rows per page for LIMIT; must be greater than 0.
-
+        select_filters (dict[str, list[str]]): Exact-match filters mapping column -> list of allowed values. Empty lists are ignored. If a filter list contains `None` along with other values, the condition becomes `IN (...) OR IS NULL`; if it contains only `None`, the condition becomes `IS NULL`.
+        text_filters (dict[str, str]): Case-insensitive substring filters mapping column -> substring; each becomes `UPPER(column) LIKE '%SUBSTRING%'`. Falsy/empty values are ignored.
+        page_number (int): 1-based page index used to compute OFFSET.
+        page_size (int): Number of rows per page for LIMIT.
+    
     Returns:
-        tuple[str, list]: SQL query string with `?` placeholders and the ordered list of parameters to bind.
-
+        tuple[str, list]: A parameterized SQL query string using `?` placeholders and the ordered list of parameter values to bind.
+    
     Raises:
         HTTPException: If `column_names` is empty, or if `page_size` or `page_number` is less than or equal to zero.
     """
@@ -89,18 +86,15 @@ def get_distinct_column_values_query(
     page_size: int,
 ) -> tuple[str, list]:
     """
-    Return distinct values for a single column from a table with optional exact-match and case-insensitive substring filters, limited to a maximum number of results.
-
+    Return distinct values for a single column from a table applying exact-match and case-insensitive substring filters, limited to page_size.
+    
     Parameters:
         table_name (str): Table to query.
-        column_name (str): Column whose distinct values to return; must be non-empty or a 400 HTTPException is raised.
-        select_filters (dict[str, list[str | int | float | bool | None]]): Mapping of column names to allowed exact-match values. Empty lists are skipped. If a filter list contains `None`, the function emits either:
-            - `AND [col] IS NULL` when all values are `None`, or
-            - `AND ([col] IN (?, ...) OR [col] IS NULL)` when there are both non-null values and `None`.
-            Non-null values are appended to the parameter list in placeholder order.
-        text_filters (dict[str, str]): Case-insensitive substring filters applied as UPPER([col]) LIKE `%VALUE%`. Empty or falsy entries are ignored.
+        column_name (str): Target column for distinct values; must be non-empty or a 400 HTTPException is raised.
+        select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters keyed by column. Empty lists are ignored. If a filter list contains `None`, the generated condition is `IS NULL` when all values are `None`, or `IN (...) OR IS NULL` when mixed with non-null values. Filters on the target `column_name` are skipped.
+        text_filters (dict[str, str]): Case-insensitive substring filters keyed by column; falsy/empty values are ignored and remaining values are applied as `UPPER(col) LIKE '%VALUE%'`.
         page_size (int): Maximum number of distinct values to return; must be greater than 0 or a 400 HTTPException is raised.
-
+    
     Returns:
         tuple[str, list]: SQL query string with `?` placeholders and the ordered list of parameters to bind.
     """

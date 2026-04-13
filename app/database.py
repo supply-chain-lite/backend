@@ -128,9 +128,9 @@ _MIGRATIONS = []
 
 def migrate_db() -> None:
     """
-    Apply schema migrations listed in _MIGRATIONS.
-
-    For each (table, column, col_type) entry, add the column to the table if it does not yet exist; already-present columns are skipped so the function can be called repeatedly without adverse effects.
+    Apply schema migrations defined in _MIGRATIONS.
+    
+    For each (table, column, col_type) entry, add the column to the named table if it does not already exist; existing columns are skipped so the operation can be run repeatedly without error.
     """
     logger.info("Running database migrations")
     with master_connection() as cursor:
