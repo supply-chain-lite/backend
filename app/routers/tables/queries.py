@@ -2,15 +2,23 @@ from fastapi import HTTPException
 
 get_table_columns = "select name, type from pragma_table_xinfo(?) where UPPER(type) != 'BLOB' "
 
-get_column_order = "select ifnull(ColumnOrder, '[]') as ColumnOrder from S_TableGroup WHERE TableName = ?"
+get_column_order = (
+    "select ifnull(ColumnOrder, '[]') as ColumnOrder from S_TableGroup WHERE TableName = ? collate nocase"
+)
 
-get_access_level = "select ifnull(lower(AccessLevel), 'read') from S_UserModels WHERE ModelId = ? and UserEmail = ?"
+get_access_level = (
+    "select ifnull(lower(AccessLevel), 'read') from S_UserModels WHERE ModelId = ? and UserEmail = ? collate nocase"
+)
 
 update_column_order = "UPDATE S_TableGroup SET ColumnOrder = ? WHERE TableName = ? RETURNING rowid"
 
 insert_column_order = "INSERT INTO S_TableGroup (GroupName, TableName, ColumnOrder) VALUES (?, ?, ?) RETURNING rowid"
 
-check_if_table_exists = "select 1 from sqlite_master where type='table' and name=?"
+check_if_table_exists = "select 1 from sqlite_master where type='table' and name=? collate nocase"
+
+add_new_column = "ALTER TABLE [{table_name}] ADD COLUMN [{column_name}] {column_type}"
+
+check_if_table_column_exists = "SELECT 1 FROM pragma_table_xinfo(?) WHERE name = ? COLLATE NOCASE"
 
 
 def get_table_query(
@@ -18,23 +26,25 @@ def get_table_query(
     column_names: list[str],
     select_filters: dict[str, list[str]],
     text_filters: dict[str, str],
+    sort_columns: list[list[str, str]],
     page_number: int,
     page_size: int,
 ) -> tuple[str, list]:
     """
-    Builds a parameterized SQLite SELECT query that returns rowid and the specified columns, applying optional exact-match filters, case-insensitive substring filters, and pagination.
-    
+    Builds a parameterized SQLite SELECT query that returns rowid and the specified columns, applying optional exact-match filters, case-insensitive substring filters, sorting, and pagination.
+
     Parameters:
         table_name (str): Name of the table to query.
         column_names (list[str]): Columns to include in the SELECT; must contain at least one name.
         select_filters (dict[str, list[str]]): Exact-match filters mapping column -> list of allowed values. Empty lists are ignored. If a filter list contains `None` along with other values, the condition becomes `IN (...) OR IS NULL`; if it contains only `None`, the condition becomes `IS NULL`.
         text_filters (dict[str, str]): Case-insensitive substring filters mapping column -> substring; each becomes `UPPER(column) LIKE '%SUBSTRING%'`. Falsy/empty values are ignored.
+        sort_columns (list[list[str, str]]): Columns to sort by, each element is a list of [column_name, direction] where direction is 'ASC' or 'DESC'.
         page_number (int): 1-based page index used to compute OFFSET.
         page_size (int): Number of rows per page for LIMIT.
-    
+
     Returns:
         tuple[str, list]: A parameterized SQL query string using `?` placeholders and the ordered list of parameter values to bind.
-    
+
     Raises:
         HTTPException: If `column_names` is empty, or if `page_size` or `page_number` is less than or equal to zero.
     """
@@ -72,9 +82,19 @@ def get_table_query(
         params.append(f"%{text.upper()}%")
 
     offset = (page_number - 1) * page_size
+    if len(sort_columns) > 0:
+        select_query += "ORDER BY "
+    for column_name, direction in sort_columns:
+        if direction.upper() not in ("ASC", "DESC"):
+            raise HTTPException(
+                status_code=400, detail=f"Invalid sort direction '{direction}' for column '{column_name}'"
+            )
+        select_query += f"[{_escape_identifier(column_name)}] {direction.upper()}, "
+    select_query = select_query.rstrip(", ")  # Remove trailing comma and space if sort_columns were added
     select_query += " LIMIT ? OFFSET ?"
     params.extend([page_size, offset])
 
+    print("Generated SQL Query:", select_query)
     return select_query, params
 
 
@@ -87,14 +107,14 @@ def get_distinct_column_values_query(
 ) -> tuple[str, list]:
     """
     Return distinct values for a single column from a table applying exact-match and case-insensitive substring filters, limited to page_size.
-    
+
     Parameters:
         table_name (str): Table to query.
         column_name (str): Target column for distinct values; must be non-empty or a 400 HTTPException is raised.
         select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters keyed by column. Empty lists are ignored. If a filter list contains `None`, the generated condition is `IS NULL` when all values are `None`, or `IN (...) OR IS NULL` when mixed with non-null values. Filters on the target `column_name` are skipped.
         text_filters (dict[str, str]): Case-insensitive substring filters keyed by column; falsy/empty values are ignored and remaining values are applied as `UPPER(col) LIKE '%VALUE%'`.
         page_size (int): Maximum number of distinct values to return; must be greater than 0 or a 400 HTTPException is raised.
-    
+
     Returns:
         tuple[str, list]: SQL query string with `?` placeholders and the ordered list of parameters to bind.
     """
@@ -130,6 +150,7 @@ def get_distinct_column_values_query(
         query += f"AND UPPER([{_escape_identifier(filter_col)}]) LIKE ? "
         params.append(f"%{text.upper()}%")
 
+    query += " ORDER BY 1 COLLATE NOCASE"
     query += " LIMIT ?"
     params.append(page_size)
 

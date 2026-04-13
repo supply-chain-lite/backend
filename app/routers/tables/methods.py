@@ -59,6 +59,7 @@ def get_table_data(
     column_names: list[str],
     select_filters: dict[str, list[str]],
     text_filters: dict[str, str],
+    sort_columns: list[list[str, str]],
     page_number: int,
     page_size: int,
 ) -> list[tuple[str | int | float | bool | None, ...]]:
@@ -76,7 +77,7 @@ def get_table_data(
         raise HTTPException(status_code=404, detail="Model not found")
 
     query, params = table_queries.get_table_query(
-        table_name, column_names, select_filters, text_filters, page_number, page_size
+        table_name, column_names, select_filters, text_filters, sort_columns, page_number, page_size
     )
 
     with sql_connection(model_id, model_path) as model_cursor:
@@ -168,12 +169,12 @@ def get_row_count(
 def get_table_columns_all(cursor, user_email: str, model_name: str, project_name: str, table_name: str) -> list[str]:
     """
     Return column names for a table in the database-defined order.
-    
+
     Does not apply any persisted or user-specific column ordering.
-    
+
     Returns:
         list[str]: Column names in the order defined by the database schema.
-    
+
     Raises:
         HTTPException(404): If the model cannot be resolved or the table does not exist.
     """
@@ -196,9 +197,9 @@ def set_columns_order(
 ) -> None:
     """
     Persist a user-defined column ordering for a table.
-    
+
     The specified order is stored and later applied by get_table_headers; column names that do not exist in the table will be ignored when the order is applied.
-    
+
     Parameters:
         cursor: Database cursor used to resolve the target model and check permissions.
         user_email (str): Email of the authenticated user.
@@ -206,7 +207,7 @@ def set_columns_order(
         project_name (str): Project name containing the model.
         table_name (str): Table for which to set the column order.
         column_names (list[str]): Column names in the desired order.
-    
+
     Raises:
         HTTPException: Raised with status_code=404 and detail "Model not found" when the model cannot be resolved.
         HTTPException: Raised with status_code=403 and detail "User does not have permission to modify the model" when the user lacks required access.
@@ -228,3 +229,27 @@ def set_columns_order(
         all_rows = model_cursor.execute(table_queries.update_column_order, (column_order_json, table_name)).fetchall()
         if len(all_rows) == 0:
             model_cursor.execute(table_queries.insert_column_order, ("Other Tables", table_name, column_order_json))
+
+
+def add_new_column(
+    cursor, user_email: str, model_name: str, project_name: str, table_name: str, column_name: str, column_type: str
+):
+    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
+    if not model_id:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    access_level = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
+    if access_level is None or access_level[0] not in ("admin", "owner"):
+        raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
+
+    with sql_connection(model_id, model_path) as model_cursor:
+        row = model_cursor.execute(table_queries.check_if_table_exists, (table_name,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Cannot add column: Table not found: {table_name}")
+        row = model_cursor.execute(table_queries.check_if_table_column_exists, (table_name, column_name)).fetchone()
+        if row:
+            raise HTTPException(status_code=400, detail=f"Cannot add column: Column already exists: {column_name}")
+        this_query = table_queries.add_new_column.format(
+            table_name=table_name, column_name=column_name, column_type=column_type
+        )
+        model_cursor.execute(this_query)

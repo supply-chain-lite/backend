@@ -15,6 +15,14 @@ class TableAllHeadersResponse(BaseModel):
     headers: list[str]
 
 
+class AddColumnRequest(BaseModel):
+    model_name: str
+    project_name: str
+    table_name: str
+    column_name: str
+    column_type: str
+
+
 class SetColumnOrderRequest(BaseModel):
     model_name: str
     project_name: str
@@ -33,6 +41,7 @@ class TableDataRequest(BaseModel):
     page_number: int
     page_size: int
     column_names: list[str]
+    sort_columns: list[list[str, str]]
     select_filters: dict[str, list[str | int | float | bool | None]]
     text_filters: dict[str, str]
 
