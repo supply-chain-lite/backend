@@ -34,13 +34,13 @@ def get_table_data(
     request: table_schemas.TableDataRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> table_schemas.TableDataResponse:
     """
-    Retrieve table rows using the request's column selection, filters, and pagination for the authenticated user.
+    Retrieve rows from a table according to requested columns, filters, sorting, and pagination for the authenticated user.
 
     Parameters:
-        request (TableDataRequest): Request containing model/project/table identifiers, column_names, select_filters, text_filters, page_number, and page_size.
+        request (TableDataRequest): Identifiers (model_name, project_name, table_name) and retrieval options (column_names, select_filters, text_filters, sort_columns, page_number, page_size).
 
     Returns:
-        table_data_response (TableDataResponse): The requested rows.
+        TableDataResponse: Response whose `data` field contains the requested rows matching the provided identifiers and filters.
     """
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:
@@ -53,6 +53,7 @@ def get_table_data(
             request.column_names,
             request.select_filters,
             request.text_filters,
+            request.sort_columns,
             request.page_number,
             request.page_size,
         )
@@ -115,7 +116,7 @@ def get_all_table_headers(
 ) -> table_schemas.TableAllHeadersResponse:
     """
     Fetches all column headers for the specified table belonging to the authenticated user.
-    
+
     Returns:
         TableAllHeadersResponse: Contains the list of all column headers for the requested model, project, and table.
     """
@@ -133,10 +134,10 @@ def set_columns_order(
 ) -> table_schemas.MessageResponse:
     """
     Update and persist the column order for the authenticated user's specified table.
-    
+
     Parameters:
         request (table_schemas.SetColumnOrderRequest): Contains `model_name`, `project_name`, `table_name`, and `column_names` — the list of column names in the desired order.
-    
+
     Returns:
         table_schemas.MessageResponse: Response containing a confirmation message.
     """
@@ -146,3 +147,30 @@ def set_columns_order(
             cursor, useremail, request.model_name, request.project_name, request.table_name, request.column_names
         )
         return table_schemas.MessageResponse(message="Columns order set successfully.")
+
+
+@router.post("/add-column", response_model=table_schemas.MessageResponse)
+def add_column(
+    request: table_schemas.AddColumnRequest, user_data: tuple = Depends(_get_user_from_token)
+) -> table_schemas.MessageResponse:
+    """
+    Add a new column to the specified table for the authenticated user.
+
+    Parameters:
+        request (AddColumnRequest): Contains `model_name`, `project_name`, `table_name`, `column_name`, and `column_type` describing the column to create.
+
+    Returns:
+        MessageResponse: Confirmation message `"Column added successfully."`.
+    """
+    useremail, _display_name, _role_name = user_data
+    with master_connection() as cursor:
+        table_methods.add_new_column(
+            cursor,
+            useremail,
+            request.model_name,
+            request.project_name,
+            request.table_name,
+            request.column_name,
+            request.column_type,
+        )
+        return table_schemas.MessageResponse(message="Column added successfully.")

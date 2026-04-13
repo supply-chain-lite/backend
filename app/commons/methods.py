@@ -4,10 +4,10 @@ from . import queries as queries
 def get_table_groups(cursor):
     """
     Create a dictionary mapping each group name to a list of (table_name, table_display_name) tuples.
-    
+
     Parameters:
         cursor: Database cursor used to execute queries that retrieve table grouping information.
-    
+
     Returns:
         dict: Mapping where keys are group_name (str) and values are lists of tuples (table_name (str), table_display_name (str)). If a row's display name is None, the display name is replaced with the table_name.
     """
