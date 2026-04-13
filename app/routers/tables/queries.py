@@ -106,15 +106,15 @@ def get_distinct_column_values_query(
     page_size: int,
 ) -> tuple[str, list]:
     """
-    Return distinct values for a single column from a table applying exact-match and case-insensitive substring filters, limited to page_size.
-
+    Retrieve distinct values for a single column from a table, applying exact-match and case-insensitive substring filters and limiting results to page_size.
+    
     Parameters:
         table_name (str): Table to query.
-        column_name (str): Target column for distinct values; must be non-empty or a 400 HTTPException is raised.
-        select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters keyed by column. Empty lists are ignored. If a filter list contains `None`, the generated condition is `IS NULL` when all values are `None`, or `IN (...) OR IS NULL` when mixed with non-null values. Filters on the target `column_name` are skipped.
-        text_filters (dict[str, str]): Case-insensitive substring filters keyed by column; falsy/empty values are ignored and remaining values are applied as `UPPER(col) LIKE '%VALUE%'`.
-        page_size (int): Maximum number of distinct values to return; must be greater than 0 or a 400 HTTPException is raised.
-
+        column_name (str): Target column for distinct values; must be non-empty.
+        select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters keyed by column. Empty lists are ignored; if a filter list contains `None`, the condition becomes `IS NULL` when all values are `None`, or `IN (...) OR IS NULL` when mixed with non-null values. Filters on `column_name` are ignored.
+        text_filters (dict[str, str]): Case-insensitive substring filters keyed by column; falsy/empty values are ignored and remaining values are matched with `UPPER(col) LIKE '%VALUE%'`.
+        page_size (int): Maximum number of distinct values to return; must be greater than 0.
+    
     Returns:
         tuple[str, list]: SQL query string with `?` placeholders and the ordered list of parameters to bind.
     """

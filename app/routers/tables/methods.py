@@ -64,13 +64,26 @@ def get_table_data(
     page_size: int,
 ) -> list[tuple[str | int | float | bool | None, ...]]:
     """
-    Fetches rows from a table using the provided columns, filters, and pagination.
-
+    Fetch rows from a table applying selected columns, filters, sorting, and pagination.
+    
+    Parameters:
+        cursor: Database cursor used to resolve the target model.
+        user_email (str): Requesting user's email used for model resolution.
+        model_name (str): Name of the model containing the table.
+        project_name (str): Project name containing the model.
+        table_name (str): Target table name.
+        column_names (list[str]): Columns to select, in the requested order.
+        select_filters (dict[str, list[str]]): Exact-match filters mapping column names to a list of permitted values.
+        text_filters (dict[str, str]): Substring/text filters mapping column names to search terms.
+        sort_columns (list[list[str, str]]): Sort specification as a list of [column_name, direction], where direction is typically "asc" or "desc".
+        page_number (int): 1-based page number for pagination.
+        page_size (int): Number of rows per page.
+    
     Returns:
-        A list of rows; each row is a tuple of column values corresponding to the requested columns. Elements may be `str`, `int`, `float`, `bool`, or `None`.
-
+        list[tuple[str | int | float | bool | None, ...]]: Rows matching the query; each row is a tuple of column values in the same order as `column_names`. Elements may be `str`, `int`, `float`, `bool`, or `None`.
+    
     Raises:
-        HTTPException: with status code 404 when the model cannot be resolved for the given user/model/project.
+        HTTPException: with status code 404 if the model cannot be resolved for the given user/model/project.
     """
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
@@ -168,13 +181,13 @@ def get_row_count(
 
 def get_table_columns_all(cursor, user_email: str, model_name: str, project_name: str, table_name: str) -> list[str]:
     """
-    Return column names for a table in the database-defined order.
-
+    Return the table's column names in the database-defined order.
+    
     Does not apply any persisted or user-specific column ordering.
-
+    
     Returns:
-        list[str]: Column names in the order defined by the database schema.
-
+        A list of column names in the order defined by the database schema.
+    
     Raises:
         HTTPException(404): If the model cannot be resolved or the table does not exist.
     """
@@ -196,22 +209,21 @@ def set_columns_order(
     cursor, user_email: str, model_name: str, project_name: str, table_name: str, column_names: list[str]
 ) -> None:
     """
-    Persist a user-defined column ordering for a table.
-
-    The specified order is stored and later applied by get_table_headers; column names that do not exist in the table will be ignored when the order is applied.
-
+    Persist a user-defined column order for a table.
+    
+    Stores the provided column name sequence so get_table_headers can apply it; column names that do not exist in the table are ignored when the order is applied.
+    
     Parameters:
-        cursor: Database cursor used to resolve the target model and check permissions.
-        user_email (str): Email of the authenticated user.
+        user_email (str): Email of the authenticated user performing the change.
         model_name (str): Name of the model containing the table.
         project_name (str): Project name containing the model.
         table_name (str): Table for which to set the column order.
         column_names (list[str]): Column names in the desired order.
-
+    
     Raises:
-        HTTPException: Raised with status_code=404 and detail "Model not found" when the model cannot be resolved.
-        HTTPException: Raised with status_code=403 and detail "User does not have permission to modify the model" when the user lacks required access.
-        HTTPException: Raised with status_code=404 and detail "Cannot set column order: Table not found: S_TableGroup" when the expected metadata table is missing.
+        HTTPException: status_code=404, detail="Model not found" when the model cannot be resolved.
+        HTTPException: status_code=403, detail="User does not have permission to modify the model" when the user lacks required access.
+        HTTPException: status_code=404, detail="Cannot set column order: Table not found: S_TableGroup" when the required metadata table is missing.
     """
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
@@ -234,6 +246,23 @@ def set_columns_order(
 def add_new_column(
     cursor, user_email: str, model_name: str, project_name: str, table_name: str, column_name: str, column_type: str
 ):
+    """
+    Add a new column to a table in a resolved model database.
+    
+    Parameters:
+        model_name (str): Name of the model to modify.
+        project_name (str): Name of the project containing the model.
+        table_name (str): Target table to which the column will be added.
+        column_name (str): Name of the new column to create.
+        column_type (str): Data type for the new column. Allowed values (case-insensitive): "TEXT", "INTEGER", "REAL", "NUMERIC", "VARCHAR", "BOOLEAN".
+    
+    Raises:
+        fastapi.HTTPException: 404 if the model is not found.
+        fastapi.HTTPException: 403 if the user does not have "admin" or "owner" access to the model.
+        fastapi.HTTPException: 404 if the target table does not exist in the model database.
+        fastapi.HTTPException: 400 if a column with the given name already exists on the table.
+        fastapi.HTTPException: 400 if the provided column_type is not one of the allowed values.
+    """
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")

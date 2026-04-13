@@ -34,13 +34,13 @@ def get_table_data(
     request: table_schemas.TableDataRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> table_schemas.TableDataResponse:
     """
-    Retrieve table rows using the request's column selection, filters, and pagination for the authenticated user.
-
+    Retrieve rows from a table according to requested columns, filters, sorting, and pagination for the authenticated user.
+    
     Parameters:
-        request (TableDataRequest): Request containing model/project/table identifiers, column_names, select_filters, text_filters, page_number, and page_size.
-
+        request (TableDataRequest): Identifiers (model_name, project_name, table_name) and retrieval options (column_names, select_filters, text_filters, sort_columns, page_number, page_size).
+    
     Returns:
-        table_data_response (TableDataResponse): The requested rows.
+        TableDataResponse: Response whose `data` field contains the requested rows matching the provided identifiers and filters.
     """
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:
@@ -155,12 +155,12 @@ def add_column(
 ) -> table_schemas.MessageResponse:
     """
     Add a new column to the specified table for the authenticated user.
-
+    
     Parameters:
-        request (AddColumnRequest): Contains `model_name`, `project_name`, `table_name`, `column_name`, and `column_type` for the new column.
-
+        request (AddColumnRequest): Contains `model_name`, `project_name`, `table_name`, `column_name`, and `column_type` describing the column to create.
+    
     Returns:
-        table_schemas.MessageResponse: Response containing a confirmation message.
+        MessageResponse: Confirmation message `"Column added successfully."`.
     """
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:
