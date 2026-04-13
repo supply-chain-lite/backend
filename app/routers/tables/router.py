@@ -107,3 +107,42 @@ def get_row_count(
             request.text_filters,
         )
         return table_schemas.RowCountResponse(row_count=row_count)
+
+
+@router.post("/all-headers", response_model=table_schemas.TableAllHeadersResponse)
+def get_all_table_headers(
+    request: table_schemas.TableHeaderRequest, user_data: tuple = Depends(_get_user_from_token)
+) -> table_schemas.TableAllHeadersResponse:
+    """
+    Fetches all column headers for the specified table belonging to the authenticated user.
+    
+    Returns:
+        TableAllHeadersResponse: Contains the list of all column headers for the requested model, project, and table.
+    """
+    useremail, _display_name, _role_name = user_data
+    with master_connection() as cursor:
+        headers = table_methods.get_table_columns_all(
+            cursor, useremail, request.model_name, request.project_name, request.table_name
+        )
+        return table_schemas.TableAllHeadersResponse(headers=headers)
+
+
+@router.post("/set-columns-order", response_model=table_schemas.MessageResponse)
+def set_columns_order(
+    request: table_schemas.SetColumnOrderRequest, user_data: tuple = Depends(_get_user_from_token)
+) -> table_schemas.MessageResponse:
+    """
+    Update and persist the column order for the authenticated user's specified table.
+    
+    Parameters:
+        request (table_schemas.SetColumnOrderRequest): Contains `model_name`, `project_name`, `table_name`, and `column_names` — the list of column names in the desired order.
+    
+    Returns:
+        table_schemas.MessageResponse: Response containing a confirmation message.
+    """
+    useremail, _display_name, _role_name = user_data
+    with master_connection() as cursor:
+        table_methods.set_columns_order(
+            cursor, useremail, request.model_name, request.project_name, request.table_name, request.column_names
+        )
+        return table_schemas.MessageResponse(message="Columns order set successfully.")

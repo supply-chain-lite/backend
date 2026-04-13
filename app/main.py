@@ -23,7 +23,7 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     Manage application startup and shutdown tasks for the FastAPI application.
-    
+
     On startup this configures logging, logs a startup message, initializes and migrates the database, and recreates the TEMP_FOLDER directory (deleting it first if it exists). On shutdown this logs a shutdown message. Exceptions raised during startup or while the application is running are not swallowed by this handler and will propagate after the shutdown message is emitted.
     """
     configure_logging()
