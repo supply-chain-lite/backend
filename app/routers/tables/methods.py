@@ -65,7 +65,7 @@ def get_table_data(
 ) -> list[tuple[str | int | float | bool | None, ...]]:
     """
     Fetch rows from a table applying selected columns, filters, sorting, and pagination.
-    
+
     Parameters:
         cursor: Database cursor used to resolve the target model.
         user_email (str): Requesting user's email used for model resolution.
@@ -78,10 +78,10 @@ def get_table_data(
         sort_columns (list[list[str, str]]): Sort specification as a list of [column_name, direction], where direction is typically "asc" or "desc".
         page_number (int): 1-based page number for pagination.
         page_size (int): Number of rows per page.
-    
+
     Returns:
         list[tuple[str | int | float | bool | None, ...]]: Rows matching the query; each row is a tuple of column values in the same order as `column_names`. Elements may be `str`, `int`, `float`, `bool`, or `None`.
-    
+
     Raises:
         HTTPException: with status code 404 if the model cannot be resolved for the given user/model/project.
     """
@@ -182,12 +182,12 @@ def get_row_count(
 def get_table_columns_all(cursor, user_email: str, model_name: str, project_name: str, table_name: str) -> list[str]:
     """
     Return the table's column names in the database-defined order.
-    
+
     Does not apply any persisted or user-specific column ordering.
-    
+
     Returns:
         A list of column names in the order defined by the database schema.
-    
+
     Raises:
         HTTPException(404): If the model cannot be resolved or the table does not exist.
     """
@@ -210,16 +210,16 @@ def set_columns_order(
 ) -> None:
     """
     Persist a user-defined column order for a table.
-    
+
     Stores the provided column name sequence so get_table_headers can apply it; column names that do not exist in the table are ignored when the order is applied.
-    
+
     Parameters:
         user_email (str): Email of the authenticated user performing the change.
         model_name (str): Name of the model containing the table.
         project_name (str): Project name containing the model.
         table_name (str): Table for which to set the column order.
         column_names (list[str]): Column names in the desired order.
-    
+
     Raises:
         HTTPException: status_code=404, detail="Model not found" when the model cannot be resolved.
         HTTPException: status_code=403, detail="User does not have permission to modify the model" when the user lacks required access.
@@ -248,14 +248,14 @@ def add_new_column(
 ):
     """
     Add a new column to a table in a resolved model database.
-    
+
     Parameters:
         model_name (str): Name of the model to modify.
         project_name (str): Name of the project containing the model.
         table_name (str): Target table to which the column will be added.
         column_name (str): Name of the new column to create.
         column_type (str): Data type for the new column. Allowed values (case-insensitive): "TEXT", "INTEGER", "REAL", "NUMERIC", "VARCHAR", "BOOLEAN".
-    
+
     Raises:
         fastapi.HTTPException: 404 if the model is not found.
         fastapi.HTTPException: 403 if the user does not have "admin" or "owner" access to the model.
@@ -280,7 +280,7 @@ def add_new_column(
             raise HTTPException(status_code=400, detail=f"Cannot add column: Column already exists: {column_name}")
         if column_type.upper() not in ("TEXT", "INTEGER", "REAL", "NUMERIC", "VARCHAR", "BOOLEAN"):
             raise HTTPException(status_code=400, detail=f"Cannot add column: Invalid column type: {column_type}")
-        this_query = table_queries.add_new_column.format(table_name=table_name, 
-            column_name=table_queries._escape_identifier(column_name), column_type=column_type
+        this_query = table_queries.add_new_column.format(
+            table_name=table_name, column_name=table_queries._escape_identifier(column_name), column_type=column_type
         )
         model_cursor.execute(this_query)

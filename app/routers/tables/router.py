@@ -35,10 +35,10 @@ def get_table_data(
 ) -> table_schemas.TableDataResponse:
     """
     Retrieve rows from a table according to requested columns, filters, sorting, and pagination for the authenticated user.
-    
+
     Parameters:
         request (TableDataRequest): Identifiers (model_name, project_name, table_name) and retrieval options (column_names, select_filters, text_filters, sort_columns, page_number, page_size).
-    
+
     Returns:
         TableDataResponse: Response whose `data` field contains the requested rows matching the provided identifiers and filters.
     """
@@ -155,10 +155,10 @@ def add_column(
 ) -> table_schemas.MessageResponse:
     """
     Add a new column to the specified table for the authenticated user.
-    
+
     Parameters:
         request (AddColumnRequest): Contains `model_name`, `project_name`, `table_name`, `column_name`, and `column_type` describing the column to create.
-    
+
     Returns:
         MessageResponse: Confirmation message `"Column added successfully."`.
     """
