@@ -11,6 +11,21 @@ class TableHeaderResponse(BaseModel):
     headers: list[tuple[str, str]]
 
 
+class TableAllHeadersResponse(BaseModel):
+    headers: list[str]
+
+
+class SetColumnOrderRequest(BaseModel):
+    model_name: str
+    project_name: str
+    table_name: str
+    column_names: list[str]
+
+
+class MessageResponse(BaseModel):
+    message: str
+
+
 class TableDataRequest(BaseModel):
     model_name: str
     project_name: str

@@ -129,15 +129,13 @@ _MIGRATIONS = []
 def migrate_db() -> None:
     """
     Apply schema migrations listed in _MIGRATIONS.
-    
+
     For each (table, column, col_type) entry, add the column to the table if it does not yet exist; already-present columns are skipped so the function can be called repeatedly without adverse effects.
     """
     logger.info("Running database migrations")
     with master_connection() as cursor:
         for table, column, col_type in _MIGRATIONS:
-            rows = cursor.execute(
-                f"PRAGMA table_info({table})"
-            ).fetchall()
+            rows = cursor.execute(f"PRAGMA table_info({table})").fetchall()
             existing_columns = {row[1] for row in rows}
             if column not in existing_columns:
                 stmt = f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"

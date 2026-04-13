@@ -163,3 +163,61 @@ def get_row_count(
     with sql_connection(model_id, model_path) as model_cursor:
         row = model_cursor.execute(query, params).fetchone()
         return row[0] if row else 0
+
+
+def get_table_columns_all(cursor, user_email: str, model_name: str, project_name: str, table_name: str) -> list[str]:
+    """
+    Resolve a table's columns and return them in the order they are defined in the database, without applying any persisted column order.
+    Returns:
+        list[str]: List of column names.
+
+    Raises:
+        HTTPException(404): If the model cannot be resolved or the table does not exist.
+    """
+    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
+    if not model_id:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    with sql_connection(model_id, model_path) as model_cursor:
+        all_rows = model_cursor.execute(table_queries.get_table_columns, (table_name,)).fetchall()
+        if len(all_rows) == 0:
+            raise HTTPException(status_code=404, detail=f"Table not found: {table_name}")
+
+        table_columns = list(row[0] for row in all_rows)
+
+    return table_columns
+
+
+def set_columns_order(
+    cursor, user_email: str, model_name: str, project_name: str, table_name: str, column_names: list[str]
+) -> None:
+    """
+    Persist a custom column order for a table. The persisted order is applied in get_table_headers to return columns in the specified order when available.
+
+    Parameters:
+        cursor: Database cursor or connection used to resolve the target model and persist the column order.
+        user_email (str): Email of the authenticated user owning the model.
+        model_name (str): Name of the model containing the table.
+        project_name (str): Project name containing the model.
+        table_name (str): Table for which to set the column order.
+        column_names (list[str]): List of column names in the desired order. Column names that do not exist in the table are ignored when applying the order.
+
+    Raises:
+        HTTPException: Raised with status_code 404 and detail "Model not found" when the model cannot be resolved for the given user.
+    """
+    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
+    if not model_id:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    access_level = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
+    if access_level is None or access_level[0] not in ("admin", "owner"):
+        raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
+
+    with sql_connection(model_id, model_path) as model_cursor:
+        row = model_cursor.execute(table_queries.check_if_table_exists, ("S_TableGroup",)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Cannot set column order: Table not found: S_TableGroup")
+        column_order_json = json.dumps(column_names)
+        all_rows = model_cursor.execute(table_queries.update_column_order, (column_order_json, table_name)).fetchall()
+        if len(all_rows) == 0:
+            model_cursor.execute(table_queries.insert_column_order, ("Other Tables", table_name, column_order_json))
