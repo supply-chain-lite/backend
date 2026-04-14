@@ -326,11 +326,11 @@ def get_column_formatting(
     with sql_connection(model_id, model_path) as model_cursor:
         row = model_cursor.execute(table_queries.check_if_table_exists, ("S_TableParameters",)).fetchone()
         if not row:
-            return {"hello": {"world": "that"}}
+            return {}
         all_rows = model_cursor.execute(table_queries.get_column_formatting, (table_name,)).fetchall()
         result = {}
         for column_name, parameter_type, parameter_value in all_rows:
-            this_dict = {"column_type": parameter_type}
-            this_dict.update(json.loads(parameter_value))
+            this_dict = json.loads(parameter_value) if parameter_value else {}
+            this_dict["column_type"] = parameter_type
             result[column_name] = this_dict
         return result
