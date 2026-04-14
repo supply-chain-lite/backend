@@ -155,10 +155,10 @@ def add_column(
 ) -> table_schemas.MessageResponse:
     """
     Add a new column to a table owned by the authenticated user.
-    
+
     Parameters:
         request (AddColumnRequest): Contains `model_name`, `project_name`, `table_name`, `column_name`, and `column_type` that identify the target table and describe the column to create.
-    
+
     Returns:
         MessageResponse: Confirmation message "Column added successfully."
     """
@@ -182,7 +182,7 @@ def set_column_formatting(
 ) -> table_schemas.MessageResponse:
     """
     Persist formatting settings for a specific column of a user's table.
-    
+
     Parameters:
         request (SetColumnFormattingRequest): Contains table identifiers and formatting to apply:
             - model_name: model identifier
@@ -192,7 +192,7 @@ def set_column_formatting(
             - column_type: the column's data type
             - format: formatting settings to persist
         user_data (tuple): Authentication-derived user data (injected dependency); only the user's email is used.
-    
+
     Returns:
         MessageResponse: Confirmation message indicating the column formatting was set successfully.
     """
@@ -217,12 +217,12 @@ def get_column_formatting(
 ) -> table_schemas.GetColumnFormattingResponse:
     """
     Retrieve formatting settings for the columns of a specified table for the authenticated user.
-    
+
     Returns formatting settings for the table identified by `model_name`, `project_name`, and `table_name` in the request.
-    
+
     Parameters:
         request (TableHeaderRequest): Contains `model_name`, `project_name`, and `table_name` identifying the target table.
-    
+
     Returns:
         column_formatting: A mapping of column names to their persisted formatting settings.
     """

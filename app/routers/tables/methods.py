@@ -248,12 +248,12 @@ def add_new_column(
 ):
     """
     Add a new column to an existing table in the resolved model database.
-    
+
     Parameters:
         table_name (str): Target table to modify.
         column_name (str): Name of the column to add.
         column_type (str): Column data type. Allowed values (case-insensitive): "TEXT", "INTEGER", "REAL", "NUMERIC", "VARCHAR", "BOOLEAN".
-    
+
     Raises:
         fastapi.HTTPException: 404 if the model is not found.
         fastapi.HTTPException: 403 if the user does not have "admin" or "owner" access to the model.
@@ -296,9 +296,9 @@ def set_column_formatting(
 ):
     """
     Set or update the persisted formatting metadata for a single column in a model table.
-    
+
     This validates that the requesting user has "admin" or "owner" access to the resolved model and that the metadata table `S_TableParameters` exists, then stores `column_formatting` (JSON-serialized) for the specified `table_name`/`column_name` and `column_type`. If a formatting row for that column does not already exist, a new row is inserted.
-    
+
     Parameters:
         user_email (str): Email of the requesting user used to resolve access.
         model_name (str): Name of the model containing the table.
@@ -307,7 +307,7 @@ def set_column_formatting(
         column_name (str): Name of the column to set formatting for.
         column_type (str): Type/category of the column (stored alongside the formatting).
         column_formatting (dict[str, str | int | float | bool | None]): Formatting parameters to persist for the column; will be JSON-serialized.
-    
+
     Raises:
         fastapi.HTTPException: 404 if the model is not found.
         fastapi.HTTPException: 403 if the user lacks permission to modify the model.
@@ -339,14 +339,14 @@ def get_column_formatting(
 ) -> dict[str, dict[str, str | int | float | bool | None]]:
     """
     Return stored formatting parameters for each column of the given table within the resolved model.
-    
+
     If the model metadata table `S_TableParameters` does not exist, returns an empty dict. Otherwise returns a mapping from column name to a dictionary of formatting parameters (parsed from JSON when present) that always includes a `"column_type"` key set to the parameter type.
-    
+
     Parameters:
         model_name (str): Name of the model to resolve.
         project_name (str): Name of the project containing the model.
         table_name (str): Name of the table whose column formatting to retrieve.
-    
+
     Returns:
         dict[str, dict[str, str | int | float | bool | None]]: Mapping of column name -> formatting dictionary containing formatting keys and a `"column_type"` entry.
     """
