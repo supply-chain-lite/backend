@@ -74,3 +74,16 @@ class RowCountRequest(BaseModel):
 
 class RowCountResponse(BaseModel):
     row_count: int
+
+
+class SetColumnFormattingRequest(BaseModel):
+    model_name: str
+    project_name: str
+    table_name: str
+    column_name: str
+    column_type: str
+    format: dict[str, str | int | float | bool | None]
+
+
+class GetColumnFormattingResponse(BaseModel):
+    column_formatting: dict[str, dict[str, str | int | float | bool | None]]

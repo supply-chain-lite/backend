@@ -20,6 +20,15 @@ add_new_column = "ALTER TABLE [{table_name}] ADD COLUMN [{column_name}] {column_
 
 check_if_table_column_exists = "SELECT 1 FROM pragma_table_xinfo(?) WHERE name = ? COLLATE NOCASE"
 
+set_column_formatting = """UPDATE S_TableParameters Set ParameterType = ?, ParameterValue = ?
+                            WHERE TableName = ? COLLATE NOCASE and ColumnName = ? COLLATE NOCASE RETURNING rowid"""
+
+insert_column_formatting = """INSERT INTO S_TableParameters (TableName, ColumnName, ParameterType, ParameterValue)
+                            VALUES (?, ?, ?, ?) RETURNING rowid"""
+
+get_column_formatting = """SELECT ColumnName, ParameterType, ParameterValue FROM S_TableParameters
+                            WHERE TableName = ? COLLATE NOCASE """
+
 
 def get_table_query(
     table_name: str,

@@ -174,3 +174,38 @@ def add_column(
             request.column_type,
         )
         return table_schemas.MessageResponse(message="Column added successfully.")
+
+
+@router.post("/set-column-formatting", response_model=table_schemas.MessageResponse)
+def set_column_formatting(
+    request: table_schemas.SetColumnFormattingRequest, user_data: tuple = Depends(_get_user_from_token)
+) -> table_schemas.MessageResponse:
+    useremail, _display_name, _role_name = user_data
+    with master_connection() as cursor:
+        table_methods.set_column_formatting(
+            cursor,
+            useremail,
+            request.model_name,
+            request.project_name,
+            request.table_name,
+            request.column_name,
+            request.column_type,
+            request.format,
+        )
+        return table_schemas.MessageResponse(message="Column formatting set successfully.")
+
+
+@router.post("/get-column-formatting", response_model=table_schemas.GetColumnFormattingResponse)
+def get_column_formatting(
+    request: table_schemas.TableHeaderRequest, user_data: tuple = Depends(_get_user_from_token)
+) -> table_schemas.GetColumnFormattingResponse:
+    useremail, _display_name, _role_name = user_data
+    with master_connection() as cursor:
+        formatting_settings = table_methods.get_column_formatting(
+            cursor,
+            useremail,
+            request.model_name,
+            request.project_name,
+            request.table_name,
+        )
+        return table_schemas.GetColumnFormattingResponse(column_formatting=formatting_settings)

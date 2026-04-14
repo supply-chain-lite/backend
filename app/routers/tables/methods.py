@@ -284,3 +284,53 @@ def add_new_column(
             table_name=table_name, column_name=table_queries._escape_identifier(column_name), column_type=column_type
         )
         model_cursor.execute(this_query)
+
+
+def set_column_formatting(
+    cursor,
+    user_email: str,
+    model_name: str,
+    project_name: str,
+    table_name: str,
+    column_name: str,
+    column_type: str,
+    column_formatting: dict[str, str | int | float | bool | None],
+):
+    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
+    if not model_id:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    access_level = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
+    if access_level is None or access_level[0] not in ("admin", "owner"):
+        raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
+    with sql_connection(model_id, model_path) as model_cursor:
+        row = model_cursor.execute(table_queries.check_if_table_exists, ("S_TableParameters",)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Cannot set column format: Table not found: S_TableParameters")
+        format_json = json.dumps(column_formatting)
+        all_rows = model_cursor.execute(
+            table_queries.set_column_formatting, (column_type, format_json, table_name, column_name)
+        ).fetchall()
+        if len(all_rows) == 0:
+            model_cursor.execute(
+                table_queries.insert_column_formatting, (table_name, column_name, column_type, format_json)
+            )
+
+
+def get_column_formatting(
+    cursor, user_email: str, model_name: str, project_name: str, table_name: str
+) -> dict[str, dict[str, str | int | float | bool | None]]:
+    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
+    if not model_id:
+        raise HTTPException(status_code=404, detail="Model not found")
+    with sql_connection(model_id, model_path) as model_cursor:
+        row = model_cursor.execute(table_queries.check_if_table_exists, ("S_TableParameters",)).fetchone()
+        if not row:
+            return {"hello": {"world": "that"}}
+        all_rows = model_cursor.execute(table_queries.get_column_formatting, (table_name,)).fetchall()
+        result = {}
+        for column_name, parameter_type, parameter_value in all_rows:
+            this_dict = {"column_type": parameter_type}
+            this_dict.update(json.loads(parameter_value))
+            result[column_name] = this_dict
+        return result
