@@ -154,13 +154,13 @@ def add_column(
     request: table_schemas.AddColumnRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> table_schemas.MessageResponse:
     """
-    Add a new column to the specified table for the authenticated user.
-
+    Add a new column to a table owned by the authenticated user.
+    
     Parameters:
-        request (AddColumnRequest): Contains `model_name`, `project_name`, `table_name`, `column_name`, and `column_type` describing the column to create.
-
+        request (AddColumnRequest): Contains `model_name`, `project_name`, `table_name`, `column_name`, and `column_type` that identify the target table and describe the column to create.
+    
     Returns:
-        MessageResponse: Confirmation message `"Column added successfully."`.
+        MessageResponse: Confirmation message "Column added successfully."
     """
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:
@@ -180,6 +180,22 @@ def add_column(
 def set_column_formatting(
     request: table_schemas.SetColumnFormattingRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> table_schemas.MessageResponse:
+    """
+    Persist formatting settings for a specific column of a user's table.
+    
+    Parameters:
+        request (SetColumnFormattingRequest): Contains table identifiers and formatting to apply:
+            - model_name: model identifier
+            - project_name: project identifier
+            - table_name: table identifier
+            - column_name: column identifier to update
+            - column_type: the column's data type
+            - format: formatting settings to persist
+        user_data (tuple): Authentication-derived user data (injected dependency); only the user's email is used.
+    
+    Returns:
+        MessageResponse: Confirmation message indicating the column formatting was set successfully.
+    """
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:
         table_methods.set_column_formatting(
@@ -199,6 +215,17 @@ def set_column_formatting(
 def get_column_formatting(
     request: table_schemas.TableHeaderRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> table_schemas.GetColumnFormattingResponse:
+    """
+    Retrieve formatting settings for the columns of a specified table for the authenticated user.
+    
+    Returns formatting settings for the table identified by `model_name`, `project_name`, and `table_name` in the request.
+    
+    Parameters:
+        request (TableHeaderRequest): Contains `model_name`, `project_name`, and `table_name` identifying the target table.
+    
+    Returns:
+        column_formatting: A mapping of column names to their persisted formatting settings.
+    """
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:
         formatting_settings = table_methods.get_column_formatting(
