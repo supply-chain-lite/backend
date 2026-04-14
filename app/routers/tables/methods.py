@@ -360,7 +360,12 @@ def get_column_formatting(
         all_rows = model_cursor.execute(table_queries.get_column_formatting, (table_name,)).fetchall()
         result = {}
         for column_name, parameter_type, parameter_value in all_rows:
-            this_dict = json.loads(parameter_value) if parameter_value else {}
+            try:
+                this_dict = json.loads(parameter_value) if parameter_value else {}
+                if not isinstance(this_dict, dict):
+                    this_dict = {}
+            except json.JSONDecodeError:
+                this_dict = {}
             this_dict["column_type"] = parameter_type
             result[column_name] = this_dict
         return result
