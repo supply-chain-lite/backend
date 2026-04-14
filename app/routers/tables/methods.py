@@ -247,21 +247,19 @@ def add_new_column(
     cursor, user_email: str, model_name: str, project_name: str, table_name: str, column_name: str, column_type: str
 ):
     """
-    Add a new column to a table in a resolved model database.
+    Add a new column to an existing table in the resolved model database.
 
     Parameters:
-        model_name (str): Name of the model to modify.
-        project_name (str): Name of the project containing the model.
-        table_name (str): Target table to which the column will be added.
-        column_name (str): Name of the new column to create.
-        column_type (str): Data type for the new column. Allowed values (case-insensitive): "TEXT", "INTEGER", "REAL", "NUMERIC", "VARCHAR", "BOOLEAN".
+        table_name (str): Target table to modify.
+        column_name (str): Name of the column to add.
+        column_type (str): Column data type. Allowed values (case-insensitive): "TEXT", "INTEGER", "REAL", "NUMERIC", "VARCHAR", "BOOLEAN".
 
     Raises:
         fastapi.HTTPException: 404 if the model is not found.
         fastapi.HTTPException: 403 if the user does not have "admin" or "owner" access to the model.
         fastapi.HTTPException: 404 if the target table does not exist in the model database.
         fastapi.HTTPException: 400 if a column with the given name already exists on the table.
-        fastapi.HTTPException: 400 if the provided column_type is not one of the allowed values.
+        fastapi.HTTPException: 400 if the provided `column_type` is not one of the allowed values.
     """
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
@@ -284,3 +282,90 @@ def add_new_column(
             table_name=table_name, column_name=table_queries._escape_identifier(column_name), column_type=column_type
         )
         model_cursor.execute(this_query)
+
+
+def set_column_formatting(
+    cursor,
+    user_email: str,
+    model_name: str,
+    project_name: str,
+    table_name: str,
+    column_name: str,
+    column_type: str,
+    column_formatting: dict[str, str | int | float | bool | None],
+):
+    """
+    Set or update the persisted formatting metadata for a single column in a model table.
+
+    This validates that the requesting user has "admin" or "owner" access to the resolved model and that the metadata table `S_TableParameters` exists, then stores `column_formatting` (JSON-serialized) for the specified `table_name`/`column_name` and `column_type`. If a formatting row for that column does not already exist, a new row is inserted.
+
+    Parameters:
+        user_email (str): Email of the requesting user used to resolve access.
+        model_name (str): Name of the model containing the table.
+        project_name (str): Name of the project containing the model.
+        table_name (str): Name of the table whose column formatting is being set.
+        column_name (str): Name of the column to set formatting for.
+        column_type (str): Type/category of the column (stored alongside the formatting).
+        column_formatting (dict[str, str | int | float | bool | None]): Formatting parameters to persist for the column; will be JSON-serialized.
+
+    Raises:
+        fastapi.HTTPException: 404 if the model is not found.
+        fastapi.HTTPException: 403 if the user lacks permission to modify the model.
+        fastapi.HTTPException: 404 if the metadata table `S_TableParameters` is not present.
+    """
+    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
+    if not model_id:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    access_level = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
+    if access_level is None or access_level[0] not in ("admin", "owner"):
+        raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
+    with sql_connection(model_id, model_path) as model_cursor:
+        row = model_cursor.execute(table_queries.check_if_table_exists, ("S_TableParameters",)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Cannot set column format: Table not found: S_TableParameters")
+        format_json = json.dumps(column_formatting)
+        all_rows = model_cursor.execute(
+            table_queries.set_column_formatting, (column_type, format_json, table_name, column_name)
+        ).fetchall()
+        if len(all_rows) == 0:
+            model_cursor.execute(
+                table_queries.insert_column_formatting, (table_name, column_name, column_type, format_json)
+            )
+
+
+def get_column_formatting(
+    cursor, user_email: str, model_name: str, project_name: str, table_name: str
+) -> dict[str, dict[str, str | int | float | bool | None]]:
+    """
+    Return stored formatting parameters for each column of the given table within the resolved model.
+
+    If the model metadata table `S_TableParameters` does not exist, returns an empty dict. Otherwise returns a mapping from column name to a dictionary of formatting parameters (parsed from JSON when present) that always includes a `"column_type"` key set to the parameter type.
+
+    Parameters:
+        model_name (str): Name of the model to resolve.
+        project_name (str): Name of the project containing the model.
+        table_name (str): Name of the table whose column formatting to retrieve.
+
+    Returns:
+        dict[str, dict[str, str | int | float | bool | None]]: Mapping of column name -> formatting dictionary containing formatting keys and a `"column_type"` entry.
+    """
+    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
+    if not model_id:
+        raise HTTPException(status_code=404, detail="Model not found")
+    with sql_connection(model_id, model_path) as model_cursor:
+        row = model_cursor.execute(table_queries.check_if_table_exists, ("S_TableParameters",)).fetchone()
+        if not row:
+            return {}
+        all_rows = model_cursor.execute(table_queries.get_column_formatting, (table_name,)).fetchall()
+        result = {}
+        for column_name, parameter_type, parameter_value in all_rows:
+            try:
+                this_dict = json.loads(parameter_value) if parameter_value else {}
+                if not isinstance(this_dict, dict):
+                    this_dict = {}
+            except json.JSONDecodeError:
+                this_dict = {}
+            this_dict["column_type"] = parameter_type
+            result[column_name] = this_dict
+        return result
