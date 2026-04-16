@@ -229,6 +229,17 @@ def _escape_identifier(name: str) -> str:
 
 
 def update_row(table_name, row_id, updates):
+    """
+    Builds a parameterized SQLite UPDATE statement that sets multiple columns for a row identified by `rowid`.
+    
+    Parameters:
+        table_name (str): Name of the table to update.
+        row_id: The `rowid` value of the row to update.
+        updates (dict[str, Any]): Mapping of column names to new values; iteration order determines the parameter order.
+    
+    Returns:
+        tuple[str, list]: SQL string with bracket-quoted identifiers and a list of parameters: the update values in iteration order followed by `row_id`.
+    """
     params = []
     update_query = f"UPDATE [{_escape_identifier(table_name)}] SET "
     for column, value in updates.items():
@@ -241,6 +252,18 @@ def update_row(table_name, row_id, updates):
 
 
 def update_rows(table_name, row_ids, column_name, column_value):
+    """
+    Builds a parameterized UPDATE statement to set a single column's value, optionally restricted to specific rowids.
+    
+    Parameters:
+        table_name (str): Name of the table to update.
+        row_ids (Sequence): Iterable of rowid values to restrict the update; if empty, no WHERE clause is added.
+        column_name (str): Name of the column to set.
+        column_value: Value to bind for the column.
+    
+    Returns:
+        tuple[str, list]: A tuple containing the SQL UPDATE string and the ordered list of bound parameters.
+    """
     params = []
     update_query = f"UPDATE [{_escape_identifier(table_name)}] SET [{_escape_identifier(column_name)}] = ? "
     params.append(column_value)
