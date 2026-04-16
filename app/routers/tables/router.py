@@ -293,5 +293,7 @@ def update_rows(
             request.row_ids,
             request.column_name,
             request.column_value,
+            request.select_filters,
+            request.text_filters,
         )
         return table_schemas.updateRowValuesResponse(rows_updated=row_count)

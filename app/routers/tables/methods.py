@@ -89,11 +89,16 @@ def get_table_data(
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
 
+    column_names = column_names or []
+    column_names.extend(select_filters.keys())
+    column_names.extend(text_filters.keys())
+
     query, params = table_queries.get_table_query(
         table_name, column_names, select_filters, text_filters, sort_columns, page_number, page_size
     )
 
     with sql_connection(model_id, model_path) as model_cursor:
+        _validate_table_and_column_names(model_cursor, table_name, column_names)
         data = model_cursor.execute(query, params).fetchall()
         return data
 
@@ -137,7 +142,12 @@ def get_distinct_column_values(
         table_name, column_name, select_filters, text_filters, page_size
     )
 
+    column_names = [column_name]
+    column_names.extend(select_filters.keys())
+    column_names.extend(text_filters.keys())
+
     with sql_connection(model_id, model_path) as model_cursor:
+        _validate_table_and_column_names(model_cursor, table_name, column_names)
         values = model_cursor.execute(query, params).fetchall()
         return [row[0] for row in values]
 
@@ -174,7 +184,10 @@ def get_row_count(
 
     query, params = table_queries.get_row_count_query(table_name, select_filters, text_filters)
 
+    column_names = list(select_filters.keys())
+    column_names.extend(text_filters.keys())
     with sql_connection(model_id, model_path) as model_cursor:
+        _validate_table_and_column_names(model_cursor, table_name, column_names)
         row = model_cursor.execute(query, params).fetchone()
         return row[0] if row else 0
 
@@ -196,9 +209,8 @@ def get_table_columns_all(cursor, user_email: str, model_name: str, project_name
         raise HTTPException(status_code=404, detail="Model not found")
 
     with sql_connection(model_id, model_path) as model_cursor:
+        _validate_table_and_column_names(model_cursor, table_name, [])
         all_rows = model_cursor.execute(table_queries.get_table_columns, (table_name,)).fetchall()
-        if len(all_rows) == 0:
-            raise HTTPException(status_code=404, detail=f"Table not found: {table_name}")
 
         table_columns = list(row[0] for row in all_rows)
 
@@ -234,6 +246,7 @@ def set_columns_order(
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
 
     with sql_connection(model_id, model_path) as model_cursor:
+        _validate_table_and_column_names(model_cursor, table_name, column_names)
         row = model_cursor.execute(table_queries.check_if_table_exists, ("S_TableGroup",)).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Cannot set column order: Table not found: S_TableGroup")
@@ -321,6 +334,7 @@ def set_column_formatting(
     if access_level is None or access_level[0] not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     with sql_connection(model_id, model_path) as model_cursor:
+        _validate_table_and_column_names(model_cursor, table_name, [column_name])
         row = model_cursor.execute(table_queries.check_if_table_exists, ("S_TableParameters",)).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Cannot set column format: Table not found: S_TableParameters")
@@ -400,9 +414,8 @@ def update_row(
     if access_level is None or access_level[0] in ("reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     with sql_connection(model_id, model_path) as model_cursor:
-        row = model_cursor.execute(table_queries.check_if_table_exists, (table_name,)).fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Table not found")
+        column_names = list(updates.keys())
+        _validate_table_and_column_names(model_cursor, table_name, column_names)
         query, values = table_queries.update_row(table_name, row_id, updates)
         if len(values) <= 1:
             raise HTTPException(status_code=400, detail="No valid columns provided for update")
@@ -418,6 +431,8 @@ def update_rows(
     row_ids: list[int],
     column_name: str,
     column_value: str | int | float | bool | None,
+    select_filters: dict[str, list[str | int | float | bool | None]],
+    text_filters: dict[str, str],
 ):
     """
     Update a single column for multiple rows in the resolved model table and return how many rows were modified.
@@ -430,6 +445,8 @@ def update_rows(
         row_ids (list[int]): List of row primary-key IDs to update.
         column_name (str): Name of the column to set.
         column_value (str | int | float | bool | None): Value to assign to the column for each specified row.
+        select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters to apply in conjunction with the row_ids; keys are column names and values are lists of allowed values for those columns. Only rows matching the specified row_ids and satisfying these filters will be updated.
+        text_filters (dict[str, str]): Substring/text filters to apply in conjunction with the row_ids; keys are column names and values are the text to search for in those columns. Only rows matching the specified row_ids and satisfying these filters will be updated.
 
     Returns:
         int: Number of rows modified by the update.
@@ -446,11 +463,29 @@ def update_rows(
     if access_level is None or access_level[0] in ("reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     with sql_connection(model_id, model_path) as model_cursor:
-        row = model_cursor.execute(table_queries.check_if_table_exists, (table_name,)).fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Table not found")
-        query, values = table_queries.update_rows(table_name, row_ids, column_name, column_value)
-        if len(values) <= 1:
-            raise HTTPException(status_code=400, detail="No valid columns provided for update")
+        column_names = [column_name]
+        column_names.extend(select_filters.keys())
+        column_names.extend(text_filters.keys())
+        _validate_table_and_column_names(model_cursor, table_name, column_names)
+        query, values = table_queries.update_rows(
+            table_name, row_ids, column_name, column_value, select_filters, text_filters
+        )
         model_cursor.execute(query, values)
         return model_cursor.rowcount()
+
+
+def _validate_table_and_column_names(cursor, table_name: str, column_names: list[str]) -> None:
+    """
+    Validate that the specified table and columns exist in the database.
+
+    Raises:
+        HTTPException(404): If the table does not exist.
+        HTTPException(404): If any of the specified columns do not exist on the table.
+    """
+    row = cursor.execute(table_queries.check_if_table_exists, (table_name,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Table not found: {table_name}")
+    for column_name in column_names:
+        row = cursor.execute(table_queries.check_if_table_column_exists, (table_name, column_name)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Column not found: {column_name} for table: {table_name}")

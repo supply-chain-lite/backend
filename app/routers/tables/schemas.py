@@ -103,6 +103,8 @@ class updateRowValuesRequest(BaseModel):
     table_name: str
     column_name: str
     column_value: str | int | float | bool | None
+    select_filters: dict[str, list[str | int | float | bool | None]]
+    text_filters: dict[str, str]
     row_ids: list[int]
 
 
