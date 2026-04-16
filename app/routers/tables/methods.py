@@ -89,13 +89,13 @@ def get_table_data(
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    column_names = column_names or []
-    column_names.extend(select_filters.keys())
-    column_names.extend(text_filters.keys())
-
     query, params = table_queries.get_table_query(
         table_name, column_names, select_filters, text_filters, sort_columns, page_number, page_size
     )
+
+    column_names = column_names or []
+    column_names.extend(select_filters.keys())
+    column_names.extend(text_filters.keys())
 
     with sql_connection(model_id, model_path) as model_cursor:
         _validate_table_and_column_names(model_cursor, table_name, column_names)
@@ -283,7 +283,7 @@ def add_new_column(
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
 
     with sql_connection(model_id, model_path) as model_cursor:
-        row = model_cursor.execute(table_queries.check_if_table_exists, (table_name,)).fetchone()
+        row = model_cursor.execute(table_queries.check_if_table_object, (table_name,)).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail=f"Cannot add column: Table not found: {table_name}")
         row = model_cursor.execute(table_queries.check_if_table_column_exists, (table_name, column_name)).fetchone()
@@ -416,6 +416,9 @@ def update_row(
     with sql_connection(model_id, model_path) as model_cursor:
         column_names = list(updates.keys())
         _validate_table_and_column_names(model_cursor, table_name, column_names)
+        row = model_cursor.execute(table_queries.check_if_table_object, (table_name,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail=f"View: {table_name} is not updatable")
         query, values = table_queries.update_row(table_name, row_id, updates)
         if len(values) <= 1:
             raise HTTPException(status_code=400, detail="No valid columns provided for update")
@@ -467,6 +470,9 @@ def update_rows(
         column_names.extend(select_filters.keys())
         column_names.extend(text_filters.keys())
         _validate_table_and_column_names(model_cursor, table_name, column_names)
+        row = model_cursor.execute(table_queries.check_if_table_object, (table_name,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail=f"View: {table_name} is not updatable")
         query, values = table_queries.update_rows(
             table_name, row_ids, column_name, column_value, select_filters, text_filters
         )

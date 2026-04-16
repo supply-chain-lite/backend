@@ -16,6 +16,8 @@ insert_column_order = "INSERT INTO S_TableGroup (GroupName, TableName, ColumnOrd
 
 check_if_table_exists = "select 1 from sqlite_master where type in ('table', 'view') and name=? collate nocase"
 
+check_if_table_object = "select 1 from sqlite_master where type in ('table') and name=? collate nocase"
+
 add_new_column = "ALTER TABLE [{table_name}] ADD COLUMN [{column_name}] {column_type}"
 
 check_if_table_column_exists = "SELECT 1 FROM pragma_table_xinfo(?) WHERE name = ? COLLATE NOCASE"
@@ -268,14 +270,18 @@ def update_rows(table_name, row_ids, column_name, column_value, select_filters, 
     for filter_col, filter_values in select_filters.items():
         if not filter_values:
             continue  # Skip empty filters to avoid unnecessary conditions
-        non_null_values = [v for v in filter_values if v is not None]
-        if non_null_values:
-            update_query += (
-                f"AND ([{filter_col}] IN ({', '.join('?' for _ in non_null_values)}) OR [{filter_col}] IS NULL) "
-            )
-            params.extend(non_null_values)
+        if None in filter_values:
+            non_null_values = [v for v in filter_values if v is not None]
+            if non_null_values:
+                update_query += (
+                    f"AND ([{filter_col}] IN ({', '.join('?' for _ in non_null_values)}) OR [{filter_col}] IS NULL) "
+                )
+                params.extend(non_null_values)
+            else:
+                update_query += f"AND [{filter_col}] IS NULL "
         else:
-            update_query += f"AND [{filter_col}] IS NULL "
+            update_query += f"AND [{filter_col}] IN ({', '.join('?' for _ in filter_values)}) "
+            params.extend(filter_values)
 
     for filter_col, text in text_filters.items():
         if not text:
