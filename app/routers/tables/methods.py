@@ -96,6 +96,7 @@ def get_table_data(
     column_names = column_names or []
     column_names.extend(select_filters.keys())
     column_names.extend(text_filters.keys())
+    column_names.extend([col for col, _ in sort_columns])
 
     with sql_connection(model_id, model_path) as model_cursor:
         _validate_table_and_column_names(model_cursor, table_name, column_names)

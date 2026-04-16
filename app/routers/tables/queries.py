@@ -263,6 +263,7 @@ def update_rows(table_name, row_ids, column_name, column_value, select_filters, 
     params = []
     update_query = f"UPDATE [{table_name}] SET [{column_name}] = ? WHERE 1=1 "
     params.append(column_value)
+    # Empty row_ids is intentional: it means update all rows (subject to select_filters/text_filters)
     if len(row_ids) > 0:
         update_query += f"AND rowid IN ({', '.join('?' for _ in row_ids)}) "
         params.extend(row_ids)
