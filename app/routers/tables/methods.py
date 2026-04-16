@@ -339,9 +339,9 @@ def get_column_formatting(
 ) -> dict[str, dict[str, str | int | float | bool | None]]:
     """
     Load persisted column formatting for the given table in the resolved model.
-    
+
     If the model metadata table `S_TableParameters` is missing, returns an empty dict. For each stored formatting row, the function returns a mapping from column name to a formatting dictionary (parsed from JSON when present); each formatting dictionary contains a "column_type" entry set to the stored parameter type.
-    
+
     Returns:
         dict[str, dict[str, str | int | float | bool | None]]: Mapping of column name to its formatting dictionary, where each dictionary includes a `"column_type"` key.
     """
@@ -375,24 +375,23 @@ def update_row(
     row_id: int,
     updates: dict[str, str | int | float | bool | None],
 ):
-
     """
     Update specified columns for a single row in the resolved model table.
-    
+
     Parameters:
-    	cursor: Database cursor used to resolve the model and access control.
-    	user_email (str): Email of the requesting user.
-    	model_name (str): Name of the model containing the target table.
-    	project_name (str): Project that scopes the model.
-    	table_name (str): Target table within the model.
-    	row_id (int): Identifier of the row to update.
-    	updates (dict[str, str | int | float | bool | None]): Mapping of column names to new values; keys are column identifiers and values are the new cell values (None to set NULL).
-    
+        cursor: Database cursor used to resolve the model and access control.
+        user_email (str): Email of the requesting user.
+        model_name (str): Name of the model containing the target table.
+        project_name (str): Project that scopes the model.
+        table_name (str): Target table within the model.
+        row_id (int): Identifier of the row to update.
+        updates (dict[str, str | int | float | bool | None]): Mapping of column names to new values; keys are column identifiers and values are the new cell values (None to set NULL).
+
     Raises:
-    	HTTPException(404): "Model not found" when the model cannot be resolved.
-    	HTTPException(403): "User does not have permission to modify the model" when the user lacks write access.
-    	HTTPException(404): "Table not found" when the target table does not exist in the model.
-    	HTTPException(400): "No valid columns provided for update" when the provided updates contain no updatable columns.
+        HTTPException(404): "Model not found" when the model cannot be resolved.
+        HTTPException(403): "User does not have permission to modify the model" when the user lacks write access.
+        HTTPException(404): "Table not found" when the target table does not exist in the model.
+        HTTPException(400): "No valid columns provided for update" when the provided updates contain no updatable columns.
     """
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
@@ -420,10 +419,9 @@ def update_rows(
     column_name: str,
     column_value: str | int | float | bool | None,
 ):
-
     """
     Update a single column for multiple rows in the resolved model table and return how many rows were modified.
-    
+
     Parameters:
         user_email (str): Email of the requesting user used to resolve model access.
         model_name (str): Name of the model containing the target table.
@@ -432,10 +430,10 @@ def update_rows(
         row_ids (list[int]): List of row primary-key IDs to update.
         column_name (str): Name of the column to set.
         column_value (str | int | float | bool | None): Value to assign to the column for each specified row.
-    
+
     Returns:
         int: Number of rows modified by the update.
-    
+
     Raises:
         HTTPException(404): If the model cannot be resolved or the target table does not exist.
         HTTPException(403): If the user does not have permission to modify the model.

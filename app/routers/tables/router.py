@@ -217,10 +217,10 @@ def get_column_formatting(
 ) -> table_schemas.GetColumnFormattingResponse:
     """
     Return column formatting settings for the specified table for the authenticated user.
-    
+
     Parameters:
         request (TableHeaderRequest): Identifies the target table via `model_name`, `project_name`, and `table_name`.
-    
+
     Returns:
         column_formatting (dict): Mapping of column names to their persisted formatting settings.
     """
@@ -242,10 +242,10 @@ def update_row(
 ) -> table_schemas.MessageResponse:
     """
     Update values for a single row in the specified table.
-    
+
     Parameters:
         request (updateRowRequest): Identifiers and update payload; must include `model_name`, `project_name`, `table_name`, `row_id`, and `updates` (mapping of column names to new values).
-    
+
     Returns:
         MessageResponse: Confirmation message `"Row updated successfully."`
     """
@@ -269,7 +269,7 @@ def update_rows(
 ) -> table_schemas.updateRowValuesResponse:
     """
     Update multiple rows in a table by setting a single column to a given value.
-    
+
     Parameters:
         request (updateRowValuesRequest): Identifiers and update payload with fields:
             - model_name: name of the model containing the project
@@ -278,7 +278,7 @@ def update_rows(
             - row_ids: list of row IDs to update
             - column_name: name of the column to set
             - column_value: value to assign to the column for each listed row
-    
+
     Returns:
         updateRowValuesResponse: Object with `rows_updated` set to the number of rows that were updated.
     """
