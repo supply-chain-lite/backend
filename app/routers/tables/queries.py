@@ -103,7 +103,6 @@ def get_table_query(
     select_query += " LIMIT ? OFFSET ?"
     params.extend([page_size, offset])
 
-    print("Generated SQL Query:", select_query)
     return select_query, params
 
 
@@ -227,3 +226,25 @@ def _escape_identifier(name: str) -> str:
         str: The escaped identifier with each ']' replaced by ']]'.
     """
     return name.replace("]", "]]")
+
+
+def update_row(table_name, row_id, updates):
+    params = []
+    update_query = f"UPDATE [{_escape_identifier(table_name)}] SET "
+    for column, value in updates.items():
+        update_query += f"[{_escape_identifier(column)}] = ?, "
+        params.append(value)
+    update_query = update_query.rstrip(", ")  # Remove trailing comma and space
+    update_query += " WHERE rowid = ?"
+    params.extend([row_id])
+    return update_query, params
+
+
+def update_rows(table_name, row_ids, column_name, column_value):
+    params = []
+    update_query = f"UPDATE [{_escape_identifier(table_name)}] SET [{_escape_identifier(column_name)}] = ? "
+    params.append(column_value)
+    if len(row_ids) > 0:
+        update_query += f"WHERE rowid IN ({', '.join('?' for _ in row_ids)})"
+        params.extend(row_ids)
+    return update_query, params

@@ -236,3 +236,40 @@ def get_column_formatting(
             request.table_name,
         )
         return table_schemas.GetColumnFormattingResponse(column_formatting=formatting_settings)
+
+
+@router.post("/update-row", response_model=table_schemas.MessageResponse)
+def update_row(
+    request: table_schemas.updateRowRequest, user_data: tuple = Depends(_get_user_from_token)
+) -> table_schemas.MessageResponse:
+    useremail, _display_name, _role_name = user_data
+    with master_connection() as cursor:
+        table_methods.update_row(
+            cursor,
+            useremail,
+            request.model_name,
+            request.project_name,
+            request.table_name,
+            request.row_id,
+            request.updates,
+        )
+        return table_schemas.MessageResponse(message="Row updated successfully.")
+
+
+@router.post("/update-rows", response_model=table_schemas.updateRowValuesResponse)
+def update_rows(
+    request: table_schemas.updateRowValuesRequest, user_data: tuple = Depends(_get_user_from_token)
+) -> table_schemas.updateRowValuesResponse:
+    useremail, _display_name, _role_name = user_data
+    with master_connection() as cursor:
+        row_count = table_methods.update_rows(
+            cursor,
+            useremail,
+            request.model_name,
+            request.project_name,
+            request.table_name,
+            request.row_ids,
+            request.column_name,
+            request.column_value,
+        )
+        return table_schemas.updateRowValuesResponse(rows_updated=row_count)
