@@ -216,15 +216,13 @@ def get_column_formatting(
     request: table_schemas.TableHeaderRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> table_schemas.GetColumnFormattingResponse:
     """
-    Retrieve formatting settings for the columns of a specified table for the authenticated user.
-
-    Returns formatting settings for the table identified by `model_name`, `project_name`, and `table_name` in the request.
+    Return column formatting settings for the specified table for the authenticated user.
 
     Parameters:
-        request (TableHeaderRequest): Contains `model_name`, `project_name`, and `table_name` identifying the target table.
+        request (TableHeaderRequest): Identifies the target table via `model_name`, `project_name`, and `table_name`.
 
     Returns:
-        column_formatting: A mapping of column names to their persisted formatting settings.
+        column_formatting (dict): Mapping of column names to their persisted formatting settings.
     """
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:
@@ -236,3 +234,66 @@ def get_column_formatting(
             request.table_name,
         )
         return table_schemas.GetColumnFormattingResponse(column_formatting=formatting_settings)
+
+
+@router.post("/update-row", response_model=table_schemas.MessageResponse)
+def update_row(
+    request: table_schemas.updateRowRequest, user_data: tuple = Depends(_get_user_from_token)
+) -> table_schemas.MessageResponse:
+    """
+    Update values for a single row in the specified table.
+
+    Parameters:
+        request (updateRowRequest): Identifiers and update payload; must include `model_name`, `project_name`, `table_name`, `row_id`, and `updates` (mapping of column names to new values).
+
+    Returns:
+        MessageResponse: Confirmation message `"Row updated successfully."`
+    """
+    useremail, _display_name, _role_name = user_data
+    with master_connection() as cursor:
+        table_methods.update_row(
+            cursor,
+            useremail,
+            request.model_name,
+            request.project_name,
+            request.table_name,
+            request.row_id,
+            request.updates,
+        )
+        return table_schemas.MessageResponse(message="Row updated successfully.")
+
+
+@router.post("/update-rows", response_model=table_schemas.updateRowValuesResponse)
+def update_rows(
+    request: table_schemas.updateRowValuesRequest, user_data: tuple = Depends(_get_user_from_token)
+) -> table_schemas.updateRowValuesResponse:
+    """
+    Update multiple rows in a table by setting a single column to a given value.
+
+    Parameters:
+        request (updateRowValuesRequest): Identifiers and update payload with fields:
+            - model_name: name of the model containing the project
+            - project_name: project identifier
+            - table_name: target table name
+            - row_ids: list of row IDs to update
+            - column_name: name of the column to set
+            - column_value: value to assign to the column for each listed row
+
+    Returns:
+        updateRowValuesResponse: Object with `rows_updated` set to the number of rows that were updated.
+    """
+    useremail, _display_name, _role_name = user_data
+    with master_connection() as cursor:
+        row_count = table_methods.update_rows(
+            cursor,
+            useremail,
+            request.model_name,
+            request.project_name,
+            request.table_name,
+            request.row_ids,
+            request.column_name,
+            request.column_value,
+            request.select_filters,
+            request.text_filters,
+        )
+        return table_schemas.updateRowValuesResponse(rows_updated=row_count)

@@ -14,7 +14,9 @@ update_column_order = "UPDATE S_TableGroup SET ColumnOrder = ? WHERE TableName =
 
 insert_column_order = "INSERT INTO S_TableGroup (GroupName, TableName, ColumnOrder) VALUES (?, ?, ?) RETURNING rowid"
 
-check_if_table_exists = "select 1 from sqlite_master where type='table' and name=? collate nocase"
+check_if_table_exists = "select 1 from sqlite_master where type in ('table', 'view') and name=? collate nocase"
+
+check_if_table_object = "select 1 from sqlite_master where type in ('table') and name=? collate nocase"
 
 add_new_column = "ALTER TABLE [{table_name}] ADD COLUMN [{column_name}] {column_type}"
 
@@ -68,7 +70,7 @@ def get_table_query(
     if page_number <= 0:
         raise HTTPException(status_code=400, detail="Page number must be greater than 0")
 
-    select_query = f"SELECT rowid, [{'], ['.join(_escape_identifier(col) for col in column_names)}] FROM [{_escape_identifier(table_name)}] WHERE 1=1 "
+    select_query = f"SELECT rowid, [{'], ['.join(col for col in column_names)}] FROM [{table_name}] WHERE 1=1 "
 
     for filter_col, filter_values in select_filters.items():
         if not filter_values:
@@ -76,18 +78,20 @@ def get_table_query(
         if None in filter_values:
             non_null_values = [value for value in filter_values if value is not None]
             if non_null_values:
-                select_query += f"AND ([{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in non_null_values)}) OR [{_escape_identifier(filter_col)}] IS NULL) "
+                select_query += (
+                    f"AND ([{filter_col}] IN ({', '.join('?' for _ in non_null_values)}) OR [{filter_col}] IS NULL) "
+                )
                 params.extend(non_null_values)
             else:
-                select_query += f"AND [{_escape_identifier(filter_col)}] IS NULL "
+                select_query += f"AND [{filter_col}] IS NULL "
         else:
-            select_query += f"AND [{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in filter_values)}) "
+            select_query += f"AND [{filter_col}] IN ({', '.join('?' for _ in filter_values)}) "
             params.extend(filter_values)
 
     for column_name, text in text_filters.items():
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
-        select_query += f"AND UPPER([{_escape_identifier(column_name)}]) LIKE ? "
+        select_query += f"AND UPPER([{column_name}]) LIKE ? "
         params.append(f"%{text.upper()}%")
 
     offset = (page_number - 1) * page_size
@@ -98,12 +102,11 @@ def get_table_query(
             raise HTTPException(
                 status_code=400, detail=f"Invalid sort direction '{direction}' for column '{column_name}'"
             )
-        select_query += f"[{_escape_identifier(column_name)}] {direction.upper()}, "
+        select_query += f"[{column_name}] {direction.upper()}, "
     select_query = select_query.rstrip(", ")  # Remove trailing comma and space if sort_columns were added
     select_query += " LIMIT ? OFFSET ?"
     params.extend([page_size, offset])
 
-    print("Generated SQL Query:", select_query)
     return select_query, params
 
 
@@ -135,7 +138,7 @@ def get_distinct_column_values_query(
     if page_size <= 0:
         raise HTTPException(status_code=400, detail="Page size must be greater than 0")
 
-    query = f"SELECT DISTINCT [{_escape_identifier(column_name)}] FROM [{_escape_identifier(table_name)}] WHERE 1=1 "
+    query = f"SELECT DISTINCT [{column_name}] FROM [{table_name}] WHERE 1=1 "
 
     for filter_col, filter_values in select_filters.items():
         if filter_col.upper() == column_name.upper():
@@ -145,18 +148,20 @@ def get_distinct_column_values_query(
         if None in filter_values:
             non_null_values = [value for value in filter_values if value is not None]
             if non_null_values:
-                query += f"AND ([{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in non_null_values)}) OR [{_escape_identifier(filter_col)}] IS NULL) "
+                query += (
+                    f"AND ([{filter_col}] IN ({', '.join('?' for _ in non_null_values)}) OR [{filter_col}] IS NULL) "
+                )
                 params.extend(non_null_values)
             else:
-                query += f"AND [{_escape_identifier(filter_col)}] IS NULL "
+                query += f"AND [{filter_col}] IS NULL "
         else:
-            query += f"AND [{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in filter_values)}) "
+            query += f"AND [{filter_col}] IN ({', '.join('?' for _ in filter_values)}) "
             params.extend(filter_values)
 
     for filter_col, text in text_filters.items():
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
-        query += f"AND UPPER([{_escape_identifier(filter_col)}]) LIKE ? "
+        query += f"AND UPPER([{filter_col}]) LIKE ? "
         params.append(f"%{text.upper()}%")
 
     query += " ORDER BY 1 COLLATE NOCASE"
@@ -191,7 +196,7 @@ def get_row_count_query(
     if not table_name or table_name.strip() == "":
         raise HTTPException(status_code=400, detail="Table name must be specified")
 
-    query = f"SELECT COUNT(*) FROM [{_escape_identifier(table_name)}] WHERE 1=1 "
+    query = f"SELECT COUNT(*) FROM [{table_name}] WHERE 1=1 "
 
     for filter_col, filter_values in select_filters.items():
         if not filter_values:
@@ -199,31 +204,92 @@ def get_row_count_query(
         if None in filter_values:
             non_null_values = [value for value in filter_values if value is not None]
             if non_null_values:
-                query += f"AND ([{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in non_null_values)}) OR [{_escape_identifier(filter_col)}] IS NULL) "
+                query += (
+                    f"AND ([{filter_col}] IN ({', '.join('?' for _ in non_null_values)}) OR [{filter_col}] IS NULL) "
+                )
                 params.extend(non_null_values)
             else:
-                query += f"AND [{_escape_identifier(filter_col)}] IS NULL "
+                query += f"AND [{filter_col}] IS NULL "
         else:
-            query += f"AND [{_escape_identifier(filter_col)}] IN ({', '.join('?' for _ in filter_values)}) "
+            query += f"AND [{filter_col}] IN ({', '.join('?' for _ in filter_values)}) "
             params.extend(filter_values)
 
     for filter_col, text in text_filters.items():
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
-        query += f"AND UPPER([{_escape_identifier(filter_col)}]) LIKE ? "
+        query += f"AND UPPER([{filter_col}]) LIKE ? "
         params.append(f"%{text.upper()}%")
 
     return query, params
 
 
-def _escape_identifier(name: str) -> str:
+def update_row(table_name, row_id, updates):
     """
-    Escape a SQLite bracket-quoted identifier by doubling any ']' characters.
+    Builds a parameterized SQLite UPDATE statement that sets multiple columns for a row identified by `rowid`.
 
     Parameters:
-        name (str): Identifier to escape.
+        table_name (str): Name of the table to update.
+        row_id: The `rowid` value of the row to update.
+        updates (dict[str, Any]): Mapping of column names to new values; iteration order determines the parameter order.
 
     Returns:
-        str: The escaped identifier with each ']' replaced by ']]'.
+        tuple[str, list]: SQL string with bracket-quoted identifiers and a list of parameters: the update values in iteration order followed by `row_id`.
     """
-    return name.replace("]", "]]")
+    params = []
+    update_query = f"UPDATE [{table_name}] SET "
+    if len(updates) == 0:
+        raise HTTPException(status_code=400, detail="No columns provided for update")
+    for column, value in updates.items():
+        update_query += f"[{column}] = ?, "
+        params.append(value)
+    update_query = update_query.rstrip(", ")  # Remove trailing comma and space
+    update_query += " WHERE rowid = ?"
+    params.extend([row_id])
+    return update_query, params
+
+
+def update_rows(table_name, row_ids, column_name, column_value, select_filters, text_filters):
+    """
+    Builds a parameterized UPDATE statement to set a single column's value, optionally restricted to specific rowids.
+
+    Parameters:
+        table_name (str): Name of the table to update.
+        row_ids (Sequence): Iterable of rowid values to restrict the update; if empty, no WHERE clause is added.
+        column_name (str): Name of the column to set.
+        column_value: Value to bind for the column.
+        select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters to apply in conjunction with the row_ids; keys are column names and values are lists of allowed values for those columns. Only rows matching the specified row_ids and satisfying these filters will be updated.
+        text_filters (dict[str, str]): Substring/text filters to apply in conjunction with the row_ids; keys are column names and values are the text to search for in those columns. Only rows matching the specified row_ids and satisfying these filters will be updated.
+    Returns:
+        tuple[str, list]: A tuple containing the SQL UPDATE string and the ordered list of bound parameters.
+    """
+    params = []
+    update_query = f"UPDATE [{table_name}] SET [{column_name}] = ? WHERE 1=1 "
+    params.append(column_value)
+    # Empty row_ids is intentional: it means update all rows (subject to select_filters/text_filters)
+    if len(row_ids) > 0:
+        update_query += f"AND rowid IN ({', '.join('?' for _ in row_ids)}) "
+        params.extend(row_ids)
+
+    for filter_col, filter_values in select_filters.items():
+        if not filter_values:
+            continue  # Skip empty filters to avoid unnecessary conditions
+        if None in filter_values:
+            non_null_values = [v for v in filter_values if v is not None]
+            if non_null_values:
+                update_query += (
+                    f"AND ([{filter_col}] IN ({', '.join('?' for _ in non_null_values)}) OR [{filter_col}] IS NULL) "
+                )
+                params.extend(non_null_values)
+            else:
+                update_query += f"AND [{filter_col}] IS NULL "
+        else:
+            update_query += f"AND [{filter_col}] IN ({', '.join('?' for _ in filter_values)}) "
+            params.extend(filter_values)
+
+    for filter_col, text in text_filters.items():
+        if not text:
+            continue  # Skip empty text filters to avoid unnecessary conditions
+        update_query += f"AND UPPER([{filter_col}]) LIKE ? "
+        params.append(f"%{text.upper()}%")
+
+    return update_query, params

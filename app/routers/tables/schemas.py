@@ -82,8 +82,31 @@ class SetColumnFormattingRequest(BaseModel):
     table_name: str
     column_name: str
     column_type: str
-    format: dict[str, str | int | float | bool | None]
+    format: dict[str, str | int | float | bool | None | list | dict]
 
 
 class GetColumnFormattingResponse(BaseModel):
-    column_formatting: dict[str, dict[str, str | int | float | bool | None]]
+    column_formatting: dict[str, dict[str, str | int | float | bool | None | list | dict]]
+
+
+class updateRowRequest(BaseModel):
+    model_name: str
+    project_name: str
+    table_name: str
+    row_id: int
+    updates: dict[str, str | int | float | bool | None]
+
+
+class updateRowValuesRequest(BaseModel):
+    model_name: str
+    project_name: str
+    table_name: str
+    column_name: str
+    column_value: str | int | float | bool | None
+    select_filters: dict[str, list[str | int | float | bool | None]]
+    text_filters: dict[str, str]
+    row_ids: list[int]
+
+
+class updateRowValuesResponse(BaseModel):
+    rows_updated: int
