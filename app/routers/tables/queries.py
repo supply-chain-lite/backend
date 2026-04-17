@@ -237,6 +237,8 @@ def update_row(table_name, row_id, updates):
     """
     params = []
     update_query = f"UPDATE [{table_name}] SET "
+    if len(updates) == 0:
+        raise HTTPException(status_code=400, detail="No columns provided for update")
     for column, value in updates.items():
         update_query += f"[{column}] = ?, "
         params.append(value)
