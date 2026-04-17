@@ -14,9 +14,9 @@ update_column_order = "UPDATE S_TableGroup SET ColumnOrder = ? WHERE TableName =
 
 insert_column_order = "INSERT INTO S_TableGroup (GroupName, TableName, ColumnOrder) VALUES (?, ?, ?) RETURNING rowid"
 
-check_if_table_exists = "select 1 from sqlite_master where type in ('table', 'view') and name=? collate nocase"
-
-check_if_table_object = "select 1 from sqlite_master where type in ('table') and name=? collate nocase"
+check_if_table_exists = (
+    "select type from sqlite_master where type in ('table', 'view') collate nocase and name=? collate nocase"
+)
 
 add_new_column = "ALTER TABLE [{table_name}] ADD COLUMN [{column_name}] {column_type}"
 
@@ -70,7 +70,7 @@ def get_table_query(
     if page_number <= 0:
         raise HTTPException(status_code=400, detail="Page number must be greater than 0")
 
-    select_query = f"SELECT rowid, [{'], ['.join(col for col in column_names)}] FROM [{table_name}] WHERE 1=1 "
+    select_query = f"SELECT [{'], ['.join(col for col in column_names)}] FROM [{table_name}] WHERE 1=1 "
 
     for filter_col, filter_values in select_filters.items():
         if not filter_values:
@@ -91,8 +91,8 @@ def get_table_query(
     for column_name, text in text_filters.items():
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
-        select_query += f"AND UPPER([{column_name}]) LIKE ? "
-        params.append(f"%{text.upper()}%")
+        select_query += f"AND [{column_name}] LIKE ? COLLATE NOCASE "
+        params.append(f"%{text}%")
 
     offset = (page_number - 1) * page_size
     if len(sort_columns) > 0:
@@ -161,8 +161,8 @@ def get_distinct_column_values_query(
     for filter_col, text in text_filters.items():
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
-        query += f"AND UPPER([{filter_col}]) LIKE ? "
-        params.append(f"%{text.upper()}%")
+        query += f"AND [{filter_col}] LIKE ? COLLATE NOCASE "
+        params.append(f"%{text}%")
 
     query += " ORDER BY 1 COLLATE NOCASE"
     query += " LIMIT ?"
@@ -217,8 +217,8 @@ def get_row_count_query(
     for filter_col, text in text_filters.items():
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
-        query += f"AND UPPER([{filter_col}]) LIKE ? "
-        params.append(f"%{text.upper()}%")
+        query += f"AND [{filter_col}] LIKE ? COLLATE NOCASE "
+        params.append(f"%{text}%")
 
     return query, params
 
@@ -289,7 +289,88 @@ def update_rows(table_name, row_ids, column_name, column_value, select_filters, 
     for filter_col, text in text_filters.items():
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
-        update_query += f"AND UPPER([{filter_col}]) LIKE ? "
-        params.append(f"%{text.upper()}%")
+        update_query += f"AND [{filter_col}] LIKE ? COLLATE NOCASE "
+        params.append(f"%{text}%")
 
     return update_query, params
+
+
+def delete_rows(table_name, row_ids, select_filters, text_filters):
+    params = []
+    delete_query = f"DELETE FROM [{table_name}] WHERE 1=1 "
+    # Empty row_ids is intentional: it means delete all rows (subject to select_filters/text_filters)
+    if len(row_ids) > 0:
+        delete_query += f"AND rowid IN ({', '.join('?' for _ in row_ids)}) "
+        params.extend(row_ids)
+
+    for filter_col, filter_values in select_filters.items():
+        if not filter_values:
+            continue  # Skip empty filters to avoid unnecessary conditions
+        if None in filter_values:
+            non_null_values = [v for v in filter_values if v is not None]
+            if non_null_values:
+                delete_query += (
+                    f"AND ([{filter_col}] IN ({', '.join('?' for _ in non_null_values)}) OR [{filter_col}] IS NULL) "
+                )
+                params.extend(non_null_values)
+            else:
+                delete_query += f"AND [{filter_col}] IS NULL "
+        else:
+            delete_query += f"AND [{filter_col}] IN ({', '.join('?' for _ in filter_values)}) "
+            params.extend(filter_values)
+
+    for filter_col, text in text_filters.items():
+        if not text:
+            continue  # Skip empty text filters to avoid unnecessary conditions
+        delete_query += f"AND [{filter_col}] LIKE ? COLLATE NOCASE "
+        params.append(f"%{text}%")
+
+    return delete_query, params
+
+
+def get_summary_stats_query(table_name, column_names, select_filters, text_filters):
+    params = []
+    stats_query = "SELECT "
+    for column_name, stat in column_names.items():
+        stats_query += f"{stat}([{column_name}]), "
+
+    stats_query = stats_query.rstrip(", ")  # Remove trailing comma and space
+    stats_query += f" FROM [{table_name}] WHERE 1=1 "
+
+    for filter_col, filter_values in select_filters.items():
+        if not filter_values:
+            continue  # Skip empty filters to avoid unnecessary conditions
+        if None in filter_values:
+            non_null_values = [v for v in filter_values if v is not None]
+            if non_null_values:
+                stats_query += (
+                    f"AND ([{filter_col}] IN ({', '.join('?' for _ in non_null_values)}) OR [{filter_col}] IS NULL) "
+                )
+                params.extend(non_null_values)
+            else:
+                stats_query += f"AND [{filter_col}] IS NULL "
+        else:
+            stats_query += f"AND [{filter_col}] IN ({', '.join('?' for _ in filter_values)}) "
+            params.extend(filter_values)
+
+    for filter_col, text in text_filters.items():
+        if not text:
+            continue  # Skip empty text filters to avoid unnecessary conditions
+        stats_query += f"AND [{filter_col}] LIKE ? COLLATE NOCASE "
+        params.append(f"%{text}%")
+
+    return stats_query, params
+
+
+def add_row(table_name, values):
+    params = []
+    column_names = [col for col in values.keys() if values[col] is not None]
+    if len(column_names) == 0:
+        raise HTTPException(status_code=400, detail="At least one non-null value must be provided to add a row")
+    columns = ", ".join(f"[{col}]" for col in column_names)
+    placeholders = ", ".join("?" for _ in column_names)
+    insert_query = f"INSERT INTO [{table_name}] ({columns}) VALUES ({placeholders})"
+    params.extend(v for v in values.values() if v is not None)
+    if len(params) == 0:
+        raise HTTPException(status_code=400, detail="At least one non-null value must be provided to add a row")
+    return insert_query, params

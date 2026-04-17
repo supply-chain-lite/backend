@@ -297,3 +297,59 @@ def update_rows(
             request.text_filters,
         )
         return table_schemas.updateRowValuesResponse(rows_updated=row_count)
+
+
+@router.post("/delete-rows", response_model=table_schemas.DeleteRowsResponse)
+def delete_rows(
+    request: table_schemas.DeleteRowsRequest, user_data: tuple = Depends(_get_user_from_token)
+) -> table_schemas.DeleteRowsResponse:
+    useremail, _display_name, _role_name = user_data
+    with master_connection() as cursor:
+        rows_deleted = table_methods.delete_rows(
+            cursor,
+            useremail,
+            request.model_name,
+            request.project_name,
+            request.table_name,
+            request.row_ids,
+            request.select_filters,
+            request.text_filters,
+        )
+        return table_schemas.DeleteRowsResponse(rows_deleted=rows_deleted)
+
+
+@router.post("/summary", response_model=table_schemas.getSummaryStatsResponse)
+def get_summary_stats(
+    request: table_schemas.getSummaryStatsRequest, user_data: tuple = Depends(_get_user_from_token)
+) -> table_schemas.getSummaryStatsResponse:
+    useremail, _display_name, _role_name = user_data
+    with master_connection() as cursor:
+        summary_stats = table_methods.get_summary_stats(
+            cursor,
+            useremail,
+            request.model_name,
+            request.project_name,
+            request.table_name,
+            request.column_names,
+            request.select_filters,
+            request.text_filters,
+        )
+        print("Summary stats:", summary_stats)
+        return table_schemas.getSummaryStatsResponse(summary=summary_stats)
+
+
+@router.post("/add-row", response_model=table_schemas.MessageResponse)
+def add_row(
+    request: table_schemas.AddRowRequest, user_data: tuple = Depends(_get_user_from_token)
+) -> table_schemas.MessageResponse:
+    useremail, _display_name, _role_name = user_data
+    with master_connection() as cursor:
+        table_methods.add_row(
+            cursor,
+            useremail,
+            request.model_name,
+            request.project_name,
+            request.table_name,
+            request.values,
+        )
+        return table_schemas.MessageResponse(message="Row added successfully.")

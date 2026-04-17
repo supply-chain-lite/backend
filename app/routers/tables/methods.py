@@ -89,17 +89,22 @@ def get_table_data(
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    query, params = table_queries.get_table_query(
-        table_name, column_names, select_filters, text_filters, sort_columns, page_number, page_size
-    )
+    if len(column_names) == 0:
+        raise HTTPException(status_code=400, detail="At least one column must be selected")
 
-    column_names = column_names or []
-    column_names.extend(select_filters.keys())
-    column_names.extend(text_filters.keys())
-    column_names.extend([col for col, _ in sort_columns])
+    query_columns = column_names or []
+    query_columns.extend(select_filters.keys())
+    query_columns.extend(text_filters.keys())
+    query_columns.extend([col for col, _ in sort_columns])
 
     with sql_connection(model_id, model_path) as model_cursor:
-        _validate_table_and_column_names(model_cursor, table_name, column_names)
+        object_type = _validate_table_and_column_names(model_cursor, table_name, query_columns)
+        if object_type == "table":
+            # add rowid to the selected columns for tables to support updates/deletes; it will be ignored for views
+            column_names.insert(0, "rowid")
+        query, params = table_queries.get_table_query(
+            table_name, column_names, select_filters, text_filters, sort_columns, page_number, page_size
+        )
         data = model_cursor.execute(query, params).fetchall()
         return data
 
@@ -284,15 +289,15 @@ def add_new_column(
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
 
     with sql_connection(model_id, model_path) as model_cursor:
-        row = model_cursor.execute(table_queries.check_if_table_object, (table_name,)).fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail=f"Cannot add column: Table not found: {table_name}")
+        object_type = _validate_table_and_column_names(model_cursor, table_name, [])
+        if object_type != "table":
+            raise HTTPException(status_code=404, detail=f"Cannot add column to view:{table_name}")
         row = model_cursor.execute(table_queries.check_if_table_column_exists, (table_name, column_name)).fetchone()
         if row:
             raise HTTPException(status_code=400, detail=f"Cannot add column: Column already exists: {column_name}")
         if column_type.upper() not in ("TEXT", "INTEGER", "REAL", "NUMERIC", "VARCHAR", "BOOLEAN"):
             raise HTTPException(status_code=400, detail=f"Cannot add column: Invalid column type: {column_type}")
-        
+
         if "[" in column_name or "]" in column_name:
             raise HTTPException(status_code=400, detail=f"Cannot add column: Invalid column name: {column_name}")
         this_query = table_queries.add_new_column.format(
@@ -419,9 +424,8 @@ def update_row(
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     with sql_connection(model_id, model_path) as model_cursor:
         column_names = list(updates.keys())
-        _validate_table_and_column_names(model_cursor, table_name, column_names)
-        row = model_cursor.execute(table_queries.check_if_table_object, (table_name,)).fetchone()
-        if not row:
+        object_type = _validate_table_and_column_names(model_cursor, table_name, column_names)
+        if object_type != "table":
             raise HTTPException(status_code=404, detail=f"View: {table_name} is not updatable")
         query, values = table_queries.update_row(table_name, row_id, updates)
         if len(values) <= 1:
@@ -473,9 +477,8 @@ def update_rows(
         column_names = [column_name]
         column_names.extend(select_filters.keys())
         column_names.extend(text_filters.keys())
-        _validate_table_and_column_names(model_cursor, table_name, column_names)
-        row = model_cursor.execute(table_queries.check_if_table_object, (table_name,)).fetchone()
-        if not row:
+        object_type = _validate_table_and_column_names(model_cursor, table_name, column_names)
+        if object_type != "table":
             raise HTTPException(status_code=404, detail=f"View: {table_name} is not updatable")
         query, values = table_queries.update_rows(
             table_name, row_ids, column_name, column_value, select_filters, text_filters
@@ -484,7 +487,7 @@ def update_rows(
         return model_cursor.rowcount()
 
 
-def _validate_table_and_column_names(cursor, table_name: str, column_names: list[str]) -> None:
+def _validate_table_and_column_names(cursor, table_name: str, column_names: list[str]) -> str:
     """
     Validate that the specified table and columns exist in the database.
 
@@ -495,7 +498,93 @@ def _validate_table_and_column_names(cursor, table_name: str, column_names: list
     row = cursor.execute(table_queries.check_if_table_exists, (table_name,)).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail=f"Table not found: {table_name}")
+    object_type = row[0].lower()
     for column_name in column_names:
         row = cursor.execute(table_queries.check_if_table_column_exists, (table_name, column_name)).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail=f"Column not found: {column_name} for table: {table_name}")
+    return object_type
+
+
+def delete_rows(
+    cursor,
+    user_email: str,
+    model_name: str,
+    project_name: str,
+    table_name: str,
+    row_ids: list[int],
+    select_filters: dict[str, list[str | int | float | bool | None]],
+    text_filters: dict[str, str],
+):
+
+    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
+    if not model_id:
+        raise HTTPException(status_code=404, detail="Model not found")
+    access_level = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
+    if access_level is None or access_level[0] in ("reader", "readonly"):
+        raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
+    with sql_connection(model_id, model_path) as model_cursor:
+        column_names = list(select_filters.keys())
+        column_names.extend(text_filters.keys())
+        object_type = _validate_table_and_column_names(model_cursor, table_name, column_names)
+        if object_type != "table":
+            raise HTTPException(status_code=404, detail=f"View: {table_name} is not updatable")
+        query, values = table_queries.delete_rows(table_name, row_ids, select_filters, text_filters)
+        model_cursor.execute(query, values)
+        return model_cursor.rowcount()
+
+
+def get_summary_stats(
+    cursor,
+    user_email: str,
+    model_name: str,
+    project_name: str,
+    table_name: str,
+    column_names: dict[str, str],
+    select_filters: dict[str, list[str | int | float | bool | None]],
+    text_filters: dict[str, str],
+):
+
+    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
+    if not model_id:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    with sql_connection(model_id, model_path) as model_cursor:
+        column_names_list = list(column_names.keys())
+        column_names_list.extend(select_filters.keys())
+        column_names_list.extend(text_filters.keys())
+        _validate_table_and_column_names(model_cursor, table_name, column_names_list)
+        for column_name, summary_function in column_names.items():
+            if summary_function.lower() not in ("count", "avg", "sum", "min", "max"):
+                # delete that key to avoid SQL injection, and the query will fail later if the column name is invalid
+                del column_names[column_name]
+
+        query, values = table_queries.get_summary_stats_query(table_name, column_names, select_filters, text_filters)
+        result = model_cursor.execute(query, values).fetchone()
+        summary_stats = {}
+        for idx, column_name in enumerate(column_names.keys()):
+            summary_stats[column_name] = result[idx]
+        return summary_stats
+
+
+def add_row(
+    cursor,
+    user_email: str,
+    model_name: str,
+    project_name: str,
+    table_name: str,
+    values: dict[str, str | int | float | bool | None],
+):
+    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
+    if not model_id:
+        raise HTTPException(status_code=404, detail="Model not found")
+    access_level = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
+    if access_level is None or access_level[0] in ("reader", "readonly"):
+        raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
+    with sql_connection(model_id, model_path) as model_cursor:
+        column_names = list(values.keys())
+        object_type = _validate_table_and_column_names(model_cursor, table_name, column_names)
+        if object_type != "table":
+            raise HTTPException(status_code=404, detail=f"View: {table_name} is not updatable")
+        query, query_values = table_queries.add_row(table_name, values)
+        model_cursor.execute(query, query_values)
