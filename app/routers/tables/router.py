@@ -268,17 +268,16 @@ def update_rows(
     request: table_schemas.updateRowValuesRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> table_schemas.updateRowValuesResponse:
     """
-    Update multiple rows in a table by setting a single column to a given value.
-
+    Update the specified rows in a table by setting a single column to a provided value.
+    
     Parameters:
-        request (updateRowValuesRequest): Identifiers and update payload with fields:
-            - model_name: name of the model containing the project
-            - project_name: project identifier
-            - table_name: target table name
+        request (updateRowValuesRequest): Contains identifiers and the update payload:
+            - model_name, project_name, table_name: target table identifiers
             - row_ids: list of row IDs to update
             - column_name: name of the column to set
             - column_value: value to assign to the column for each listed row
-
+            - select_filters, text_filters: optional filters that further restrict which rows are affected
+    
     Returns:
         updateRowValuesResponse: Object with `rows_updated` set to the number of rows that were updated.
     """
@@ -303,6 +302,16 @@ def update_rows(
 def delete_rows(
     request: table_schemas.DeleteRowsRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> table_schemas.DeleteRowsResponse:
+    """
+    Delete rows from the specified table that match the provided row IDs and/or filters.
+    
+    Parameters:
+        request (DeleteRowsRequest): Contains `model_name`, `project_name`, `table_name`, `row_ids`,
+            `select_filters`, and `text_filters` used to identify which rows to delete.
+    
+    Returns:
+        rows_deleted (int): Number of rows that were deleted.
+    """
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:
         rows_deleted = table_methods.delete_rows(
@@ -322,6 +331,15 @@ def delete_rows(
 def get_summary_stats(
     request: table_schemas.getSummaryStatsRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> table_schemas.getSummaryStatsResponse:
+    """
+    Retrieve aggregated summary statistics for specified columns of a table.
+    
+    Parameters:
+        request (getSummaryStatsRequest): Request containing `model_name`, `project_name`, `table_name`, `column_names`, and optional `select_filters` and `text_filters` to scope the aggregation.
+    
+    Returns:
+        getSummaryStatsResponse: A response wrapping a mapping from column name to its computed summary statistics (e.g., count, mean, min, max) for the filtered dataset.
+    """
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:
         summary_stats = table_methods.get_summary_stats(
@@ -341,6 +359,15 @@ def get_summary_stats(
 def add_row(
     request: table_schemas.AddRowRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> table_schemas.MessageResponse:
+    """
+    Add a new row to the specified table within the given model and project.
+    
+    Parameters:
+        request (AddRowRequest): Contains `model_name`, `project_name`, `table_name`, and `values` (a mapping of column names to their values).
+    
+    Returns:
+        MessageResponse: A message confirming the row was added, e.g. "Row added successfully."
+    """
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:
         table_methods.add_row(

@@ -64,26 +64,27 @@ def get_table_data(
     page_size: int,
 ) -> list[tuple[str | int | float | bool | None, ...]]:
     """
-    Fetch rows from a table applying selected columns, filters, sorting, and pagination.
-
+    Fetch rows from a table using the requested columns, filters, sorting, and pagination.
+    
     Parameters:
-        cursor: Database cursor used to resolve the target model.
-        user_email (str): Requesting user's email used for model resolution.
+        cursor: Database cursor used to resolve the target model and to check access.
+        user_email (str): Requesting user's email for model resolution and access checks.
         model_name (str): Name of the model containing the table.
         project_name (str): Project name containing the model.
         table_name (str): Target table name.
-        column_names (list[str]): Columns to select, in the requested order.
-        select_filters (dict[str, list[str]]): Exact-match filters mapping column names to a list of permitted values.
+        column_names (list[str]): Columns to return, in the requested order; must contain at least one column.
+        select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters mapping column names to allowed values.
         text_filters (dict[str, str]): Substring/text filters mapping column names to search terms.
-        sort_columns (list[list[str, str]]): Sort specification as a list of [column_name, direction], where direction is typically "asc" or "desc".
+        sort_columns (list[list[str, str]]): Sort specification as a list of [column_name, direction] pairs (e.g., ["col", "asc"]).
         page_number (int): 1-based page number for pagination.
         page_size (int): Number of rows per page.
-
+    
     Returns:
-        list[tuple[str | int | float | bool | None, ...]]: Rows matching the query; each row is a tuple of column values in the same order as `column_names`. Elements may be `str`, `int`, `float`, `bool`, or `None`.
-
+        list[tuple[str | int | float | bool | None, ...]]: Rows matching the query; each row is a tuple of column values in the same order as `column_names`.
+    
     Raises:
-        HTTPException: with status code 404 if the model cannot be resolved for the given user/model/project.
+        HTTPException: 404 if the model cannot be resolved for the given user/model/project.
+        HTTPException: 400 if `column_names` is empty.
     """
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
@@ -122,10 +123,9 @@ def get_distinct_column_values(
     page_size: int,
 ) -> list[str | int | float | bool | None]:
     """
-    Get distinct values for a specific column in a table, applying selection and text filters and limiting results to page_size.
-
+    Return distinct values for a specific column in a table, applying exact-match and text filters and limiting the result size.
+    
     Parameters:
-        cursor: Database cursor or connection used to resolve the target model.
         user_email (str): Email of the authenticated user owning the model.
         model_name (str): Name of the model containing the table.
         project_name (str): Project name containing the model.
@@ -134,10 +134,10 @@ def get_distinct_column_values(
         select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters keyed by column name.
         text_filters (dict[str, str]): Full-text or substring filters keyed by column name.
         page_size (int): Maximum number of distinct values to return.
-
+    
     Returns:
-        list[str | int | float | bool | None]: Distinct values (each taken from the first column of each result row) in the order produced by the database, limited to page_size.
-
+        list[str | int | float | bool | None]: Distinct values for the specified column as produced by the database, ordered by the database and limited to page_size.
+    
     Raises:
         HTTPException: Raised with status_code 404 and detail "Model not found" when the model cannot be resolved for the given user.
     """
@@ -400,22 +400,21 @@ def update_row(
     updates: dict[str, str | int | float | bool | None],
 ):
     """
-    Update specified columns for a single row in the resolved model table.
-
+    Update specified columns of a single row in a model table.
+    
     Parameters:
-        cursor: Database cursor used to resolve the model and access control.
         user_email (str): Email of the requesting user.
         model_name (str): Name of the model containing the target table.
         project_name (str): Project that scopes the model.
         table_name (str): Target table within the model.
         row_id (int): Identifier of the row to update.
-        updates (dict[str, str | int | float | bool | None]): Mapping of column names to new values; keys are column identifiers and values are the new cell values (None to set NULL).
-
+        updates (dict[str, str | int | float | bool | None]): Mapping of column names to new values; use `None` to set a column to NULL.
+    
     Raises:
-        HTTPException(404): "Model not found" when the model cannot be resolved.
-        HTTPException(403): "User does not have permission to modify the model" when the user lacks write access.
-        HTTPException(404): "Table not found" when the target table does not exist in the model.
-        HTTPException(400): "No valid columns provided for update" when the provided updates contain no updatable columns.
+        HTTPException(status_code=404): "Model not found" when the model cannot be resolved.
+        HTTPException(status_code=403): "User does not have permission to modify the model" when the user lacks write access.
+        HTTPException(status_code=404): "View: {table_name} is not updatable" when the target is a view, or "Table not found" when the table does not exist.
+        HTTPException(status_code=400): "No valid columns provided for update" when `updates` contains no updatable columns.
     """
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
@@ -447,26 +446,21 @@ def update_rows(
     text_filters: dict[str, str],
 ):
     """
-    Update a single column for multiple rows in the resolved model table and return how many rows were modified.
-
+    Update a single column on multiple rows in a model table and return the number of rows changed.
+    
     Parameters:
-        user_email (str): Email of the requesting user used to resolve model access.
-        model_name (str): Name of the model containing the target table.
-        project_name (str): Name of the project containing the model.
-        table_name (str): Name of the table to update.
-        row_ids (list[int]): List of row primary-key IDs to update.
+        row_ids (list[int]): Primary-key IDs of rows targeted for the update.
         column_name (str): Name of the column to set.
         column_value (str | int | float | bool | None): Value to assign to the column for each specified row.
-        select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters to apply in conjunction with the row_ids; keys are column names and values are lists of allowed values for those columns. Only rows matching the specified row_ids and satisfying these filters will be updated.
-        text_filters (dict[str, str]): Substring/text filters to apply in conjunction with the row_ids; keys are column names and values are the text to search for in those columns. Only rows matching the specified row_ids and satisfying these filters will be updated.
-
+        select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters whose keys are column names and values are lists of allowed values; only rows that match both the provided `row_ids` and these filters will be updated.
+        text_filters (dict[str, str]): Substring/text filters whose keys are column names and values are the text to search for; only rows that match both the provided `row_ids` and these text filters will be updated.
+    
     Returns:
         int: Number of rows modified by the update.
-
+    
     Raises:
-        HTTPException(404): If the model cannot be resolved or the target table does not exist.
-        HTTPException(403): If the user does not have permission to modify the model.
-        HTTPException(400): If no valid columns were provided for the update.
+        HTTPException(404): If the model cannot be resolved or the target table is not found or is a non-updatable view.
+        HTTPException(403): If the user does not have permission to modify the model (read-only access).
     """
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
@@ -490,11 +484,14 @@ def update_rows(
 
 def _validate_table_and_column_names(cursor, table_name: str, column_names: list[str]) -> str:
     """
-    Validate that the specified table and columns exist in the database.
-
+    Confirm the table exists, validate that each name in `column_names` exists on that table, and return the table's object type.
+    
+    Returns:
+        object_type (str): The object type for the table (for example, "table" or "view").
+    
     Raises:
-        HTTPException(404): If the table does not exist.
-        HTTPException(404): If any of the specified columns do not exist on the table.
+        fastapi.HTTPException: 404 if the table is not found (detail="Table not found: {table_name}").
+        fastapi.HTTPException: 404 if any column is not found (detail="Column not found: {column_name} for table: {table_name}").
     """
     row = cursor.execute(table_queries.check_if_table_exists, (table_name,)).fetchone()
     if not row:
@@ -518,6 +515,26 @@ def delete_rows(
     text_filters: dict[str, str],
 ):
 
+    """
+    Delete rows from the specified table that match the given row IDs and filter criteria.
+    
+    Parameters:
+        user_email (str): Email of the requesting user.
+        model_name (str): Name of the model containing the table.
+        project_name (str): Project that scopes the model.
+        table_name (str): Target table name.
+        row_ids (list[int]): Row IDs to delete.
+        select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters mapping column names to lists of allowed values.
+        text_filters (dict[str, str]): Text-match filters mapping column names to search strings.
+    
+    Returns:
+        int: Number of rows deleted.
+    
+    Raises:
+        fastapi.HTTPException: 
+            - 404 if the model is not found or the target is a view (not updatable) or a referenced column/table is missing.
+            - 403 if the user does not have permission to modify the model.
+    """
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
@@ -546,6 +563,20 @@ def get_summary_stats(
     text_filters: dict[str, str],
 ):
 
+    """
+    Return summary statistics for the specified columns in a table.
+    
+    Parameters:
+        column_names (dict[str, str]): Mapping of column names to summary functions to compute (e.g., {"price": "avg", "id": "count"}). Only the functions "count", "avg", "sum", "min", and "max" (case-insensitive) are accepted; others are ignored.
+        select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters where keys are column names and values are lists of allowed values for that column; these filter columns will be validated.
+        text_filters (dict[str, str]): Text-search filters where keys are column names and values are search strings; these filter columns will be validated.
+    
+    Returns:
+        dict[str, Any]: Mapping from each requested column name (that used an allowed summary function) to its computed aggregate value.
+    
+    Raises:
+        fastapi.HTTPException: 404 if the model, table, or any referenced column is not found; 400 if no valid summary functions are provided.
+    """
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
@@ -581,6 +612,19 @@ def add_row(
     table_name: str,
     values: dict[str, str | int | float | bool | None],
 ):
+    """
+    Insert a new row into a table in the specified model.
+    
+    Validates the model exists and the caller has modify permissions, verifies the target table and provided column names are valid and that the target is an updatable table (not a view), then executes an INSERT for the given values.
+    
+    Parameters:
+        values (dict[str, str | int | float | bool | None]): Mapping of column names to values for the new row.
+    
+    Raises:
+        fastapi.HTTPException: 404 if the model is not found.
+        fastapi.HTTPException: 403 if the user does not have permission to modify the model.
+        fastapi.HTTPException: 404 if the target is a view and therefore not updatable.
+    """
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
