@@ -57,7 +57,7 @@ def get_table_data(
     project_name: str,
     table_name: str,
     column_names: list[str],
-    select_filters: dict[str, list[str]],
+    select_filters: dict[str, list[str | int | float | bool | None]],
     text_filters: dict[str, str],
     sort_columns: list[list[str, str]],
     page_number: int,
@@ -92,18 +92,19 @@ def get_table_data(
     if len(column_names) == 0:
         raise HTTPException(status_code=400, detail="At least one column must be selected")
 
-    query_columns = column_names or []
+    query_columns = list(column_names)
     query_columns.extend(select_filters.keys())
     query_columns.extend(text_filters.keys())
     query_columns.extend([col for col, _ in sort_columns])
 
     with sql_connection(model_id, model_path) as model_cursor:
         object_type = _validate_table_and_column_names(model_cursor, table_name, query_columns)
-        if object_type == "table":
-            # add rowid to the selected columns for tables to support updates/deletes; it will be ignored for views
-            column_names.insert(0, "rowid")
+        access_level = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
+        if access_level is None or access_level[0] in ("read", "reader", "readonly"):
+            object_type = "read_only_object"
+        select_columns = ["rowid", *column_names] if object_type == "table" else list(column_names or [])
         query, params = table_queries.get_table_query(
-            table_name, column_names, select_filters, text_filters, sort_columns, page_number, page_size
+            table_name, select_columns, select_filters, text_filters, sort_columns, page_number, page_size
         )
         data = model_cursor.execute(query, params).fetchall()
         return data
@@ -116,7 +117,7 @@ def get_distinct_column_values(
     project_name: str,
     table_name: str,
     column_name: str,
-    select_filters: dict[str, list[str]],
+    select_filters: dict[str, list[str | int | float | bool | None]],
     text_filters: dict[str, str],
     page_size: int,
 ) -> list[str | int | float | bool | None]:
@@ -130,7 +131,7 @@ def get_distinct_column_values(
         project_name (str): Project name containing the model.
         table_name (str): Table to query.
         column_name (str): Column whose distinct values to retrieve.
-        select_filters (dict[str, list[str]]): Exact-match filters keyed by column name.
+        select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters keyed by column name.
         text_filters (dict[str, str]): Full-text or substring filters keyed by column name.
         page_size (int): Maximum number of distinct values to return.
 
@@ -164,7 +165,7 @@ def get_row_count(
     model_name: str,
     project_name: str,
     table_name: str,
-    select_filters: dict[str, list[str]],
+    select_filters: dict[str, list[str | int | float | bool | None]],
     text_filters: dict[str, str],
 ) -> int:
     """
@@ -175,7 +176,7 @@ def get_row_count(
         model_name (str): Name of the model containing the table.
         project_name (str): Project name containing the model.
         table_name (str): Table to query.
-        select_filters (dict[str, list[str]]): Exact-match filters keyed by column name; each key maps to allowed values for that column.
+        select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters keyed by column name; each key maps to allowed values for that column.
         text_filters (dict[str, str]): Full-text or substring filters keyed by column name.
 
     Returns:
@@ -420,7 +421,7 @@ def update_row(
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
     access_level = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
-    if access_level is None or access_level[0] in ("reader", "readonly"):
+    if access_level is None or access_level[0] in ("read", "reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     with sql_connection(model_id, model_path) as model_cursor:
         column_names = list(updates.keys())
@@ -471,7 +472,7 @@ def update_rows(
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
     access_level = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
-    if access_level is None or access_level[0] in ("reader", "readonly"):
+    if access_level is None or access_level[0] in ("read", "reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     with sql_connection(model_id, model_path) as model_cursor:
         column_names = [column_name]
@@ -521,7 +522,7 @@ def delete_rows(
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
     access_level = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
-    if access_level is None or access_level[0] in ("reader", "readonly"):
+    if access_level is None or access_level[0] in ("read", "reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     with sql_connection(model_id, model_path) as model_cursor:
         column_names = list(select_filters.keys())
@@ -554,15 +555,20 @@ def get_summary_stats(
         column_names_list.extend(select_filters.keys())
         column_names_list.extend(text_filters.keys())
         _validate_table_and_column_names(model_cursor, table_name, column_names_list)
+        validated_columns = {}
+        allowed_functions = {"count", "avg", "sum", "min", "max"}
         for column_name, summary_function in column_names.items():
-            if summary_function.lower() not in ("count", "avg", "sum", "min", "max"):
-                # delete that key to avoid SQL injection, and the query will fail later if the column name is invalid
-                del column_names[column_name]
+            if summary_function.lower() in allowed_functions:
+                validated_columns[column_name] = summary_function
 
-        query, values = table_queries.get_summary_stats_query(table_name, column_names, select_filters, text_filters)
+        if not validated_columns:
+            raise HTTPException(status_code=400, detail="No valid summary functions provided")
+        query, values = table_queries.get_summary_stats_query(
+            table_name, validated_columns, select_filters, text_filters
+        )
         result = model_cursor.execute(query, values).fetchone()
         summary_stats = {}
-        for idx, column_name in enumerate(column_names.keys()):
+        for idx, column_name in enumerate(validated_columns.keys()):
             summary_stats[column_name] = result[idx]
         return summary_stats
 
@@ -579,7 +585,7 @@ def add_row(
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
     access_level = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
-    if access_level is None or access_level[0] in ("reader", "readonly"):
+    if access_level is None or access_level[0] in ("read", "reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     with sql_connection(model_id, model_path) as model_cursor:
         column_names = list(values.keys())

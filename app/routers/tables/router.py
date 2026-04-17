@@ -334,7 +334,6 @@ def get_summary_stats(
             request.select_filters,
             request.text_filters,
         )
-        print("Summary stats:", summary_stats)
         return table_schemas.getSummaryStatsResponse(summary=summary_stats)
 
 
