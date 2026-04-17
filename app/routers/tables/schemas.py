@@ -110,3 +110,36 @@ class updateRowValuesRequest(BaseModel):
 
 class updateRowValuesResponse(BaseModel):
     rows_updated: int
+
+
+class DeleteRowsRequest(BaseModel):
+    model_name: str
+    project_name: str
+    table_name: str
+    row_ids: list[int]
+    select_filters: dict[str, list[str | int | float | bool | None]]
+    text_filters: dict[str, str]
+
+
+class DeleteRowsResponse(BaseModel):
+    rows_deleted: int
+
+
+class getSummaryStatsRequest(BaseModel):
+    model_name: str
+    project_name: str
+    table_name: str
+    column_names: dict[str, str]
+    select_filters: dict[str, list[str | int | float | bool | None]]
+    text_filters: dict[str, str]
+
+
+class getSummaryStatsResponse(BaseModel):
+    summary: dict[str, str | float | int | None]
+
+
+class AddRowRequest(BaseModel):
+    model_name: str
+    project_name: str
+    table_name: str
+    values: dict[str, str | int | float | bool | None]
