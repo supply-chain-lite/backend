@@ -269,7 +269,7 @@ def update_rows(
 ) -> table_schemas.updateRowValuesResponse:
     """
     Update the specified rows in a table by setting a single column to a provided value.
-    
+
     Parameters:
         request (updateRowValuesRequest): Contains identifiers and the update payload:
             - model_name, project_name, table_name: target table identifiers
@@ -277,7 +277,7 @@ def update_rows(
             - column_name: name of the column to set
             - column_value: value to assign to the column for each listed row
             - select_filters, text_filters: optional filters that further restrict which rows are affected
-    
+
     Returns:
         updateRowValuesResponse: Object with `rows_updated` set to the number of rows that were updated.
     """
@@ -304,11 +304,11 @@ def delete_rows(
 ) -> table_schemas.DeleteRowsResponse:
     """
     Delete rows from the specified table that match the provided row IDs and/or filters.
-    
+
     Parameters:
         request (DeleteRowsRequest): Contains `model_name`, `project_name`, `table_name`, `row_ids`,
             `select_filters`, and `text_filters` used to identify which rows to delete.
-    
+
     Returns:
         rows_deleted (int): Number of rows that were deleted.
     """
@@ -333,10 +333,10 @@ def get_summary_stats(
 ) -> table_schemas.getSummaryStatsResponse:
     """
     Retrieve aggregated summary statistics for specified columns of a table.
-    
+
     Parameters:
         request (getSummaryStatsRequest): Request containing `model_name`, `project_name`, `table_name`, `column_names`, and optional `select_filters` and `text_filters` to scope the aggregation.
-    
+
     Returns:
         getSummaryStatsResponse: A response wrapping a mapping from column name to its computed summary statistics (e.g., count, mean, min, max) for the filtered dataset.
     """
@@ -361,10 +361,10 @@ def add_row(
 ) -> table_schemas.MessageResponse:
     """
     Add a new row to the specified table within the given model and project.
-    
+
     Parameters:
         request (AddRowRequest): Contains `model_name`, `project_name`, `table_name`, and `values` (a mapping of column names to their values).
-    
+
     Returns:
         MessageResponse: A message confirming the row was added, e.g. "Row added successfully."
     """

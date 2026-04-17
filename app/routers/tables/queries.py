@@ -43,7 +43,7 @@ def get_table_query(
 ) -> tuple[str, list]:
     """
     Builds a parameterized SQLite SELECT query for the given table and columns, applying exact-match filters, case-insensitive substring filters, sorting, and pagination.
-    
+
     Parameters:
         table_name (str): Table name used in the FROM clause.
         column_names (list[str]): Columns to include in the SELECT; must contain at least one name.
@@ -52,10 +52,10 @@ def get_table_query(
         sort_columns (list[list[str, str]]): Sort directives as lists of `[column_name, direction]` where `direction` must be `'ASC'` or `'DESC'` (case-insensitive).
         page_number (int): 1-based page index used to compute OFFSET; must be greater than 0.
         page_size (int): Number of rows per page used for LIMIT; must be greater than 0.
-    
+
     Returns:
         tuple[str, list]: A parameterized SQL query string using `?` placeholders and the ordered list of parameter values to bind.
-    
+
     Raises:
         HTTPException: If `column_names` is empty, or if `page_size` or `page_number` is less than or equal to zero, or if a sort direction is invalid.
     """
@@ -119,14 +119,14 @@ def get_distinct_column_values_query(
 ) -> tuple[str, list]:
     """
     Return distinct values for a single column from a table, applying exact-match and case-insensitive substring filters and limiting the result set.
-    
+
     Parameters:
         table_name (str): Table to query.
         column_name (str): Target column whose distinct values to return; must be non-empty.
         select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters keyed by column. Empty lists are ignored. If a filter list contains `None` and also non-null values, the filter matches rows where the column is in the non-null list or is NULL; if the list contains only `None`, the filter matches NULL. Filters for `column_name` are ignored.
         text_filters (dict[str, str]): Case-insensitive substring filters keyed by column; falsy/empty values are ignored and remaining values are matched as a substring (case-insensitive).
         page_size (int): Maximum number of distinct values to return; must be greater than 0.
-    
+
     Returns:
         tuple[str, list]: SQL query string with `?` placeholders and the ordered list of parameters to bind; results are ordered case-insensitively and limited to `page_size`.
     """
@@ -176,7 +176,7 @@ def get_row_count_query(
 ) -> tuple[str, list]:
     """
     Build a parameterized COUNT(*) SQL query for a table applying exact-match (including nullable) and case-insensitive substring filters.
-    
+
     Parameters:
         table_name (str): Target table name; must be non-empty.
         select_filters (dict[str, list[str | int | float | bool | None]]): Mapping of column names to allowed exact-match values. Empty lists are ignored. If a filter list contains `None`:
@@ -184,10 +184,10 @@ def get_row_count_query(
             - when mixed with non-null values, the query will filter for `IN (...) OR IS NULL`.
             Non-null values are added to the returned parameter list in placeholder order.
         text_filters (dict[str, str]): Mapping of column names to substring filters; falsy or empty values are ignored. Each entry filters the column for a case-insensitive substring match.
-    
+
     Returns:
         tuple[str, list]: (query, params) where `query` is the SQL string with `?` placeholders and `params` is the ordered list of parameter values to bind.
-    
+
     Raises:
         HTTPException: status 400 if `table_name` is missing or empty.
     """
@@ -298,13 +298,13 @@ def update_rows(table_name, row_ids, column_name, column_value, select_filters, 
 def delete_rows(table_name, row_ids, select_filters, text_filters):
     """
     Builds a parameterized DELETE SQL statement for a table with optional rowid, exact-match (including NULL) and case-insensitive substring filters.
-    
+
     Parameters:
         table_name (str): Target table name; inserted into the query using bracket-quoted identifier syntax.
         row_ids (Sequence): If non-empty, restricts deletion to rows whose `rowid` is in this sequence; if empty, no rowid restriction is applied.
         select_filters (Mapping[str, Sequence]): Exact-match filters mapping column -> list of values. If a list contains `None` and other values, the condition becomes `IN (...) OR IS NULL`; if the list contains only `None`, the condition becomes `IS NULL`. Empty lists are ignored.
         text_filters (Mapping[str, str]): Substring filters mapping column -> text; falsy or empty text values are ignored. Each filter is applied as `[{col}] LIKE %<text>% COLLATE NOCASE`.
-    
+
     Returns:
         tuple: A pair `(query, params)` where `query` is the DELETE SQL string with `?` placeholders and `params` is the corresponding list of bound parameter values.
     """
@@ -343,13 +343,13 @@ def delete_rows(table_name, row_ids, select_filters, text_filters):
 def get_summary_stats_query(table_name, column_names, select_filters, text_filters):
     """
     Builds a parameterized SQL SELECT that returns aggregate statistics for specified columns with optional exact-match and case-insensitive text filters.
-    
+
     Parameters:
         table_name (str): Name of the table to query.
         column_names (dict[str, str]): Mapping of column name -> aggregate function name (e.g., {"age": "MAX", "salary": "AVG"}).
         select_filters (dict[str, list]): Exact-match filters where each key is a column and the value is a list of allowed values; a list containing `None` indicates NULL should be included.
         text_filters (dict[str, str]): Substring filters where each key is a column and the value is the text to match (matched using LIKE with surrounding wildcards, case-insensitive).
-    
+
     Returns:
         tuple[str, list]: A tuple containing the SQL query string and the list of parameters to bind in order.
     """
@@ -389,16 +389,16 @@ def get_summary_stats_query(table_name, column_names, select_filters, text_filte
 def add_row(table_name, values):
     """
     Builds a parameterized INSERT statement for the given table using only non-null values.
-    
+
     Parameters:
-    	table_name (str): Target table name.
-    	values (dict): Mapping of column names to values; entries with value `None` are omitted from the INSERT.
-    
+        table_name (str): Target table name.
+        values (dict): Mapping of column names to values; entries with value `None` are omitted from the INSERT.
+
     Returns:
-    	tuple: `(insert_query, params)` where `insert_query` is the SQL INSERT string with `?` placeholders and `params` is the list of bound values in the same column order.
-    
+        tuple: `(insert_query, params)` where `insert_query` is the SQL INSERT string with `?` placeholders and `params` is the list of bound values in the same column order.
+
     Raises:
-    	HTTPException: status 400 if no non-null values are provided.
+        HTTPException: status 400 if no non-null values are provided.
     """
     params = []
     column_names = [col for col in values.keys() if values[col] is not None]
