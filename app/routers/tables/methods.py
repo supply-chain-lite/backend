@@ -1,4 +1,5 @@
 import json
+import re
 import tempfile
 
 import xlsxwriter as xw
@@ -664,9 +665,11 @@ def export_tables_to_excel(cursor, user_email: str, model_name: str, project_nam
     if len(table_names) == 0:
         raise HTTPException(status_code=400, detail="At least one table must be selected for export")
     if len(table_names) == 1:
-        this_file_name = f"{table_names[0]}.xlsx"
+        safe_base = re.sub(r'[\\/:*?"<>|]', "_", table_names[0]) or "export"
+        this_file_name = f"{safe_base}.xlsx"
     else:
-        this_file_name = f"{model_name}.xlsx"
+        safe_base = re.sub(r'[\\/:*?"<>|]', "_", model_name) or "export"
+        this_file_name = f"{safe_base}.xlsx"
     with sql_connection(model_id, model_path) as model_cursor:
         with xw.Workbook(excel_file_name) as wb:
             used_table_names = set()
@@ -677,9 +680,11 @@ def export_tables_to_excel(cursor, user_email: str, model_name: str, project_nam
                 select_columns = [col for col, _ in table_headers]
                 query, params = table_queries.get_table_query(table_name, select_columns, {}, {}, [], 1, 1000000)
                 data = model_cursor.execute(query, params).fetchall()
-                sheet_name = table_name[:31]
+                sheet_name = re.sub(r"[\[\]:*?/\\]", "_", table_name)
+                sheet_name = sheet_name.strip("'")
+                sheet_name = sheet_name[:31] or "Sheet1"
+                base_name = sheet_name[:28]
                 if sheet_name in used_table_names:
-                    base_name = table_name[:28]
                     suffix = 1
                     while sheet_name in used_table_names:
                         suffix += 1
