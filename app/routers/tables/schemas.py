@@ -143,3 +143,9 @@ class AddRowRequest(BaseModel):
     project_name: str
     table_name: str
     values: dict[str, str | int | float | bool | None]
+
+
+class ExportTablesToExcelRequest(BaseModel):
+    model_name: str
+    project_name: str
+    table_names: list[str]
