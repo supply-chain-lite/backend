@@ -662,7 +662,6 @@ def export_tables_to_excel(cursor, user_email: str, model_name: str, project_nam
     excel_file = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
     excel_file.close()  # Close the file so that xlsxwriter can write to it on Windows
     excel_file_name = excel_file.name
-    table_names = list(dict.fromkeys(table_names))  # De-duplicate table names
     if len(table_names) == 0:
         raise HTTPException(status_code=400, detail="At least one table must be selected for export")
     if len(table_names) == 1:
@@ -675,6 +674,8 @@ def export_tables_to_excel(cursor, user_email: str, model_name: str, project_nam
         with xw.Workbook(excel_file_name) as wb:
             used_table_names = set()
             for table_name in table_names:
+                if table_name.lower() in used_table_names:
+                    continue
                 _validate_table_and_column_names(model_cursor, table_name, [])
                 table_headers = _get_table_headers_with_types(model_cursor, table_name)
                 column_formatting = _get_column_formatting(model_cursor, table_name)
@@ -685,12 +686,12 @@ def export_tables_to_excel(cursor, user_email: str, model_name: str, project_nam
                 sheet_name = sheet_name.strip("'")
                 sheet_name = sheet_name[:31] or "Sheet1"
                 base_name = sheet_name[:28]
-                if sheet_name in used_table_names:
+                if sheet_name.lower() in used_table_names:
                     suffix = 1
-                    while sheet_name in used_table_names:
+                    while sheet_name.lower() in used_table_names:
                         suffix += 1
                         sheet_name = f"{base_name}_{suffix}"
-                used_table_names.add(sheet_name)
+                used_table_names.add(sheet_name.lower())
                 worksheet = wb.add_worksheet(sheet_name)
                 _write_to_worksheet(wb, worksheet, table_headers, data, column_formatting)
 
@@ -715,7 +716,7 @@ def _write_to_worksheet(workbook, worksheet, table_headers, data, column_formats
     # Write header row and size each column to fit its header text
     header_format = workbook.add_format({"bold": True})
     for col_idx, (column_name, _) in enumerate(table_headers):
-        column_width = len(str(column_name))  # Minimum width of 10 for better readability
+        column_width = len(str(column_name))
         column_type = column_formats.get(column_name, {}).get("column_type", "").lower()
         if column_type == "date":
             column_width = max(column_width, 12)
