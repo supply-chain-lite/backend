@@ -39,7 +39,7 @@ def _get_table_headers_with_types(cursor, table_name: str) -> list[tuple[str, st
     try:
         column_order_row = cursor.execute(table_queries.get_column_order, (table_name,)).fetchone()
         column_order = json.loads(column_order_row[0]) if column_order_row else []
-    except Exception:
+    except (json.JSONDecodeError, TypeError):
         column_order = []
     table_columns = {name: col_type for name, col_type in all_rows}
     table_headers = []
@@ -667,7 +667,7 @@ def export_tables_to_excel(cursor, user_email: str, model_name: str, project_nam
     else:
         this_file_name = f"{model_name}.xlsx"
     with sql_connection(model_id, model_path) as model_cursor:
-        with xw.Workbook(excel_file_name, {"in_memory": True}) as wb:
+        with xw.Workbook(excel_file_name) as wb:
             for table_name in table_names:
                 _validate_table_and_column_names(model_cursor, table_name, [])
                 table_headers = _get_table_headers_with_types(model_cursor, table_name)
@@ -733,8 +733,12 @@ def _write_to_worksheet(workbook, worksheet, table_headers, data, column_formats
                 num_format_str = "yyyy-mm-dd hh:mm:ss" if col_type_lower == "datetime" else "yyyy-mm-dd"
             else:
                 base = "#,##0" if thousand_separator else "0"
-                if decimal_places is not None and int(decimal_places) > 0:
-                    base += "." + "0" * int(decimal_places)
+                try:
+                    decimal_int = int(decimal_places) if decimal_places is not None else 0
+                except (ValueError, TypeError):
+                    decimal_int = 0
+                if decimal_int > 0:
+                    base += "." + "0" * decimal_int
 
                 prefix_str = ""
                 if prefix:
