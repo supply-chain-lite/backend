@@ -660,6 +660,7 @@ def export_tables_to_excel(cursor, user_email: str, model_name: str, project_nam
     excel_file = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
     excel_file.close()  # Close the file so that xlsxwriter can write to it on Windows
     excel_file_name = excel_file.name
+    table_names = list(set(table_names))  # De-duplicate table names
     if len(table_names) == 0:
         raise HTTPException(status_code=400, detail="At least one table must be selected for export")
     if len(table_names) == 1:
@@ -668,6 +669,7 @@ def export_tables_to_excel(cursor, user_email: str, model_name: str, project_nam
         this_file_name = f"{model_name}.xlsx"
     with sql_connection(model_id, model_path) as model_cursor:
         with xw.Workbook(excel_file_name) as wb:
+            used_table_names = set()
             for table_name in table_names:
                 _validate_table_and_column_names(model_cursor, table_name, [])
                 table_headers = _get_table_headers_with_types(model_cursor, table_name)
@@ -675,7 +677,15 @@ def export_tables_to_excel(cursor, user_email: str, model_name: str, project_nam
                 select_columns = [col for col, _ in table_headers]
                 query, params = table_queries.get_table_query(table_name, select_columns, {}, {}, [], 1, 1000000)
                 data = model_cursor.execute(query, params).fetchall()
-                worksheet = wb.add_worksheet(table_name[:31])
+                sheet_name = table_name[:31]
+                if sheet_name in used_table_names:
+                    base_name = table_name[:28]
+                    suffix = 1
+                    while sheet_name in used_table_names:
+                        suffix += 1
+                        sheet_name = f"{base_name}_{suffix}"
+                used_table_names.add(sheet_name)
+                worksheet = wb.add_worksheet(sheet_name)
                 _write_to_worksheet(wb, worksheet, table_headers, data, column_formatting)
 
     return responses.FileResponse(
