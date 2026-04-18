@@ -661,7 +661,7 @@ def export_tables_to_excel(cursor, user_email: str, model_name: str, project_nam
     excel_file = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
     excel_file.close()  # Close the file so that xlsxwriter can write to it on Windows
     excel_file_name = excel_file.name
-    table_names = list(set(table_names))  # De-duplicate table names
+    table_names = dict.fromkeys(table_names)  # De-duplicate table names
     if len(table_names) == 0:
         raise HTTPException(status_code=400, detail="At least one table must be selected for export")
     if len(table_names) == 1:
