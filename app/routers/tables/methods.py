@@ -39,7 +39,8 @@ def _get_table_headers_with_types(cursor, table_name: str) -> list[tuple[str, st
     all_rows = cursor.execute(table_queries.get_table_columns, (table_name,)).fetchall()
     try:
         column_order_row = cursor.execute(table_queries.get_column_order, (table_name,)).fetchone()
-        column_order = json.loads(column_order_row[0]) if column_order_row else []
+        decoded = json.loads(column_order_row[0]) if column_order_row else []
+        column_order = decoded if isinstance(decoded, list) else []
     except (json.JSONDecodeError, TypeError):
         column_order = []
     table_columns = {name: col_type for name, col_type in all_rows}
@@ -661,7 +662,7 @@ def export_tables_to_excel(cursor, user_email: str, model_name: str, project_nam
     excel_file = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
     excel_file.close()  # Close the file so that xlsxwriter can write to it on Windows
     excel_file_name = excel_file.name
-    table_names = dict.fromkeys(table_names)  # De-duplicate table names
+    table_names = list(dict.fromkeys(table_names))  # De-duplicate table names
     if len(table_names) == 0:
         raise HTTPException(status_code=400, detail="At least one table must be selected for export")
     if len(table_names) == 1:
