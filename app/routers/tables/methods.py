@@ -1,6 +1,8 @@
 import json
+import tempfile
 
-from fastapi import HTTPException
+import xlsxwriter as xw
+from fastapi import HTTPException, responses
 
 from app.connection import sql_connection
 from app.routers.models.methods import get_model_id_and_path
@@ -27,19 +29,18 @@ def get_table_headers(
         raise HTTPException(status_code=404, detail="Model not found")
 
     with sql_connection(model_id, model_path) as model_cursor:
-        all_rows = model_cursor.execute(table_queries.get_table_columns, (table_name,)).fetchall()
-        if len(all_rows) == 0:
-            raise HTTPException(status_code=404, detail=f"Table not found: {table_name}")
+        _validate_table_and_column_names(model_cursor, table_name, [])
+        table_headers = _get_table_headers_with_types(model_cursor, table_name)
+    return table_headers
 
-        try:
-            column_order_row = model_cursor.execute(table_queries.get_column_order, (table_name,)).fetchone()
-            column_order = json.loads(column_order_row[0]) if column_order_row else []
-        except Exception:
-            column_order = []
 
-    if len(column_order) == 0:
-        return all_rows
-
+def _get_table_headers_with_types(cursor, table_name: str) -> list[tuple[str, str]]:
+    all_rows = cursor.execute(table_queries.get_table_columns, (table_name,)).fetchall()
+    try:
+        column_order_row = cursor.execute(table_queries.get_column_order, (table_name,)).fetchone()
+        column_order = json.loads(column_order_row[0]) if column_order_row else []
+    except Exception:
+        column_order = []
     table_columns = {name: col_type for name, col_type in all_rows}
     table_headers = []
     for col_name in column_order:
@@ -373,21 +374,26 @@ def get_column_formatting(
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
     with sql_connection(model_id, model_path) as model_cursor:
-        row = model_cursor.execute(table_queries.check_if_table_exists, ("S_TableParameters",)).fetchone()
-        if not row:
-            return {}
-        all_rows = model_cursor.execute(table_queries.get_column_formatting, (table_name,)).fetchall()
-        result = {}
-        for column_name, parameter_type, parameter_value in all_rows:
-            try:
-                this_dict = json.loads(parameter_value) if parameter_value else {}
-                if not isinstance(this_dict, dict):
-                    this_dict = {}
-            except json.JSONDecodeError:
-                this_dict = {}
-            this_dict["column_type"] = parameter_type
-            result[column_name] = this_dict
+        result = _get_column_formatting(model_cursor, table_name)
         return result
+
+
+def _get_column_formatting(model_cursor, table_name: str):
+    row = model_cursor.execute(table_queries.check_if_table_exists, ("S_TableParameters",)).fetchone()
+    if not row:
+        return {}
+    all_rows = model_cursor.execute(table_queries.get_column_formatting, (table_name,)).fetchall()
+    result = {}
+    for column_name, parameter_type, parameter_value in all_rows:
+        try:
+            this_dict = json.loads(parameter_value) if parameter_value else {}
+            if not isinstance(this_dict, dict):
+                this_dict = {}
+        except json.JSONDecodeError:
+            this_dict = {}
+        this_dict["column_type"] = parameter_type
+        result[column_name] = this_dict
+    return result
 
 
 def update_row(
@@ -636,3 +642,119 @@ def add_row(
             raise HTTPException(status_code=404, detail=f"View: {table_name} is not updatable")
         query, query_values = table_queries.add_row(table_name, values)
         model_cursor.execute(query, query_values)
+
+
+def export_tables_to_excel(cursor, user_email: str, model_name: str, project_name: str, table_names: list[str]):
+    """
+    Export the specified tables to an Excel file and return the file content as bytes.
+
+    Parameters:
+        table_names (list[str]): List of table names to export; each must exist in the model.
+
+    Returns:
+        bytes: The content of the generated Excel file.
+    """
+    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
+    if not model_id:
+        raise HTTPException(status_code=404, detail="Model not found")
+    excel_file = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
+    excel_file.close()  # Close the file so that xlsxwriter can write to it on Windows
+    excel_file_name = excel_file.name
+    if len(table_names) == 0:
+        raise HTTPException(status_code=400, detail="At least one table must be selected for export")
+    if len(table_names) == 1:
+        this_file_name = f"{table_names[0]}.xlsx"
+    else:
+        this_file_name = f"{model_name}.xlsx"
+    with sql_connection(model_id, model_path) as model_cursor:
+        with xw.Workbook(excel_file_name, {"in_memory": True}) as wb:
+            for table_name in table_names:
+                _validate_table_and_column_names(model_cursor, table_name, [])
+                table_headers = _get_table_headers_with_types(model_cursor, table_name)
+                column_formatting = _get_column_formatting(model_cursor, table_name)
+                select_columns = [col for col, _ in table_headers]
+                query, params = table_queries.get_table_query(table_name, select_columns, {}, {}, [], 1, 1000000)
+                data = model_cursor.execute(query, params).fetchall()
+                worksheet = wb.add_worksheet(table_name[:31])
+                _write_to_worksheet(wb, worksheet, table_headers, data, column_formatting)
+
+    return responses.FileResponse(
+        path=excel_file_name,
+        filename=this_file_name,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+def _write_to_worksheet(workbook, worksheet, table_headers, data, column_formats):
+    currency_symbols = {
+        "USD": "$",
+        "INR": "\u20b9",
+        "EUR": "\u20ac",
+        "GBP": "\u00a3",
+        "JPY": "\u00a5",
+    }
+
+    column_formats = column_formats or {}
+
+    # Write header row and size each column to fit its header text
+    header_format = workbook.add_format({"bold": True})
+    for col_idx, (column_name, _) in enumerate(table_headers):
+        column_width = len(str(column_name))  # Minimum width of 10 for better readability
+        column_type = column_formats.get(column_name, {}).get("column_type", "").lower()
+        if column_type == "date":
+            column_width = max(column_width, 12)
+        elif column_type == "datetime":
+            column_width = max(column_width, 20)
+        worksheet.set_column(col_idx, col_idx, column_width)
+        worksheet.write(0, col_idx, column_name, header_format)
+
+    # Pre-compute per-column cell format
+    column_cell_formats = []
+    for column_name, data_type in table_headers:
+        data_type_upper = (data_type or "").upper()
+        col_spec = column_formats.get(column_name)
+
+        prefix = column_formats.get(column_name, {}).get("prefix", None)
+        thousand_separator = column_formats.get(column_name, {}).get("thousand_separator", None)
+        decimal_places = column_formats.get(column_name, {}).get("decimal_places", None)
+        column_type = column_formats.get(column_name, {}).get("column_type", None)
+
+        num_format_str = None
+
+        if col_spec is None:
+            # No user-defined formatting for this column - apply defaults based on data_type
+            if data_type_upper in ("NUMERIC", "FLOAT", "REAL", "NUMBER"):
+                num_format_str = "#,##0.00"
+            # INT/INTEGER and other types: no formatting
+        else:
+            # User-defined formatting exists for this column
+            col_type_lower = str(column_type).lower() if column_type else ""
+            if col_type_lower in ("date", "datetime"):
+                num_format_str = "yyyy-mm-dd hh:mm:ss" if col_type_lower == "datetime" else "yyyy-mm-dd"
+            else:
+                base = "#,##0" if thousand_separator else "0"
+                if decimal_places is not None and int(decimal_places) > 0:
+                    base += "." + "0" * int(decimal_places)
+
+                prefix_str = ""
+                if prefix:
+                    prefix_key = str(prefix).upper()
+                    if prefix_key in currency_symbols:
+                        prefix_str = f'"{currency_symbols[prefix_key]}"'
+                    else:
+                        prefix_str = f'"{prefix}"'
+
+                if prefix_str or thousand_separator or decimal_places is not None:
+                    num_format_str = prefix_str + base
+
+        cell_format = workbook.add_format({"num_format": num_format_str}) if num_format_str else None
+        column_cell_formats.append(cell_format)
+
+    # Write data rows
+    for row_idx, row in enumerate(data, start=1):
+        for col_idx, value in enumerate(row):
+            cell_format = column_cell_formats[col_idx]
+            if cell_format is not None:
+                worksheet.write(row_idx, col_idx, value, cell_format)
+            else:
+                worksheet.write(row_idx, col_idx, value)

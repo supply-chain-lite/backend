@@ -379,3 +379,28 @@ def add_row(
             request.values,
         )
         return table_schemas.MessageResponse(message="Row added successfully.")
+
+
+@router.post("/download-excel")
+def export_tables_to_excel(
+    request: table_schemas.ExportTablesToExcelRequest, user_data: tuple = Depends(_get_user_from_token)
+):
+    """
+    Export the specified tables to an Excel file and return the file as a response.
+
+    Parameters:
+        request (ExportTablesToExcelRequest): Contains `model_name`, `project_name`, and `table_names` (list of tables to export).
+        user_data (tuple): Authentication-derived user data (injected dependency); only the user's email is used.
+
+    Returns:
+        FileResponse: An HTTP response containing the generated Excel file for download.
+    """
+    user_email, _display_name, _role_name = user_data
+    with master_connection() as cursor:
+        return table_methods.export_tables_to_excel(
+            cursor,
+            user_email,
+            request.model_name,
+            request.project_name,
+            request.table_names,
+        )
