@@ -700,7 +700,7 @@ def export_tables_to_excel(cursor, user_email: str, model_name: str, project_nam
         safe_base = re.sub(r'[\\/:*?"<>|]', "_", model_name) or "export"
         this_file_name = f"{safe_base}.xlsx"
     with sql_connection(model_id, model_path) as model_cursor:
-        with xw.Workbook(excel_file_name) as wb:
+        with xw.Workbook(excel_file_name, {'constant_memory': True}) as wb:
             used_table_names = set()
             for table_name in table_names:
                 if table_name.lower() in used_table_names:
