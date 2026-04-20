@@ -36,6 +36,14 @@ def get_table_headers(
 
 
 def _get_table_headers_with_types(cursor, table_name: str) -> list[tuple[str, str]]:
+    """
+    Return the table's column headers with their SQL types, using a persisted column order when available.
+    
+    If a persisted column order exists and decodes to a list, headers are returned in that order including only columns that actually exist in the table. If no persisted order is present or none of its entries match existing columns, the database-defined column order is returned. JSON parsing errors for the persisted order are ignored and treated as no persisted order.
+    
+    Returns:
+        list[tuple[str, str]]: List of (column_name, column_type) tuples in the chosen order.
+    """
     all_rows = cursor.execute(table_queries.get_table_columns, (table_name,)).fetchall()
     try:
         column_order_row = cursor.execute(table_queries.get_column_order, (table_name,)).fetchone()
@@ -381,6 +389,17 @@ def get_column_formatting(
 
 
 def _get_column_formatting(model_cursor, table_name: str):
+    """
+    Builds a mapping of column names to their persisted formatting metadata for a given table.
+    
+    Attempts to read formatting rows from the S_TableParameters metadata table; if the table is absent returns an empty dict. Parsed JSON parameter values are normalized to dictionaries, with JSON parse errors or non-dictionary values converted to {}. Each returned value includes a "column_type" entry set to the stored parameter type.
+    
+    Parameters:
+        table_name (str): The target table whose column formatting should be retrieved.
+    
+    Returns:
+        dict: Mapping from column name (str) to a formatting dict that always contains a "column_type" key and may include additional formatting keys from the stored JSON.
+    """
     row = model_cursor.execute(table_queries.check_if_table_exists, ("S_TableParameters",)).fetchone()
     if not row:
         return {}
@@ -619,17 +638,16 @@ def add_row(
     values: dict[str, str | int | float | bool | None],
 ):
     """
-    Insert a new row into a table in the specified model.
-
-    Validates the model exists and the caller has modify permissions, verifies the target table and provided column names are valid and that the target is an updatable table (not a view), then executes an INSERT for the given values.
-
+    Insert a new row into the specified table of a resolved model.
+    
+    Validates model resolution and user write access, ensures the target table and provided column names exist and that the object is an updatable table (not a view), then executes an INSERT with the supplied values.
+    
     Parameters:
         values (dict[str, str | int | float | bool | None]): Mapping of column names to values for the new row.
-
+    
     Raises:
-        fastapi.HTTPException: 404 if the model is not found.
+        fastapi.HTTPException: 404 if the model, table, or any referenced column is not found, or if the target is a view and not updatable.
         fastapi.HTTPException: 403 if the user does not have permission to modify the model.
-        fastapi.HTTPException: 404 if the target is a view and therefore not updatable.
     """
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
@@ -648,13 +666,22 @@ def add_row(
 
 def export_tables_to_excel(cursor, user_email: str, model_name: str, project_name: str, table_names: list[str]):
     """
-    Export the specified tables to an Excel file and return the file content as bytes.
-
+    Export the specified tables into a temporary Excel (.xlsx) file and return a FastAPI FileResponse for downloading it.
+    
     Parameters:
-        table_names (list[str]): List of table names to export; each must exist in the model.
-
+        table_names (list[str]): Names of tables to export; must include at least one name. Duplicate names (case-insensitive) are skipped.
+    
     Returns:
-        bytes: The content of the generated Excel file.
+        fastapi.responses.FileResponse: A response pointing to a temporary .xlsx file. The response's filename is a sanitized version of the single table name when one table is exported or the sanitized model name when exporting multiple tables.
+    
+    Raises:
+        HTTPException(404): If the model cannot be resolved or a requested table does not exist.
+        HTTPException(400): If `table_names` is empty.
+    
+    Behavior notes:
+        - Each table is written to its own worksheet; worksheet names are sanitized, limited to 31 characters, and made unique by appending a numeric suffix when needed.
+        - The export reads up to 1,000,000 rows per table.
+        - Per-column formatting metadata (if present) is applied to worksheet columns.
     """
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
@@ -703,6 +730,23 @@ def export_tables_to_excel(cursor, user_email: str, model_name: str, project_nam
 
 
 def _write_to_worksheet(workbook, worksheet, table_headers, data, column_formats):
+    """
+    Populate an xlsxwriter worksheet with table headers, sized columns, and formatted cell values.
+    
+    Parameters:
+        workbook: xlsxwriter Workbook instance used to create Format objects.
+        worksheet: xlsxwriter Worksheet instance to write into.
+        table_headers (list[tuple[str, str]]): Sequence of (column_name, data_type) pairs used for header labels and default formatting decisions.
+        data (iterable[iterable]): Rows of table data; each row is an ordered sequence of cell values matching table_headers.
+        column_formats (dict|None): Optional per-column formatting metadata keyed by column name. Recognized keys include `column_type` ("date", "datetime", or other), `prefix` (literal string or currency code), `thousand_separator` (truthy to enable grouping), and `decimal_places` (integer or numeric string). Currency codes `USD`, `INR`, `EUR`, `GBP`, `JPY` are mapped to their symbols when used as `prefix`.
+    
+    Details:
+        - Writes a bold header row and sets each column width to fit the header; enforces minimum widths for `date` (>=12) and `datetime` (>=20) column types.
+        - Computes an Excel number/date format for each column from `column_formats`; if absent, applies a default numeric format for numeric data types.
+        - Supported formatting features: date/datetime formats, thousand separators, configurable decimal places, and optional prefix (currency symbol or literal).
+        - Writes all data rows starting at the second worksheet row, applying the computed per-column format where available.
+    
+    """
     currency_symbols = {
         "USD": "$",
         "INR": "\u20b9",

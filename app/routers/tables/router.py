@@ -386,14 +386,13 @@ def export_tables_to_excel(
     request: table_schemas.ExportTablesToExcelRequest, user_data: tuple = Depends(_get_user_from_token)
 ):
     """
-    Export the specified tables to an Excel file and return the file as a response.
-
+    Export the specified tables to a downloadable Excel file.
+    
     Parameters:
         request (ExportTablesToExcelRequest): Contains `model_name`, `project_name`, and `table_names` (list of tables to export).
-        user_data (tuple): Authentication-derived user data (injected dependency); only the user's email is used.
-
+    
     Returns:
-        FileResponse: An HTTP response containing the generated Excel file for download.
+        FileResponse: HTTP response containing the generated Excel file for download.
     """
     user_email, _display_name, _role_name = user_data
     with master_connection() as cursor:
