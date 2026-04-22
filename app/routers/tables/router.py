@@ -1,6 +1,6 @@
 """API routes for table-related operations."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 
 from app.connection import master_connection
 from app.routers.auth.methods import _get_user_from_token
@@ -404,3 +404,17 @@ def export_tables_to_excel(
             request.project_name,
             request.table_names,
         )
+
+
+@router.post("/upload-excel", response_model=table_schemas.UploadExcelToTableResponse)
+def upload_excel_file(
+    model_name: str = Form(...),
+    project_name: str = Form(...),
+    table_name: str = Form(...),
+    user_data: tuple = Depends(_get_user_from_token),
+    upload_file: UploadFile = File(...),
+) -> table_schemas.UploadExcelToTableResponse:
+    useremail, _display_name, _role_name = user_data
+    with master_connection() as cursor:
+        row_count = table_methods.upload_excel(cursor, useremail, model_name, project_name, table_name, upload_file)
+    return table_schemas.UploadExcelToTableResponse(rows_inserted=row_count)

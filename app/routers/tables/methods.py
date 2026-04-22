@@ -1,9 +1,11 @@
+import datetime
 import json
 import re
 import tempfile
 
 import xlsxwriter as xw
-from fastapi import HTTPException, responses
+from fastapi import HTTPException, UploadFile, responses
+from python_calamine import CalamineWorkbook
 
 from app.connection import sql_connection
 from app.routers.models.methods import get_model_id_and_path
@@ -300,6 +302,9 @@ def add_new_column(
     if access_level is None or access_level[0] not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
 
+    if ";" in column_name or ";" in column_type or "[" in column_name or "]" in column_name:
+        raise HTTPException(status_code=400, detail="Invalid character ;[] in column name or type")
+
     with sql_connection(model_id, model_path) as model_cursor:
         object_type = _validate_table_and_column_names(model_cursor, table_name, [])
         if object_type != "table":
@@ -310,8 +315,6 @@ def add_new_column(
         if column_type.upper() not in ("TEXT", "INTEGER", "REAL", "NUMERIC", "VARCHAR", "BOOLEAN"):
             raise HTTPException(status_code=400, detail=f"Cannot add column: Invalid column type: {column_type}")
 
-        if "[" in column_name or "]" in column_name:
-            raise HTTPException(status_code=400, detail=f"Cannot add column: Invalid column name: {column_name}")
         this_query = table_queries.add_new_column.format(
             table_name=table_name, column_name=column_name, column_type=column_type
         )
@@ -700,7 +703,7 @@ def export_tables_to_excel(cursor, user_email: str, model_name: str, project_nam
         safe_base = re.sub(r'[\\/:*?"<>|]', "_", model_name) or "export"
         this_file_name = f"{safe_base}.xlsx"
     with sql_connection(model_id, model_path) as model_cursor:
-        with xw.Workbook(excel_file_name, {'constant_memory': True}) as wb:
+        with xw.Workbook(excel_file_name, {"constant_memory": True}) as wb:
             used_table_names = set()
             for table_name in table_names:
                 if table_name.lower() in used_table_names:
@@ -826,3 +829,146 @@ def _write_to_worksheet(workbook, worksheet, table_headers, data, column_formats
                 worksheet.write(row_idx, col_idx, value, cell_format)
             else:
                 worksheet.write(row_idx, col_idx, value)
+
+
+def upload_excel(
+    cursor,
+    user_email: str,
+    model_name: str,
+    project_name: str,
+    table_name: str,
+    file: UploadFile,
+):
+    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
+    if not model_id:
+        raise HTTPException(status_code=404, detail="Model not found")
+    access_level = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
+    if access_level is None or access_level[0] in ("read", "reader", "readonly"):
+        raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
+    with sql_connection(model_id, model_path) as model_cursor:
+        object_type = _validate_table_and_column_names(model_cursor, table_name, [])
+        if object_type != "table":
+            raise HTTPException(status_code=404, detail=f"View: {table_name} is not updatable")
+        table_headers = _get_table_headers_with_types(model_cursor, table_name)
+        column_formats = _get_column_formatting(model_cursor, table_name)
+        workbook = CalamineWorkbook.from_object(file.file)
+        if table_name not in workbook.sheet_names:
+            raise HTTPException(status_code=404, detail=f"Worksheet named '{table_name}' not found in the Excel file")
+        table_rows = workbook.get_sheet_by_name(table_name).to_python()
+        if not table_rows or len(table_rows) < 1:
+            raise HTTPException(status_code=400, detail="The Excel file must contain at least a header row")
+        return _import_excel_to_table(model_cursor, table_rows, table_name, table_headers, column_formats)
+
+
+def _import_excel_to_table(model_cursor, all_rows, table_name, table_headers, column_formats):
+
+    excel_headers = [str(cell).strip() for cell in all_rows[0]]
+    table_column_names = [col[0] for col in table_headers]
+
+    common_column_idxs = tuple(idx for idx, col in enumerate(excel_headers) if col in table_column_names)
+    common_columns = tuple(excel_headers[idx] for idx in common_column_idxs)
+
+    common_column_data_types = tuple(table_headers[table_column_names.index(col)][1] for col in common_columns)
+    common_column_formats = tuple(column_formats.get(col, {}).get("column_type", None) for col in common_columns)
+
+    if len(common_column_idxs) == 0:
+        raise HTTPException(
+            status_code=400, detail="No matching columns found between the Excel file and the target table"
+        )
+
+    default_values = {}
+    for coumn_name, default_value in model_cursor.execute(
+        table_queries.get_default_values_query, (table_name,)
+    ).fetchall():
+        default_values[coumn_name] = default_value
+
+    delete_query, insert_query = table_queries.get_excel_upload_insert_query(table_name, common_columns, default_values)
+
+    insert_rows = []
+    for row_idx, row in enumerate(all_rows[1:]):
+        values = []
+        for serial_idx, idx in enumerate(common_column_idxs):
+            cell_value = _get_cell_value(
+                row[idx],
+                common_column_data_types[serial_idx],
+                common_column_formats[serial_idx],
+                row_idx,
+                idx,
+                table_name,
+            )
+            values.append(cell_value)
+        insert_rows.append(values)
+    rows_inserted = len(insert_rows)
+    model_cursor.execute(delete_query)
+    if rows_inserted > 0:
+        model_cursor.executemany(insert_query, insert_rows)
+    model_cursor.intermediate_commit()
+    return rows_inserted
+
+
+def _get_cell_value(value, data_type, column_type, row_idx, col_idx, table_name):
+    if value is None:
+        return None
+    if str(value).strip() == "":
+        return None
+
+    if data_type.upper() in ("STRING", "TEXT", "VARCHAR", "CHAR"):
+        if column_type is None or column_type.lower() not in ("date", "datetime"):
+            return str(value)
+        if column_type.lower() == "date":
+            if isinstance(value, (int, float)):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid date value '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': expected a date string, not a numeric value",
+                )
+            if isinstance(value, datetime.datetime) or isinstance(value, datetime.date):
+                return value.strftime("%Y-%m-%d")
+            try:
+                parsed_date = datetime.datetime.strptime(str(value)[:10], "%Y-%m-%d")
+                return parsed_date.strftime("%Y-%m-%d")
+            except Exception:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid date string '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': expected format YYYY-MM-DD",
+                )
+        if column_type.lower() == "datetime":
+            if isinstance(value, (int, float)):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid datetime value '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': expected a datetime string, not a numeric value",
+                )
+            if isinstance(value, datetime.datetime) or isinstance(value, datetime.date):
+                return value.strftime("%Y-%m-%d %H:%M:%S")
+        return str(value)
+
+    if data_type.upper() in ("INT", "INTEGER", "BIGINT", "SMALLINT"):
+        if isinstance(value, datetime.datetime) or isinstance(value, datetime.date):
+            return int(_datetime_to_excel_float(value))
+        try:
+            return int(value)
+        except Exception as ex:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid integer value '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': {str(ex)}",
+            )
+    if data_type.upper() in ("NUMERIC", "FLOAT", "REAL", "NUMBER"):
+        if isinstance(value, datetime.datetime) or isinstance(value, datetime.date):
+            return _datetime_to_excel_float(value)
+        try:
+            return float(value)
+        except Exception as ex:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid numeric value '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': {str(ex)}",
+            )
+    return value
+
+
+def _datetime_to_excel_float(dt):
+    # Excel's base date is Dec 30, 1899
+    if isinstance(dt, datetime.date) and not isinstance(dt, datetime.datetime):
+        dt = datetime.datetime.combine(dt, datetime.time())
+    base_date = datetime.datetime(1899, 12, 30)
+    delta = dt - base_date
+    # Convert the time difference to total days (including fractional time)
+    return delta.total_seconds() / 86400.0

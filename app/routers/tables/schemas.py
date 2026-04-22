@@ -149,3 +149,7 @@ class ExportTablesToExcelRequest(BaseModel):
     model_name: str
     project_name: str
     table_names: list[str]
+
+
+class UploadExcelToTableResponse(BaseModel):
+    rows_inserted: int

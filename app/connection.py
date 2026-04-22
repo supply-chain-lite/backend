@@ -89,6 +89,26 @@ class this_cursor:
         return self.conn.fetchone()[0]
 
     def execute(self, query, args=tuple()):
+        if ";" in query.strip().rstrip(";"):
+            raise ValueError("; is not allowed in query to prevent SQL injection.")
+        try:
+            self.conn.execute(query, args)
+        except Exception:
+            logger.exception("Query execution failed: %s", query)
+            raise
+        return self.conn
+
+    def executemany(self, query, seq_of_args):
+        if ";" in query.strip().rstrip(";"):
+            raise ValueError("; is not allowed in query to prevent SQL injection.")
+        try:
+            self.conn.executemany(query, seq_of_args)
+        except Exception:
+            logger.exception("Batch query execution failed: %s", query)
+            raise
+        return self.conn
+
+    def executescript(self, query, args=tuple()):
         try:
             self.conn.execute(query, args)
         except Exception:
