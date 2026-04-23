@@ -1,6 +1,6 @@
 """API routes for table-related operations."""
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from app.connection import master_connection
 from app.routers.auth.methods import _get_user_from_token
@@ -415,7 +415,9 @@ def upload_excel_file(
     upload_file: UploadFile = File(...),
 ) -> table_schemas.UploadExcelToTableResponse:
     if not upload_file.filename or not upload_file.filename.lower().endswith((".xlsx", ".xls")):
-        raise ValueError("Invalid file type. Please upload an Excel file with .xlsx or .xls extension.")
+        raise HTTPException(
+            status_code=400, detail="Invalid file type. Please upload an Excel file with .xlsx or .xls extension."
+        )
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:
         row_count = table_methods.upload_excel(cursor, useremail, model_name, project_name, table_name, upload_file)

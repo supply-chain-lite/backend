@@ -877,10 +877,10 @@ def _import_excel_to_table(model_cursor, all_rows, table_name, table_headers, co
         )
 
     default_values = {}
-    for coumn_name, default_value in model_cursor.execute(
+    for column_name, default_value in model_cursor.execute(
         table_queries.get_default_values_query, (table_name,)
     ).fetchall():
-        default_values[coumn_name] = default_value
+        default_values[column_name] = default_value
 
     delete_query, insert_query = table_queries.get_excel_upload_insert_query(table_name, common_columns, default_values)
 
@@ -888,8 +888,9 @@ def _import_excel_to_table(model_cursor, all_rows, table_name, table_headers, co
     for row_idx, row in enumerate(all_rows[1:]):
         values = []
         for serial_idx, idx in enumerate(common_column_idxs):
+            cell_raw = row[idx] if idx < len(row) else None
             cell_value = _get_cell_value(
-                row[idx],
+                cell_raw,
                 common_column_data_types[serial_idx],
                 common_column_formats[serial_idx],
                 row_idx,
@@ -939,6 +940,14 @@ def _get_cell_value(value, data_type, column_type, row_idx, col_idx, table_name)
                 )
             if isinstance(value, (datetime.datetime, datetime.date)):
                 return value.strftime("%Y-%m-%d %H:%M:%S")
+            try:
+                parsed_date = datetime.datetime.strptime(str(value)[:19], "%Y-%m-%d %H:%M:%S")
+                return parsed_date.strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid datetime string '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': expected format YYYY-MM-DD HH:MM:SS",
+                )
         return str(value)
 
     if data_type.upper() in ("INT", "INTEGER", "BIGINT", "SMALLINT"):
