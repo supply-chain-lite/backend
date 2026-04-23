@@ -37,16 +37,21 @@ def get_table_headers(
     return table_headers
 
 
-def _get_table_headers_with_types(cursor, table_name: str) -> list[tuple[str, str]]:
+def _get_table_headers_with_types(cursor, table_name: str, get_all_columns = False) -> list[tuple[str, str]]:
     """
     Return the table's column headers with their SQL types, using a persisted column order when available.
 
     If a persisted column order exists and decodes to a list, headers are returned in that order including only columns that actually exist in the table. If no persisted order is present or none of its entries match existing columns, the database-defined column order is returned. JSON parsing errors for the persisted order are ignored and treated as no persisted order.
 
+    If `get_all_columns` is True, the full list of columns from the database is returned in the database-defined order, ignoring any persisted column order.
+
     Returns:
         list[tuple[str, str]]: List of (column_name, column_type) tuples in the chosen order.
     """
     all_rows = cursor.execute(table_queries.get_table_columns, (table_name,)).fetchall()
+
+    if get_all_columns:
+         return all_rows
     try:
         column_order_row = cursor.execute(table_queries.get_column_order, (table_name,)).fetchone()
         decoded = json.loads(column_order_row[0]) if column_order_row else []
@@ -869,7 +874,7 @@ def upload_excel(
         object_type = _validate_table_and_column_names(model_cursor, table_name, [])
         if object_type != "table":
             raise HTTPException(status_code=404, detail=f"View: {table_name} is not updatable")
-        table_headers = _get_table_headers_with_types(model_cursor, table_name)
+        table_headers = _get_table_headers_with_types(model_cursor, table_name, True)
         column_formats = _get_column_formatting(model_cursor, table_name)
         workbook = CalamineWorkbook.from_object(file.file)
         if table_name not in workbook.sheet_names:
