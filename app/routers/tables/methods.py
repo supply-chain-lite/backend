@@ -37,7 +37,7 @@ def get_table_headers(
     return table_headers
 
 
-def _get_table_headers_with_types(cursor, table_name: str, get_all_columns = False) -> list[tuple[str, str]]:
+def _get_table_headers_with_types(cursor, table_name: str, get_all_columns=False) -> list[tuple[str, str]]:
     """
     Return the table's column headers with their SQL types, using a persisted column order when available.
 
@@ -51,7 +51,7 @@ def _get_table_headers_with_types(cursor, table_name: str, get_all_columns = Fal
     all_rows = cursor.execute(table_queries.get_table_columns, (table_name,)).fetchall()
 
     if get_all_columns:
-         return all_rows
+        return all_rows
     try:
         column_order_row = cursor.execute(table_queries.get_column_order, (table_name,)).fetchone()
         decoded = json.loads(column_order_row[0]) if column_order_row else []
@@ -459,6 +459,10 @@ def update_row(
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     with sql_connection(model_id, model_path) as model_cursor:
         column_names = list(updates.keys())
+        generated_columns = _get_generated_columns(model_cursor, table_name)
+        common_columns = list(set(column_names) & set(generated_columns))
+        if common_columns:
+            raise HTTPException(status_code=400, detail=f"Cannot update generated columns: {', '.join(common_columns)}")
         object_type = _validate_table_and_column_names(model_cursor, table_name, column_names)
         if object_type != "table":
             raise HTTPException(status_code=404, detail=f"View: {table_name} is not updatable")
@@ -466,6 +470,21 @@ def update_row(
         if len(values) <= 1:
             raise HTTPException(status_code=400, detail="No valid columns provided for update")
         model_cursor.execute(query, values)
+
+
+def _get_generated_columns(cursor, table_name: str) -> list[str]:
+    """
+    Retrieve the list of generated columns for a given table.
+
+    Parameters:
+        cursor: Database cursor to execute the query.
+        table_name (str): Name of the table to check for generated columns.
+    Returns:
+        list[str]: A list of generated column names for the specified table.
+    """
+    rows = cursor.execute(table_queries.get_generated_columns, (table_name,)).fetchall()
+    generated_columns = [row[0] for row in rows]
+    return generated_columns
 
 
 def update_rows(
@@ -504,6 +523,9 @@ def update_rows(
     if access_level is None or access_level[0] in ("read", "reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     with sql_connection(model_id, model_path) as model_cursor:
+        generated_columns = _get_generated_columns(model_cursor, table_name)
+        if column_name in generated_columns:
+            raise HTTPException(status_code=400, detail=f"Cannot update generated column: {column_name}")
         column_names = [column_name]
         column_names.extend(select_filters.keys())
         column_names.extend(text_filters.keys())
@@ -668,9 +690,10 @@ def add_row(
     with sql_connection(model_id, model_path) as model_cursor:
         column_names = list(values.keys())
         object_type = _validate_table_and_column_names(model_cursor, table_name, column_names)
+        generated_columns = _get_generated_columns(model_cursor, table_name)
         if object_type != "table":
             raise HTTPException(status_code=404, detail=f"View: {table_name} is not updatable")
-        query, query_values = table_queries.add_row(table_name, values)
+        query, query_values = table_queries.add_row(table_name, values, generated_columns)
         model_cursor.execute(query, query_values)
 
 
@@ -908,7 +931,10 @@ def _import_excel_to_table(model_cursor, all_rows, table_name, table_headers, co
     Raises:
         HTTPException(400): If no matching columns are found between the Excel sheet and the table, or if cell value conversion fails for any row/cell.
     """
+
+    generated_columns = _get_generated_columns(model_cursor, table_name)
     excel_headers = [str(cell).strip() for cell in all_rows[0]]
+    table_headers = [header for header in table_headers if header[0] not in generated_columns]
     table_column_names = [col[0] for col in table_headers]
 
     common_column_idxs = tuple(idx for idx, col in enumerate(excel_headers) if col in table_column_names)
