@@ -84,31 +84,11 @@ class this_cursor:
         self.id = id
 
     def rowcount(self):
-        """
-        Return the number of rows modified by the most recent SQL operation on this connection.
-        
-        Returns:
-            int: The number of rows changed by the last executed statement as reported by `SELECT CHANGES()`.
-        """
         count_query = "SELECT CHANGES()"
         self.conn.execute(count_query)
         return self.conn.fetchone()[0]
 
     def execute(self, query, args=tuple()):
-        """
-        Execute a single SQL statement on the underlying connection and return the connection.
-        
-        Parameters:
-            query (str): SQL statement to execute. Must not contain ';' characters (a trailing semicolon is allowed and trimmed).
-            args (tuple or sequence, optional): Parameters to bind to the query.
-        
-        Returns:
-            conn: The underlying connection object after execution.
-        
-        Raises:
-            ValueError: If `query` contains a semicolon character after trimming a trailing semicolon.
-            Exception: Propagates any exception raised by the underlying database execution.
-        """
         if ";" in query.strip().rstrip(";"):
             raise ValueError("; is not allowed in query to prevent SQL injection.")
         try:
@@ -119,20 +99,6 @@ class this_cursor:
         return self.conn
 
     def executemany(self, query, seq_of_args):
-        """
-        Execute a parameterized SQL statement for each parameter sequence and return the underlying connection.
-        
-        Parameters:
-            query (str): SQL statement to execute; must not contain semicolons.
-            seq_of_args (iterable): An iterable of parameter sequences/tuples applied to `query` for each execution.
-        
-        Returns:
-            conn: The underlying APSW connection used to execute the batch.
-        
-        Raises:
-            ValueError: If `query` contains a semicolon after trimming a trailing semicolon.
-            Exception: Any exception raised by the underlying database driver is logged and re-raised.
-        """
         if ";" in query.strip().rstrip(";"):
             raise ValueError("; is not allowed in query to prevent SQL injection.")
         try:
@@ -143,16 +109,6 @@ class this_cursor:
         return self.conn
 
     def executescript(self, query, args=tuple()):
-        """
-        Execute a SQL script or statement on the underlying connection.
-        
-        Parameters:
-            query (str): SQL script or statement to execute.
-            args (tuple): Parameters to bind to the query.
-        
-        Returns:
-            conn: The underlying APSW connection object used for execution.
-        """
         try:
             self.conn.execute(query, args)
         except Exception:

@@ -420,19 +420,19 @@ def add_row(table_name, values):
 def get_excel_upload_insert_query(table_name, column_names, default_values):
     """
     Prepare companion DELETE and INSERT SQL statements for bulk uploading Excel rows into a table.
-    
+
     Builds:
     - A DELETE statement to remove all rows from the target table.
     - An INSERT statement for the provided columns using `?` placeholders for parameter binding; for any column present in `default_values` whose string form does not contain `;`, the corresponding placeholder is wrapped as `COALESCE(?, <default>)` so a bound NULL will fall back to the SQL literal default.
-    
+
     Parameters:
         table_name (str): Target table name.
         column_names (list[str]): Ordered list of column names to insert; must contain at least one column.
         default_values (dict): Mapping of column names to SQL literal defaults (used when present and safe to inline).
-    
+
     Returns:
         tuple[str, str]: `(delete_query, insert_query)` where `delete_query` is `DELETE FROM [table_name]` and `insert_query` is `INSERT INTO [table_name] ([col...]) VALUES (...)`.
-    
+
     Raises:
         fastapi.HTTPException: Raised with status code 400 if `column_names` is empty.
     """

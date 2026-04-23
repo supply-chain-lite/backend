@@ -672,21 +672,21 @@ def add_row(
 def export_tables_to_excel(cursor, user_email: str, model_name: str, project_name: str, table_names: list[str]):
     """
     Export one or more tables from the resolved model into a temporary Excel (.xlsx) file for download.
-    
+
     Parameters:
         cursor: Database cursor used to resolve the model and read table data.
         user_email (str): Email of the requesting user used for model resolution.
         model_name (str): Name of the model containing the tables.
         project_name (str): Project name used in model resolution.
         table_names (list[str]): List of table names to export; must contain at least one name. Duplicate names are skipped case-insensitively.
-    
+
     Returns:
         fastapi.responses.FileResponse: A response that serves a temporary .xlsx file. When a single table is exported the response filename is a sanitized version of that table name; when multiple tables are exported the response filename is a sanitized version of the model name.
-    
+
     Raises:
         HTTPException(404): If the model cannot be resolved or a requested table does not exist.
         HTTPException(400): If `table_names` is empty.
-    
+
     Notes:
         - Each table is written to its own worksheet; worksheet names are sanitized, limited to 31 characters, and made unique by appending a numeric suffix when necessary.
         - The export reads up to 1,000,000 rows per table and applies any per-column formatting metadata found in the model.
@@ -740,7 +740,7 @@ def export_tables_to_excel(cursor, user_email: str, model_name: str, project_nam
 def _write_to_worksheet(workbook, worksheet, table_headers, data, column_formats):
     """
     Write headers and rows into an xlsxwriter worksheet applying per-column sizing and formatting.
-    
+
     Parameters:
         workbook: xlsxwriter Workbook used to create cell Format objects.
         worksheet: xlsxwriter Worksheet to write into.
@@ -751,7 +751,7 @@ def _write_to_worksheet(workbook, worksheet, table_headers, data, column_formats
             - prefix: literal string or currency code (USD/INR/EUR/GBP/JPY mapped to symbols)
             - thousand_separator: truthy to enable grouping
             - decimal_places: integer or numeric string controlling decimal digits
-    
+
     Notes:
         - Header row is written in bold; column widths are set to fit header text with enforced minimums for date (>=12) and datetime (>=20).
         - Per-column Excel formats are computed from column_formats or inferred defaults (numeric format for numeric SQL types).
@@ -846,14 +846,14 @@ def upload_excel(
 ):
     """
     Import rows from the Excel worksheet named exactly as table_name into the specified database table, replacing existing rows.
-    
+
     Parameters:
         file (UploadFile): The uploaded Excel file to read; must contain a worksheet named exactly `table_name`.
         table_name (str): Target table name and required worksheet name in the workbook.
-    
+
     Returns:
         int: Number of rows inserted from the Excel worksheet (excluding the header row).
-    
+
     Raises:
         HTTPException: 404 if the model is not found, if the worksheet is missing, or if the target is a non-updatable view;
                        403 if the user lacks modification permission;
@@ -881,26 +881,25 @@ def upload_excel(
 
 
 def _import_excel_to_table(model_cursor, all_rows, table_name, table_headers, column_formats):
-
     """
     Import rows from an Excel worksheet into the specified database table by matching Excel headers to table columns, replacing existing table rows with the imported data.
-    
+
     Parameters:
         model_cursor: Database cursor for the target model; used to query defaults, execute delete/insert, and commit.
         all_rows (list[list]): Excel sheet rows as returned by the workbook reader; the first row is expected to be the header row.
         table_name (str): Target database table name.
         table_headers (list[tuple]): Ordered table columns as (column_name, sql_type).
         column_formats (dict): Per-column formatting metadata keyed by column name; used to guide value conversions.
-    
+
     Behavior:
         - Matches Excel header names exactly to table column names and imports only those common columns in the Excel column order.
         - Loads database default values for non-provided columns, constructs a delete+insert payload, deletes all existing rows in the table, then bulk-inserts the converted Excel rows.
         - Calls the cursor's intermediate_commit() after successful insert.
         - If no Excel headers match any table columns, raises an HTTPException with status 400.
-    
+
     Returns:
         int: Number of rows imported from the Excel worksheet (number of inserted rows).
-    
+
     Raises:
         HTTPException(400): If no matching columns are found between the Excel sheet and the table, or if cell value conversion fails for any row/cell.
     """
@@ -952,7 +951,7 @@ def _import_excel_to_table(model_cursor, all_rows, table_name, table_headers, co
 def _get_cell_value(value, data_type, column_type, row_idx, col_idx, table_name):
     """
     Convert an Excel cell value into a database-storable value based on the column's SQL type and optional formatting.
-    
+
     Parameters:
         value: The raw cell value from the Excel sheet; blank strings and None are treated as NULL.
         data_type (str): The SQL type of the target column (e.g., "STRING", "INT", "NUMERIC").
@@ -960,7 +959,7 @@ def _get_cell_value(value, data_type, column_type, row_idx, col_idx, table_name)
         row_idx (int): Zero-based Excel row index (used for error messages).
         col_idx (int): Zero-based Excel column index (used for error messages).
         table_name (str): Target table name (used for error messages).
-    
+
     Returns:
         The converted value suitable for insertion into the database:
           - None for empty cells;
@@ -968,7 +967,7 @@ def _get_cell_value(value, data_type, column_type, row_idx, col_idx, table_name)
           - int for integer columns;
           - float for numeric columns;
           - the original value for any other SQL types.
-    
+
     Raises:
         HTTPException: On parse or type mismatches (invalid date/datetime formats, numeric conversion failures, or numeric values provided where a date/datetime string is expected). Error details include 1-based row/column and table name.
     """
@@ -1041,10 +1040,10 @@ def _datetime_to_excel_float(dt):
     # Excel's base date is Dec 30, 1899
     """
     Convert a Python date or datetime to an Excel serial date number.
-    
+
     Parameters:
         dt (datetime.date | datetime.datetime): The date or datetime to convert. If a plain date is provided it is treated as midnight.
-    
+
     Returns:
         float: Excel serial date value representing days (and fractional day for time) since 1899-12-30.
     """

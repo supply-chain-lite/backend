@@ -416,18 +416,18 @@ def upload_excel_file(
 ) -> table_schemas.UploadExcelToTableResponse:
     """
     Handle an uploaded Excel file and import its rows into the specified table.
-    
+
     Validates that the uploaded file has a .xlsx or .xls extension, calls the import routine, and returns the number of rows inserted.
-    
+
     Parameters:
         model_name (str): Target model name.
         project_name (str): Target project name.
         table_name (str): Target table name.
         upload_file (UploadFile): Uploaded Excel file; must have a `.xlsx` or `.xls` filename.
-    
+
     Returns:
         UploadExcelToTableResponse: Object with `rows_inserted` set to the number of rows successfully imported.
-    
+
     Raises:
         HTTPException: Status 400 if `upload_file` is missing or does not have a `.xlsx` or `.xls` extension.
     """
