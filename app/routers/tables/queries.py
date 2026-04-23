@@ -419,17 +419,22 @@ def add_row(table_name, values):
 
 def get_excel_upload_insert_query(table_name, column_names, default_values):
     """
-    Builds a parameterized SQL query for inserting rows from an uploaded Excel file into a specified table and columns.
-
+    Prepare companion DELETE and INSERT SQL statements for bulk uploading Excel rows into a table.
+    
+    Builds:
+    - A DELETE statement to remove all rows from the target table.
+    - An INSERT statement for the provided columns using `?` placeholders for parameter binding; for any column present in `default_values` whose string form does not contain `;`, the corresponding placeholder is wrapped as `COALESCE(?, <default>)` so a bound NULL will fall back to the SQL literal default.
+    
     Parameters:
-        table_name (str): Name of the target table.
-        column_names (list[str]): List of column names to insert values into; must be non-empty.
-        default_values (dict): Mapping of column names to their default values.
-
+        table_name (str): Target table name.
+        column_names (list[str]): Ordered list of column names to insert; must contain at least one column.
+        default_values (dict): Mapping of column names to SQL literal defaults (used when present and safe to inline).
+    
     Returns:
-        str: A SQL INSERT statement string with `?` placeholders for parameter binding.
+        tuple[str, str]: `(delete_query, insert_query)` where `delete_query` is `DELETE FROM [table_name]` and `insert_query` is `INSERT INTO [table_name] ([col...]) VALUES (...)`.
+    
     Raises:
-        HTTPException: status 400 if `column_names` is empty.
+        fastapi.HTTPException: Raised with status code 400 if `column_names` is empty.
     """
     if len(column_names) == 0:
         raise HTTPException(status_code=400, detail="At least one column must be specified for Excel upload")
