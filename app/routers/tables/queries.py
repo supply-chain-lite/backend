@@ -411,7 +411,7 @@ def add_row(table_name, values, generated_columns):
     column_names = [col for col in values.keys() if values[col] is not None]
     if len(column_names) == 0:
         raise HTTPException(status_code=400, detail="At least one non-null value must be provided to add a row")
-    column_names = [col for col in column_names if col not in generated_columns]
+    column_names = [col for col in column_names if col.lower() not in generated_columns]
     if len(column_names) == 0:
         raise HTTPException(
             status_code=400, detail="No valid columns provided for new row after excluding generated columns"

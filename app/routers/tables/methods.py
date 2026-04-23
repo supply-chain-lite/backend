@@ -460,7 +460,7 @@ def update_row(
     with sql_connection(model_id, model_path) as model_cursor:
         column_names = list(updates.keys())
         generated_columns = _get_generated_columns(model_cursor, table_name)
-        common_columns = list(set(column_names) & set(generated_columns))
+        common_columns = [col for col in column_names if col.lower() in generated_columns]
         if common_columns:
             raise HTTPException(status_code=400, detail=f"Cannot update generated columns: {', '.join(common_columns)}")
         object_type = _validate_table_and_column_names(model_cursor, table_name, column_names)
@@ -483,7 +483,7 @@ def _get_generated_columns(cursor, table_name: str) -> list[str]:
         list[str]: A list of generated column names for the specified table.
     """
     rows = cursor.execute(table_queries.get_generated_columns, (table_name,)).fetchall()
-    generated_columns = [row[0] for row in rows]
+    generated_columns = [row[0].lower() for row in rows]
     return generated_columns
 
 
@@ -524,7 +524,7 @@ def update_rows(
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     with sql_connection(model_id, model_path) as model_cursor:
         generated_columns = _get_generated_columns(model_cursor, table_name)
-        if column_name in generated_columns:
+        if column_name.lower() in generated_columns:
             raise HTTPException(status_code=400, detail=f"Cannot update generated column: {column_name}")
         column_names = [column_name]
         column_names.extend(select_filters.keys())
@@ -934,7 +934,7 @@ def _import_excel_to_table(model_cursor, all_rows, table_name, table_headers, co
 
     generated_columns = _get_generated_columns(model_cursor, table_name)
     excel_headers = [str(cell).strip() for cell in all_rows[0]]
-    table_headers = [header for header in table_headers if header[0] not in generated_columns]
+    table_headers = [header for header in table_headers if header[0].lower() not in generated_columns]
     table_column_names = [col[0] for col in table_headers]
 
     common_column_idxs = tuple(idx for idx, col in enumerate(excel_headers) if col in table_column_names)
