@@ -53,6 +53,7 @@ def get_table_data(
             request.column_names,
             request.select_filters,
             request.text_filters,
+            request.date_columns,
             request.sort_columns,
             request.page_number,
             request.page_size,
@@ -81,6 +82,7 @@ def get_distinct_column_values(
             request.column_name,
             request.select_filters,
             request.text_filters,
+            request.date_columns,
             request.page_size,
         )
         return table_schemas.DistinctColumnValuesResponse(values=values)
@@ -106,6 +108,7 @@ def get_row_count(
             request.table_name,
             request.select_filters,
             request.text_filters,
+            request.date_columns,
         )
         return table_schemas.RowCountResponse(row_count=row_count)
 
@@ -294,6 +297,7 @@ def update_rows(
             request.column_value,
             request.select_filters,
             request.text_filters,
+            request.date_columns,
         )
         return table_schemas.updateRowValuesResponse(rows_updated=row_count)
 
@@ -323,6 +327,7 @@ def delete_rows(
             request.row_ids,
             request.select_filters,
             request.text_filters,
+            request.date_columns,
         )
         return table_schemas.DeleteRowsResponse(rows_deleted=rows_deleted)
 
@@ -351,6 +356,7 @@ def get_summary_stats(
             request.column_names,
             request.select_filters,
             request.text_filters,
+            request.date_columns,
         )
         return table_schemas.getSummaryStatsResponse(summary=summary_stats)
 

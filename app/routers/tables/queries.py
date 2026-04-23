@@ -44,18 +44,20 @@ def get_table_query(
     column_names: list[str],
     select_filters: dict[str, list[str]],
     text_filters: dict[str, str],
+    date_columns: list[str],
     sort_columns: list[list[str, str]],
     page_number: int,
     page_size: int,
 ) -> tuple[str, list]:
     """
-    Builds a parameterized SQLite SELECT query for the given table and columns, applying exact-match filters, case-insensitive substring filters, sorting, and pagination.
+    Builds a parameterized SQLite SELECT query for the given table and columns, applying exact-match filters, text/date-aware substring filters, sorting, and pagination.
 
     Parameters:
         table_name (str): Table name used in the FROM clause.
         column_names (list[str]): Columns to include in the SELECT; must contain at least one name.
         select_filters (dict[str, list[str]]): Exact-match filters mapping column -> list of allowed values. Empty lists are ignored. If a filter list contains `None` alongside other values the condition becomes `([col] IN (...) OR [col] IS NULL)`; if it contains only `None` the condition becomes `[col] IS NULL`.
-        text_filters (dict[str, str]): Case-insensitive substring filters mapping column -> substring; falsy or empty values are ignored and non-empty values are bound as `%<text>%`.
+        text_filters (dict[str, str]): Substring filters mapping column -> substring; falsy or empty values are ignored and non-empty values are bound as `%<text>%`. Columns listed in `date_columns` are filtered against `DATE([column] + julianday('1899-12-30'))`; all others use `LIKE ? COLLATE NOCASE`.
+        date_columns (list[str]): Columns from `text_filters` that should be matched as dates after converting Excel-style serial values to SQLite dates.
         sort_columns (list[list[str, str]]): Sort directives as lists of `[column_name, direction]` where `direction` must be `'ASC'` or `'DESC'` (case-insensitive).
         page_number (int): 1-based page index used to compute OFFSET; must be greater than 0.
         page_size (int): Number of rows per page used for LIMIT; must be greater than 0.
@@ -98,7 +100,10 @@ def get_table_query(
     for column_name, text in text_filters.items():
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
-        select_query += f"AND [{column_name}] LIKE ? COLLATE NOCASE "
+        if column_name in date_columns:
+            select_query += f"AND DATE([{column_name}] + julianday('1899-12-30')) LIKE ? "
+        else:
+            select_query += f"AND [{column_name}] LIKE ? COLLATE NOCASE "
         params.append(f"%{text}%")
 
     offset = (page_number - 1) * page_size
@@ -122,16 +127,18 @@ def get_distinct_column_values_query(
     column_name: str,
     select_filters: dict[str, list[str | int | float | bool | None]],
     text_filters: dict[str, str],
+    date_columns: list[str],
     page_size: int,
 ) -> tuple[str, list]:
     """
-    Return distinct values for a single column from a table, applying exact-match and case-insensitive substring filters and limiting the result set.
+    Return distinct values for a single column from a table, applying exact-match and text/date-aware substring filters and limiting the result set.
 
     Parameters:
         table_name (str): Table to query.
         column_name (str): Target column whose distinct values to return; must be non-empty.
         select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters keyed by column. Empty lists are ignored. If a filter list contains `None` and also non-null values, the filter matches rows where the column is in the non-null list or is NULL; if the list contains only `None`, the filter matches NULL. Filters for `column_name` are ignored.
-        text_filters (dict[str, str]): Case-insensitive substring filters keyed by column; falsy/empty values are ignored and remaining values are matched as a substring (case-insensitive).
+        text_filters (dict[str, str]): Substring filters keyed by column; falsy/empty values are ignored. Columns listed in `date_columns` are filtered against converted date strings, while all others use case-insensitive substring matching.
+        date_columns (list[str]): Columns from `text_filters` that should be matched as dates after converting Excel-style serial values to SQLite dates.
         page_size (int): Maximum number of distinct values to return; must be greater than 0.
 
     Returns:
@@ -168,7 +175,10 @@ def get_distinct_column_values_query(
     for filter_col, text in text_filters.items():
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
-        query += f"AND [{filter_col}] LIKE ? COLLATE NOCASE "
+        if filter_col in date_columns:
+            query += f"AND DATE([{filter_col}] + julianday('1899-12-30')) LIKE ? "
+        else:
+            query += f"AND [{filter_col}] LIKE ? COLLATE NOCASE "
         params.append(f"%{text}%")
 
     query += " ORDER BY 1 COLLATE NOCASE"
@@ -179,10 +189,13 @@ def get_distinct_column_values_query(
 
 
 def get_row_count_query(
-    table_name: str, select_filters: dict[str, list[str | int | float | bool | None]], text_filters: dict[str, str]
+    table_name: str,
+    select_filters: dict[str, list[str | int | float | bool | None]],
+    text_filters: dict[str, str],
+    date_columns: list[str],
 ) -> tuple[str, list]:
     """
-    Build a parameterized COUNT(*) SQL query for a table applying exact-match (including nullable) and case-insensitive substring filters.
+    Build a parameterized COUNT(*) SQL query for a table applying exact-match (including nullable) and text/date-aware substring filters.
 
     Parameters:
         table_name (str): Target table name; must be non-empty.
@@ -190,7 +203,8 @@ def get_row_count_query(
             - when all values are `None`, the query will filter for `IS NULL`;
             - when mixed with non-null values, the query will filter for `IN (...) OR IS NULL`.
             Non-null values are added to the returned parameter list in placeholder order.
-        text_filters (dict[str, str]): Mapping of column names to substring filters; falsy or empty values are ignored. Each entry filters the column for a case-insensitive substring match.
+        text_filters (dict[str, str]): Mapping of column names to substring filters; falsy or empty values are ignored. Columns listed in `date_columns` are filtered against converted date strings, while all others use case-insensitive substring matching.
+        date_columns (list[str]): Columns from `text_filters` that should be matched as dates after converting Excel-style serial values to SQLite dates.
 
     Returns:
         tuple[str, list]: (query, params) where `query` is the SQL string with `?` placeholders and `params` is the ordered list of parameter values to bind.
@@ -224,7 +238,10 @@ def get_row_count_query(
     for filter_col, text in text_filters.items():
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
-        query += f"AND [{filter_col}] LIKE ? COLLATE NOCASE "
+        if filter_col in date_columns:
+            query += f"AND DATE([{filter_col}] + julianday('1899-12-30')) LIKE ? "
+        else:
+            query += f"AND [{filter_col}] LIKE ? COLLATE NOCASE "
         params.append(f"%{text}%")
 
     return query, params
@@ -255,7 +272,7 @@ def update_row(table_name, row_id, updates):
     return update_query, params
 
 
-def update_rows(table_name, row_ids, column_name, column_value, select_filters, text_filters):
+def update_rows(table_name, row_ids, column_name, column_value, select_filters, text_filters, date_columns):
     """
     Builds a parameterized UPDATE statement to set a single column's value, optionally restricted to specific rowids.
 
@@ -265,7 +282,8 @@ def update_rows(table_name, row_ids, column_name, column_value, select_filters, 
         column_name (str): Name of the column to set.
         column_value: Value to bind for the column.
         select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters to apply in conjunction with the row_ids; keys are column names and values are lists of allowed values for those columns. Only rows matching the specified row_ids and satisfying these filters will be updated.
-        text_filters (dict[str, str]): Substring/text filters to apply in conjunction with the row_ids; keys are column names and values are the text to search for in those columns. Only rows matching the specified row_ids and satisfying these filters will be updated.
+        text_filters (dict[str, str]): Substring/text filters to apply in conjunction with the row_ids; keys are column names and values are the text to search for in those columns. Only rows matching the specified row_ids and satisfying these filters will be updated. Columns listed in `date_columns` are filtered against converted date strings.
+        date_columns (list[str]): Columns from `text_filters` that should be matched as dates after converting Excel-style serial values to SQLite dates.
     Returns:
         tuple[str, list]: A tuple containing the SQL UPDATE string and the ordered list of bound parameters.
     """
@@ -296,21 +314,25 @@ def update_rows(table_name, row_ids, column_name, column_value, select_filters, 
     for filter_col, text in text_filters.items():
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
-        update_query += f"AND [{filter_col}] LIKE ? COLLATE NOCASE "
+        if filter_col in date_columns:
+            update_query += f"AND DATE([{filter_col}] + julianday('1899-12-30')) LIKE ? "
+        else:
+            update_query += f"AND [{filter_col}] LIKE ? COLLATE NOCASE "
         params.append(f"%{text}%")
 
     return update_query, params
 
 
-def delete_rows(table_name, row_ids, select_filters, text_filters):
+def delete_rows(table_name, row_ids, select_filters, text_filters, date_columns):
     """
-    Builds a parameterized DELETE SQL statement for a table with optional rowid, exact-match (including NULL) and case-insensitive substring filters.
+    Builds a parameterized DELETE SQL statement for a table with optional rowid, exact-match (including NULL) and text/date-aware substring filters.
 
     Parameters:
         table_name (str): Target table name; inserted into the query using bracket-quoted identifier syntax.
         row_ids (Sequence): If non-empty, restricts deletion to rows whose `rowid` is in this sequence; if empty, no rowid restriction is applied.
         select_filters (Mapping[str, Sequence]): Exact-match filters mapping column -> list of values. If a list contains `None` and other values, the condition becomes `IN (...) OR IS NULL`; if the list contains only `None`, the condition becomes `IS NULL`. Empty lists are ignored.
-        text_filters (Mapping[str, str]): Substring filters mapping column -> text; falsy or empty text values are ignored. Each filter is applied as `[{col}] LIKE %<text>% COLLATE NOCASE`.
+        text_filters (Mapping[str, str]): Substring filters mapping column -> text; falsy or empty text values are ignored. Columns listed in `date_columns` are filtered against converted date strings, while all others use `LIKE ? COLLATE NOCASE`.
+        date_columns (list[str]): Columns from `text_filters` that should be matched as dates after converting Excel-style serial values to SQLite dates.
 
     Returns:
         tuple: A pair `(query, params)` where `query` is the DELETE SQL string with `?` placeholders and `params` is the corresponding list of bound parameter values.
@@ -341,21 +363,25 @@ def delete_rows(table_name, row_ids, select_filters, text_filters):
     for filter_col, text in text_filters.items():
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
-        delete_query += f"AND [{filter_col}] LIKE ? COLLATE NOCASE "
+        if filter_col in date_columns:
+            delete_query += f"AND DATE([{filter_col}] + julianday('1899-12-30')) LIKE ? "
+        else:
+            delete_query += f"AND [{filter_col}] LIKE ? COLLATE NOCASE "
         params.append(f"%{text}%")
 
     return delete_query, params
 
 
-def get_summary_stats_query(table_name, column_names, select_filters, text_filters):
+def get_summary_stats_query(table_name, column_names, select_filters, text_filters, date_columns):
     """
-    Builds a parameterized SQL SELECT that returns aggregate statistics for specified columns with optional exact-match and case-insensitive text filters.
+    Builds a parameterized SQL SELECT that returns aggregate statistics for specified columns with optional exact-match and text/date-aware filters.
 
     Parameters:
         table_name (str): Name of the table to query.
         column_names (dict[str, str]): Mapping of column name -> aggregate function name (e.g., {"age": "MAX", "salary": "AVG"}).
         select_filters (dict[str, list]): Exact-match filters where each key is a column and the value is a list of allowed values; a list containing `None` indicates NULL should be included.
-        text_filters (dict[str, str]): Substring filters where each key is a column and the value is the text to match (matched using LIKE with surrounding wildcards, case-insensitive).
+        text_filters (dict[str, str]): Substring filters where each key is a column and the value is the text to match. Columns listed in `date_columns` are filtered against converted date strings, while all others use case-insensitive substring matching.
+        date_columns (list[str]): Columns from `text_filters` that should be matched as dates after converting Excel-style serial values to SQLite dates.
 
     Returns:
         tuple[str, list]: A tuple containing the SQL query string and the list of parameters to bind in order.
@@ -387,7 +413,10 @@ def get_summary_stats_query(table_name, column_names, select_filters, text_filte
     for filter_col, text in text_filters.items():
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
-        stats_query += f"AND [{filter_col}] LIKE ? COLLATE NOCASE "
+        if filter_col in date_columns:
+            stats_query += f"AND DATE([{filter_col}] + julianday('1899-12-30')) LIKE ? "
+        else:
+            stats_query += f"AND [{filter_col}] LIKE ? COLLATE NOCASE "
         params.append(f"%{text}%")
 
     return stats_query, params

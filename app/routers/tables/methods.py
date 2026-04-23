@@ -77,6 +77,7 @@ def get_table_data(
     column_names: list[str],
     select_filters: dict[str, list[str | int | float | bool | None]],
     text_filters: dict[str, str],
+    date_columns: list[str],
     sort_columns: list[list[str, str]],
     page_number: int,
     page_size: int,
@@ -93,6 +94,7 @@ def get_table_data(
         column_names (list[str]): Columns to return, in the requested order; must contain at least one column.
         select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters mapping column names to allowed values.
         text_filters (dict[str, str]): Substring/text filters mapping column names to search terms.
+        date_columns (list[str]): Columns from `text_filters` that should be searched as dates after converting Excel-style serial values to SQLite dates.
         sort_columns (list[list[str, str]]): Sort specification as a list of [column_name, direction] pairs (e.g., ["col", "asc"]).
         page_number (int): 1-based page number for pagination.
         page_size (int): Number of rows per page.
@@ -123,7 +125,7 @@ def get_table_data(
             object_type = "read_only_object"
         select_columns = ["rowid", *column_names] if object_type == "table" else list(column_names or [])
         query, params = table_queries.get_table_query(
-            table_name, select_columns, select_filters, text_filters, sort_columns, page_number, page_size
+            table_name, select_columns, select_filters, text_filters, date_columns, sort_columns, page_number, page_size
         )
         data = model_cursor.execute(query, params).fetchall()
         return data
@@ -138,6 +140,7 @@ def get_distinct_column_values(
     column_name: str,
     select_filters: dict[str, list[str | int | float | bool | None]],
     text_filters: dict[str, str],
+    date_columns: list[str],
     page_size: int,
 ) -> list[str | int | float | bool | None]:
     """
@@ -150,7 +153,8 @@ def get_distinct_column_values(
         table_name (str): Table to query.
         column_name (str): Column whose distinct values to retrieve.
         select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters keyed by column name.
-        text_filters (dict[str, str]): Full-text or substring filters keyed by column name.
+        text_filters (dict[str, str]): Text filters keyed by column name. Filters for columns listed in `date_columns` are applied against converted date strings.
+        date_columns (list[str]): Columns from `text_filters` that should be matched as dates after converting Excel-style serial values to SQLite dates.
         page_size (int): Maximum number of distinct values to return.
 
     Returns:
@@ -164,7 +168,7 @@ def get_distinct_column_values(
         raise HTTPException(status_code=404, detail="Model not found")
 
     query, params = table_queries.get_distinct_column_values_query(
-        table_name, column_name, select_filters, text_filters, page_size
+        table_name, column_name, select_filters, text_filters, date_columns, page_size
     )
 
     column_names = [column_name]
@@ -185,6 +189,7 @@ def get_row_count(
     table_name: str,
     select_filters: dict[str, list[str | int | float | bool | None]],
     text_filters: dict[str, str],
+    date_columns: list[str],
 ) -> int:
     """
     Compute the number of rows in a table that match the given selection and text filters.
@@ -195,7 +200,8 @@ def get_row_count(
         project_name (str): Project name containing the model.
         table_name (str): Table to query.
         select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters keyed by column name; each key maps to allowed values for that column.
-        text_filters (dict[str, str]): Full-text or substring filters keyed by column name.
+        text_filters (dict[str, str]): Text filters keyed by column name. Filters for columns listed in `date_columns` are applied against converted date strings.
+        date_columns (list[str]): Columns from `text_filters` that should be matched as dates after converting Excel-style serial values to SQLite dates.
 
     Returns:
         int: Count of rows matching the filters.
@@ -207,7 +213,7 @@ def get_row_count(
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    query, params = table_queries.get_row_count_query(table_name, select_filters, text_filters)
+    query, params = table_queries.get_row_count_query(table_name, select_filters, text_filters, date_columns)
 
     column_names = list(select_filters.keys())
     column_names.extend(text_filters.keys())
@@ -498,6 +504,7 @@ def update_rows(
     column_value: str | int | float | bool | None,
     select_filters: dict[str, list[str | int | float | bool | None]],
     text_filters: dict[str, str],
+    date_columns: list[str],
 ):
     """
     Update a single column on multiple rows in a model table and return the number of rows changed.
@@ -507,7 +514,8 @@ def update_rows(
         column_name (str): Name of the column to set.
         column_value (str | int | float | bool | None): Value to assign to the column for each specified row.
         select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters whose keys are column names and values are lists of allowed values; only rows that match both the provided `row_ids` and these filters will be updated.
-        text_filters (dict[str, str]): Substring/text filters whose keys are column names and values are the text to search for; only rows that match both the provided `row_ids` and these text filters will be updated.
+        text_filters (dict[str, str]): Text filters whose keys are column names and values are the text to search for; only rows that match both the provided `row_ids` and these filters will be updated. Filters for columns listed in `date_columns` are applied against converted date strings.
+        date_columns (list[str]): Columns from `text_filters` that should be matched as dates after converting Excel-style serial values to SQLite dates.
 
     Returns:
         int: Number of rows modified by the update.
@@ -533,7 +541,7 @@ def update_rows(
         if object_type != "table":
             raise HTTPException(status_code=404, detail=f"View: {table_name} is not updatable")
         query, values = table_queries.update_rows(
-            table_name, row_ids, column_name, column_value, select_filters, text_filters
+            table_name, row_ids, column_name, column_value, select_filters, text_filters, date_columns
         )
         model_cursor.execute(query, values)
         return model_cursor.rowcount()
@@ -570,6 +578,7 @@ def delete_rows(
     row_ids: list[int],
     select_filters: dict[str, list[str | int | float | bool | None]],
     text_filters: dict[str, str],
+    date_columns: list[str],
 ):
     """
     Delete rows from the specified table that match the given row IDs and filter criteria.
@@ -581,7 +590,8 @@ def delete_rows(
         table_name (str): Target table name.
         row_ids (list[int]): Row IDs to delete.
         select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters mapping column names to lists of allowed values.
-        text_filters (dict[str, str]): Text-match filters mapping column names to search strings.
+        text_filters (dict[str, str]): Text-match filters mapping column names to search strings. Filters for columns listed in `date_columns` are applied against converted date strings.
+        date_columns (list[str]): Columns from `text_filters` that should be matched as dates after converting Excel-style serial values to SQLite dates.
 
     Returns:
         int: Number of rows deleted.
@@ -603,7 +613,7 @@ def delete_rows(
         object_type = _validate_table_and_column_names(model_cursor, table_name, column_names)
         if object_type != "table":
             raise HTTPException(status_code=404, detail=f"View: {table_name} is not updatable")
-        query, values = table_queries.delete_rows(table_name, row_ids, select_filters, text_filters)
+        query, values = table_queries.delete_rows(table_name, row_ids, select_filters, text_filters, date_columns)
         model_cursor.execute(query, values)
         return model_cursor.rowcount()
 
@@ -617,6 +627,7 @@ def get_summary_stats(
     column_names: dict[str, str],
     select_filters: dict[str, list[str | int | float | bool | None]],
     text_filters: dict[str, str],
+    date_columns: list[str],
 ):
     """
     Return summary statistics for the specified columns in a table.
@@ -624,7 +635,8 @@ def get_summary_stats(
     Parameters:
         column_names (dict[str, str]): Mapping of column names to summary functions to compute (e.g., {"price": "avg", "id": "count"}). Only the functions "count", "avg", "sum", "min", and "max" (case-insensitive) are accepted; others are ignored.
         select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters where keys are column names and values are lists of allowed values for that column; these filter columns will be validated.
-        text_filters (dict[str, str]): Text-search filters where keys are column names and values are search strings; these filter columns will be validated.
+        text_filters (dict[str, str]): Text-search filters where keys are column names and values are search strings; these filter columns will be validated. Filters for columns listed in `date_columns` are applied against converted date strings.
+        date_columns (list[str]): Columns from `text_filters` that should be matched as dates after converting Excel-style serial values to SQLite dates.
 
     Returns:
         dict[str, Any]: Mapping from each requested column name (that used an allowed summary function) to its computed aggregate value.
@@ -650,7 +662,7 @@ def get_summary_stats(
         if not validated_columns:
             raise HTTPException(status_code=400, detail="No valid summary functions provided")
         query, values = table_queries.get_summary_stats_query(
-            table_name, validated_columns, select_filters, text_filters
+            table_name, validated_columns, select_filters, text_filters, date_columns
         )
         result = model_cursor.execute(query, values).fetchone()
         summary_stats = {}
@@ -743,7 +755,7 @@ def export_tables_to_excel(cursor, user_email: str, model_name: str, project_nam
                 table_headers = _get_table_headers_with_types(model_cursor, table_name)
                 column_formatting = _get_column_formatting(model_cursor, table_name)
                 select_columns = [col for col, _ in table_headers]
-                query, params = table_queries.get_table_query(table_name, select_columns, {}, {}, [], 1, 1000000)
+                query, params = table_queries.get_table_query(table_name, select_columns, {}, {}, [], [], 1, 1000000)
                 data = model_cursor.execute(query, params).fetchall()
                 sheet_name = re.sub(r"[\[\]:*?/\\]", "_", table_name)
                 sheet_name = sheet_name.strip("'")
