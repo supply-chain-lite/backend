@@ -34,13 +34,20 @@ def get_table_data(
     request: table_schemas.TableDataRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> table_schemas.TableDataResponse:
     """
-    Retrieve rows from a table according to requested columns, filters, sorting, and pagination for the authenticated user.
-
+    Retrieve rows from a table according to requested columns, filters (including select, text, date, and numeric), sorting, and pagination for the authenticated user.
+    
     Parameters:
-        request (TableDataRequest): Identifiers (model_name, project_name, table_name) and retrieval options (column_names, select_filters, text_filters, sort_columns, page_number, page_size).
-
+        request (TableDataRequest): Contains table identifiers (model_name, project_name, table_name) and retrieval options:
+            - column_names: list of columns to return
+            - select_filters: equality/selection filters
+            - text_filters: substring or text-matching filters
+            - date_columns: date-range or date-based filters
+            - numeric_filters: numeric range or comparison filters
+            - sort_columns: ordering instructions
+            - page_number, page_size: pagination controls
+    
     Returns:
-        TableDataResponse: Response whose `data` field contains the requested rows matching the provided identifiers and filters.
+        TableDataResponse: Object whose `data` field contains the rows matching the provided identifiers and filters.
     """
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:
@@ -67,10 +74,10 @@ def get_distinct_column_values(
     request: table_schemas.DistinctColumnValuesRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> table_schemas.DistinctColumnValuesResponse:
     """
-    Return the distinct values for a specified column in a table, filtered and limited by the request.
-
+    Get distinct values for a specified column in a table, applying the provided filters and page size.
+    
     Returns:
-        table_schemas.DistinctColumnValuesResponse: response containing the list of distinct values for the requested column.
+        table_schemas.DistinctColumnValuesResponse: Response containing the list of distinct values for the requested column.
     """
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:
@@ -95,10 +102,10 @@ def get_row_count(
     request: table_schemas.RowCountRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> table_schemas.RowCountResponse:
     """
-    Retrieve the number of rows in the specified table for the authenticated user, applying any provided select and text filters.
-
+    Return the number of rows for the specified table and authenticated user, honoring select, text, date, and numeric filters.
+    
     Returns:
-        RowCountResponse: contains `row_count`, the number of rows that match the request's identifiers and filters.
+        RowCountResponse: contains `row_count`, the number of rows matching the provided model_name, project_name, table_name, and any filters.
     """
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:
@@ -274,16 +281,16 @@ def update_rows(
     request: table_schemas.updateRowValuesRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> table_schemas.updateRowValuesResponse:
     """
-    Update the specified rows in a table by setting a single column to a provided value.
-
+    Update a single column's value for multiple rows in a table, optionally constrained by filters.
+    
     Parameters:
-        request (updateRowValuesRequest): Contains identifiers and the update payload:
+        request (updateRowValuesRequest): Request containing:
             - model_name, project_name, table_name: target table identifiers
             - row_ids: list of row IDs to update
             - column_name: name of the column to set
             - column_value: value to assign to the column for each listed row
-            - select_filters, text_filters: optional filters that further restrict which rows are affected
-
+            - select_filters, text_filters, date_columns, numeric_filters: optional filters that further restrict which rows are affected
+    
     Returns:
         updateRowValuesResponse: Object with `rows_updated` set to the number of rows that were updated.
     """
@@ -311,12 +318,14 @@ def delete_rows(
     request: table_schemas.DeleteRowsRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> table_schemas.DeleteRowsResponse:
     """
-    Delete rows from the specified table that match the provided row IDs and/or filters.
-
+    Delete rows in the specified table that match the provided row IDs and/or filter criteria.
+    
     Parameters:
-        request (DeleteRowsRequest): Contains `model_name`, `project_name`, `table_name`, `row_ids`,
-            `select_filters`, and `text_filters` used to identify which rows to delete.
-
+        request (DeleteRowsRequest): Request containing table identifiers and selection criteria:
+            - model_name, project_name, table_name: Identify the target table.
+            - row_ids: Optional list of explicit row identifiers to delete.
+            - select_filters, text_filters, date_columns, numeric_filters: Optional filter groups used to match rows to delete.
+    
     Returns:
         rows_deleted (int): Number of rows that were deleted.
     """
@@ -342,13 +351,13 @@ def get_summary_stats(
     request: table_schemas.getSummaryStatsRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> table_schemas.getSummaryStatsResponse:
     """
-    Retrieve aggregated summary statistics for specified columns of a table.
-
+    Return aggregated summary statistics for the specified columns of a table filtered by the request.
+    
     Parameters:
-        request (getSummaryStatsRequest): Request containing `model_name`, `project_name`, `table_name`, `column_names`, and optional `select_filters` and `text_filters` to scope the aggregation.
-
+        request (getSummaryStatsRequest): Contains `model_name`, `project_name`, `table_name`, `column_names`, and optional filter sets: `select_filters`, `text_filters`, `date_columns`, and `numeric_filters` which scope the aggregation to a subset of rows.
+    
     Returns:
-        getSummaryStatsResponse: A response wrapping a mapping from column name to its computed summary statistics (e.g., count, mean, min, max) for the filtered dataset.
+        getSummaryStatsResponse: Mapping from each column name to its computed summary statistics (for example: `count`, `mean`, `min`, `max`) for rows matching the provided filters.
     """
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:
