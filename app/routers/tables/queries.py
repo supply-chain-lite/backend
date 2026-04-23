@@ -32,6 +32,10 @@ get_column_formatting = """SELECT ColumnName, ParameterType, ParameterValue FROM
                             WHERE TableName = ? COLLATE NOCASE """
 
 
+get_default_values_query = """select name, [dflt_value] from pragma_table_xinfo(?)
+                              WHERE [dflt_value] is not null;"""
+
+
 def get_table_query(
     table_name: str,
     column_names: list[str],
@@ -411,3 +415,37 @@ def add_row(table_name, values):
     if len(params) == 0:
         raise HTTPException(status_code=400, detail="At least one non-null value must be provided to add a row")
     return insert_query, params
+
+
+def get_excel_upload_insert_query(table_name, column_names, default_values):
+    """
+    Prepare companion DELETE and INSERT SQL statements for bulk uploading Excel rows into a table.
+
+    Builds:
+    - A DELETE statement to remove all rows from the target table.
+    - An INSERT statement for the provided columns using `?` placeholders for parameter binding; for any column present in `default_values` whose string form does not contain `;`, the corresponding placeholder is wrapped as `COALESCE(?, <default>)` so a bound NULL will fall back to the SQL literal default.
+
+    Parameters:
+        table_name (str): Target table name.
+        column_names (list[str]): Ordered list of column names to insert; must contain at least one column.
+        default_values (dict): Mapping of column names to SQL literal defaults (used when present and safe to inline).
+
+    Returns:
+        tuple[str, str]: `(delete_query, insert_query)` where `delete_query` is `DELETE FROM [table_name]` and `insert_query` is `INSERT INTO [table_name] ([col...]) VALUES (...)`.
+
+    Raises:
+        fastapi.HTTPException: Raised with status code 400 if `column_names` is empty.
+    """
+    if len(column_names) == 0:
+        raise HTTPException(status_code=400, detail="At least one column must be specified for Excel upload")
+    columns = ", ".join(f"[{col}]" for col in column_names)
+    placeholders = ""
+    for column_name in column_names:
+        if column_name in default_values and ";" not in str(default_values[column_name]):
+            placeholders += f"COALESCE(?, {default_values[column_name]}), "
+        else:
+            placeholders += "?, "
+    placeholders = placeholders.rstrip(", ")
+    insert_query = f"INSERT INTO [{table_name}] ({columns}) VALUES ({placeholders})"
+    delete_query = f"DELETE FROM [{table_name}]"
+    return delete_query, insert_query

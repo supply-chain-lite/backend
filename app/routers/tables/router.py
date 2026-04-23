@@ -1,6 +1,6 @@
 """API routes for table-related operations."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from app.connection import master_connection
 from app.routers.auth.methods import _get_user_from_token
@@ -404,3 +404,38 @@ def export_tables_to_excel(
             request.project_name,
             request.table_names,
         )
+
+
+@router.post("/upload-excel", response_model=table_schemas.UploadExcelToTableResponse)
+def upload_excel_file(
+    model_name: str = Form(...),
+    project_name: str = Form(...),
+    table_name: str = Form(...),
+    user_data: tuple = Depends(_get_user_from_token),
+    upload_file: UploadFile = File(...),
+) -> table_schemas.UploadExcelToTableResponse:
+    """
+    Handle an uploaded Excel file and import its rows into the specified table.
+
+    Validates that the uploaded file has a .xlsx or .xls extension, calls the import routine, and returns the number of rows inserted.
+
+    Parameters:
+        model_name (str): Target model name.
+        project_name (str): Target project name.
+        table_name (str): Target table name.
+        upload_file (UploadFile): Uploaded Excel file; must have a `.xlsx` or `.xls` filename.
+
+    Returns:
+        UploadExcelToTableResponse: Object with `rows_inserted` set to the number of rows successfully imported.
+
+    Raises:
+        HTTPException: Status 400 if `upload_file` is missing or does not have a `.xlsx` or `.xls` extension.
+    """
+    if not upload_file.filename or not upload_file.filename.lower().endswith((".xlsx", ".xls")):
+        raise HTTPException(
+            status_code=400, detail="Invalid file type. Please upload an Excel file with .xlsx or .xls extension."
+        )
+    useremail, _display_name, _role_name = user_data
+    with master_connection() as cursor:
+        row_count = table_methods.upload_excel(cursor, useremail, model_name, project_name, table_name, upload_file)
+    return table_schemas.UploadExcelToTableResponse(rows_inserted=row_count)

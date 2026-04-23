@@ -1,9 +1,11 @@
+import datetime
 import json
 import re
 import tempfile
 
 import xlsxwriter as xw
-from fastapi import HTTPException, responses
+from fastapi import HTTPException, UploadFile, responses
+from python_calamine import CalamineWorkbook
 
 from app.connection import sql_connection
 from app.routers.models.methods import get_model_id_and_path
@@ -35,16 +37,21 @@ def get_table_headers(
     return table_headers
 
 
-def _get_table_headers_with_types(cursor, table_name: str) -> list[tuple[str, str]]:
+def _get_table_headers_with_types(cursor, table_name: str, get_all_columns = False) -> list[tuple[str, str]]:
     """
     Return the table's column headers with their SQL types, using a persisted column order when available.
 
     If a persisted column order exists and decodes to a list, headers are returned in that order including only columns that actually exist in the table. If no persisted order is present or none of its entries match existing columns, the database-defined column order is returned. JSON parsing errors for the persisted order are ignored and treated as no persisted order.
 
+    If `get_all_columns` is True, the full list of columns from the database is returned in the database-defined order, ignoring any persisted column order.
+
     Returns:
         list[tuple[str, str]]: List of (column_name, column_type) tuples in the chosen order.
     """
     all_rows = cursor.execute(table_queries.get_table_columns, (table_name,)).fetchall()
+
+    if get_all_columns:
+         return all_rows
     try:
         column_order_row = cursor.execute(table_queries.get_column_order, (table_name,)).fetchone()
         decoded = json.loads(column_order_row[0]) if column_order_row else []
@@ -300,6 +307,9 @@ def add_new_column(
     if access_level is None or access_level[0] not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
 
+    if ";" in column_name or ";" in column_type or "[" in column_name or "]" in column_name:
+        raise HTTPException(status_code=400, detail="Invalid character ;[] in column name or type")
+
     with sql_connection(model_id, model_path) as model_cursor:
         object_type = _validate_table_and_column_names(model_cursor, table_name, [])
         if object_type != "table":
@@ -310,8 +320,6 @@ def add_new_column(
         if column_type.upper() not in ("TEXT", "INTEGER", "REAL", "NUMERIC", "VARCHAR", "BOOLEAN"):
             raise HTTPException(status_code=400, detail=f"Cannot add column: Invalid column type: {column_type}")
 
-        if "[" in column_name or "]" in column_name:
-            raise HTTPException(status_code=400, detail=f"Cannot add column: Invalid column name: {column_name}")
         this_query = table_queries.add_new_column.format(
             table_name=table_name, column_name=column_name, column_type=column_type
         )
@@ -668,22 +676,25 @@ def add_row(
 
 def export_tables_to_excel(cursor, user_email: str, model_name: str, project_name: str, table_names: list[str]):
     """
-    Export the specified tables into a temporary Excel (.xlsx) file and return a FastAPI FileResponse for downloading it.
+    Export one or more tables from the resolved model into a temporary Excel (.xlsx) file for download.
 
     Parameters:
-        table_names (list[str]): Names of tables to export; must include at least one name. Duplicate names (case-insensitive) are skipped.
+        cursor: Database cursor used to resolve the model and read table data.
+        user_email (str): Email of the requesting user used for model resolution.
+        model_name (str): Name of the model containing the tables.
+        project_name (str): Project name used in model resolution.
+        table_names (list[str]): List of table names to export; must contain at least one name. Duplicate names are skipped case-insensitively.
 
     Returns:
-        fastapi.responses.FileResponse: A response pointing to a temporary .xlsx file. The response's filename is a sanitized version of the single table name when one table is exported or the sanitized model name when exporting multiple tables.
+        fastapi.responses.FileResponse: A response that serves a temporary .xlsx file. When a single table is exported the response filename is a sanitized version of that table name; when multiple tables are exported the response filename is a sanitized version of the model name.
 
     Raises:
         HTTPException(404): If the model cannot be resolved or a requested table does not exist.
         HTTPException(400): If `table_names` is empty.
 
-    Behavior notes:
-        - Each table is written to its own worksheet; worksheet names are sanitized, limited to 31 characters, and made unique by appending a numeric suffix when needed.
-        - The export reads up to 1,000,000 rows per table.
-        - Per-column formatting metadata (if present) is applied to worksheet columns.
+    Notes:
+        - Each table is written to its own worksheet; worksheet names are sanitized, limited to 31 characters, and made unique by appending a numeric suffix when necessary.
+        - The export reads up to 1,000,000 rows per table and applies any per-column formatting metadata found in the model.
     """
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
@@ -700,7 +711,7 @@ def export_tables_to_excel(cursor, user_email: str, model_name: str, project_nam
         safe_base = re.sub(r'[\\/:*?"<>|]', "_", model_name) or "export"
         this_file_name = f"{safe_base}.xlsx"
     with sql_connection(model_id, model_path) as model_cursor:
-        with xw.Workbook(excel_file_name, {'constant_memory': True}) as wb:
+        with xw.Workbook(excel_file_name, {"constant_memory": True}) as wb:
             used_table_names = set()
             for table_name in table_names:
                 if table_name.lower() in used_table_names:
@@ -733,21 +744,23 @@ def export_tables_to_excel(cursor, user_email: str, model_name: str, project_nam
 
 def _write_to_worksheet(workbook, worksheet, table_headers, data, column_formats):
     """
-    Populate an xlsxwriter worksheet with table headers, sized columns, and formatted cell values.
+    Write headers and rows into an xlsxwriter worksheet applying per-column sizing and formatting.
 
     Parameters:
-        workbook: xlsxwriter Workbook instance used to create Format objects.
-        worksheet: xlsxwriter Worksheet instance to write into.
-        table_headers (list[tuple[str, str]]): Sequence of (column_name, data_type) pairs used for header labels and default formatting decisions.
-        data (iterable[iterable]): Rows of table data; each row is an ordered sequence of cell values matching table_headers.
-        column_formats (dict|None): Optional per-column formatting metadata keyed by column name. Recognized keys include `column_type` ("date", "datetime", or other), `prefix` (literal string or currency code), `thousand_separator` (truthy to enable grouping), and `decimal_places` (integer or numeric string). Currency codes `USD`, `INR`, `EUR`, `GBP`, `JPY` are mapped to their symbols when used as `prefix`.
+        workbook: xlsxwriter Workbook used to create cell Format objects.
+        worksheet: xlsxwriter Worksheet to write into.
+        table_headers (list[tuple[str, str]]): Ordered sequence of (column_name, sql_type) used for header labels and default formatting decisions.
+        data (iterable[iterable]): Iterable of rows; each row is an ordered sequence of cell values corresponding to table_headers.
+        column_formats (dict|None): Optional per-column formatting metadata keyed by column name. Recognized keys:
+            - column_type: "date", "datetime", or other (affects date/time formats)
+            - prefix: literal string or currency code (USD/INR/EUR/GBP/JPY mapped to symbols)
+            - thousand_separator: truthy to enable grouping
+            - decimal_places: integer or numeric string controlling decimal digits
 
-    Details:
-        - Writes a bold header row and sets each column width to fit the header; enforces minimum widths for `date` (>=12) and `datetime` (>=20) column types.
-        - Computes an Excel number/date format for each column from `column_formats`; if absent, applies a default numeric format for numeric data types.
-        - Supported formatting features: date/datetime formats, thousand separators, configurable decimal places, and optional prefix (currency symbol or literal).
-        - Writes all data rows starting at the second worksheet row, applying the computed per-column format where available.
-
+    Notes:
+        - Header row is written in bold; column widths are set to fit header text with enforced minimums for date (>=12) and datetime (>=20).
+        - Per-column Excel formats are computed from column_formats or inferred defaults (numeric format for numeric SQL types).
+        - Supported formatting: date/datetime patterns, thousand separators, configurable decimal places, and optional prefix (currency or literal).
     """
 
     currency_symbols = {
@@ -826,3 +839,222 @@ def _write_to_worksheet(workbook, worksheet, table_headers, data, column_formats
                 worksheet.write(row_idx, col_idx, value, cell_format)
             else:
                 worksheet.write(row_idx, col_idx, value)
+
+
+def upload_excel(
+    cursor,
+    user_email: str,
+    model_name: str,
+    project_name: str,
+    table_name: str,
+    file: UploadFile,
+):
+    """
+    Import rows from the Excel worksheet named exactly as table_name into the specified database table, replacing existing rows.
+
+    Parameters:
+        file (UploadFile): The uploaded Excel file to read; must contain a worksheet named exactly `table_name`.
+        table_name (str): Target table name and required worksheet name in the workbook.
+
+    Returns:
+        int: Number of rows inserted from the Excel worksheet (excluding the header row).
+
+    Raises:
+        HTTPException: 404 if the model is not found, if the worksheet is missing, or if the target is a non-updatable view;
+                       403 if the user lacks modification permission;
+                       400 if the Excel file does not contain at least a header row or other input validation fails.
+    """
+    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
+    if not model_id:
+        raise HTTPException(status_code=404, detail="Model not found")
+    access_level = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
+    if access_level is None or access_level[0] in ("read", "reader", "readonly"):
+        raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
+    with sql_connection(model_id, model_path) as model_cursor:
+        object_type = _validate_table_and_column_names(model_cursor, table_name, [])
+        if object_type != "table":
+            raise HTTPException(status_code=404, detail=f"View: {table_name} is not updatable")
+        table_headers = _get_table_headers_with_types(model_cursor, table_name, True)
+        column_formats = _get_column_formatting(model_cursor, table_name)
+        workbook = CalamineWorkbook.from_object(file.file)
+        if table_name not in workbook.sheet_names:
+            raise HTTPException(status_code=404, detail=f"Worksheet named '{table_name}' not found in the Excel file")
+        table_rows = workbook.get_sheet_by_name(table_name).to_python()
+        if not table_rows or len(table_rows) < 1:
+            raise HTTPException(status_code=400, detail="The Excel file must contain at least a header row")
+        return _import_excel_to_table(model_cursor, table_rows, table_name, table_headers, column_formats)
+
+
+def _import_excel_to_table(model_cursor, all_rows, table_name, table_headers, column_formats):
+    """
+    Import rows from an Excel worksheet into the specified database table by matching Excel headers to table columns, replacing existing table rows with the imported data.
+
+    Parameters:
+        model_cursor: Database cursor for the target model; used to query defaults, execute delete/insert, and commit.
+        all_rows (list[list]): Excel sheet rows as returned by the workbook reader; the first row is expected to be the header row.
+        table_name (str): Target database table name.
+        table_headers (list[tuple]): Ordered table columns as (column_name, sql_type).
+        column_formats (dict): Per-column formatting metadata keyed by column name; used to guide value conversions.
+
+    Behavior:
+        - Matches Excel header names exactly to table column names and imports only those common columns in the Excel column order.
+        - Loads database default values for non-provided columns, constructs a delete+insert payload, deletes all existing rows in the table, then bulk-inserts the converted Excel rows.
+        - Calls the cursor's intermediate_commit() after successful insert.
+        - If no Excel headers match any table columns, raises an HTTPException with status 400.
+
+    Returns:
+        int: Number of rows imported from the Excel worksheet (number of inserted rows).
+
+    Raises:
+        HTTPException(400): If no matching columns are found between the Excel sheet and the table, or if cell value conversion fails for any row/cell.
+    """
+    excel_headers = [str(cell).strip() for cell in all_rows[0]]
+    table_column_names = [col[0] for col in table_headers]
+
+    common_column_idxs = tuple(idx for idx, col in enumerate(excel_headers) if col in table_column_names)
+    common_columns = tuple(excel_headers[idx] for idx in common_column_idxs)
+
+    common_column_data_types = tuple(table_headers[table_column_names.index(col)][1] for col in common_columns)
+    common_column_formats = tuple(column_formats.get(col, {}).get("column_type", None) for col in common_columns)
+
+    if len(common_column_idxs) == 0:
+        raise HTTPException(
+            status_code=400, detail="No matching columns found between the Excel file and the target table"
+        )
+
+    default_values = {}
+    for column_name, default_value in model_cursor.execute(
+        table_queries.get_default_values_query, (table_name,)
+    ).fetchall():
+        default_values[column_name] = default_value
+
+    delete_query, insert_query = table_queries.get_excel_upload_insert_query(table_name, common_columns, default_values)
+
+    insert_rows = []
+    for row_idx, row in enumerate(all_rows[1:]):
+        values = []
+        for serial_idx, idx in enumerate(common_column_idxs):
+            cell_raw = row[idx] if idx < len(row) else None
+            cell_value = _get_cell_value(
+                cell_raw,
+                common_column_data_types[serial_idx],
+                common_column_formats[serial_idx],
+                row_idx,
+                idx,
+                table_name,
+            )
+            values.append(cell_value)
+        insert_rows.append(values)
+    rows_inserted = len(insert_rows)
+    model_cursor.execute(delete_query)
+    if rows_inserted > 0:
+        model_cursor.executemany(insert_query, insert_rows)
+    model_cursor.intermediate_commit()
+    return rows_inserted
+
+
+def _get_cell_value(value, data_type, column_type, row_idx, col_idx, table_name):
+    """
+    Convert an Excel cell value into a database-storable value based on the column's SQL type and optional formatting.
+
+    Parameters:
+        value: The raw cell value from the Excel sheet; blank strings and None are treated as NULL.
+        data_type (str): The SQL type of the target column (e.g., "STRING", "INT", "NUMERIC").
+        column_type (str|None): Optional user formatting type (e.g., "date", "datetime"); affects string parsing.
+        row_idx (int): Zero-based Excel row index (used for error messages).
+        col_idx (int): Zero-based Excel column index (used for error messages).
+        table_name (str): Target table name (used for error messages).
+
+    Returns:
+        The converted value suitable for insertion into the database:
+          - None for empty cells;
+          - str for text-like columns (with date/datetime formatted as strings when column_type indicates);
+          - int for integer columns;
+          - float for numeric columns;
+          - the original value for any other SQL types.
+
+    Raises:
+        HTTPException: On parse or type mismatches (invalid date/datetime formats, numeric conversion failures, or numeric values provided where a date/datetime string is expected). Error details include 1-based row/column and table name.
+    """
+    if value is None:
+        return None
+    if str(value).strip() == "":
+        return None
+
+    if data_type.upper() in ("STRING", "TEXT", "VARCHAR", "CHAR"):
+        if column_type is None or column_type.lower() not in ("date", "datetime"):
+            return str(value)
+        if column_type.lower() == "date":
+            if isinstance(value, (int, float)):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid date value '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': expected a date string, not a numeric value",
+                )
+            if isinstance(value, (datetime.datetime, datetime.date)):
+                return value.strftime("%Y-%m-%d")
+            try:
+                parsed_date = datetime.datetime.strptime(str(value)[:10], "%Y-%m-%d")
+                return parsed_date.strftime("%Y-%m-%d")
+            except Exception:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid date string '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': expected format YYYY-MM-DD",
+                )
+        if column_type.lower() == "datetime":
+            if isinstance(value, (int, float)):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid datetime value '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': expected a datetime string, not a numeric value",
+                )
+            if isinstance(value, (datetime.datetime, datetime.date)):
+                return value.strftime("%Y-%m-%d %H:%M:%S")
+            try:
+                parsed_date = datetime.datetime.strptime(str(value)[:19], "%Y-%m-%d %H:%M:%S")
+                return parsed_date.strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid datetime string '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': expected format YYYY-MM-DD HH:MM:SS",
+                )
+        return str(value)
+
+    if data_type.upper() in ("INT", "INTEGER", "BIGINT", "SMALLINT"):
+        if isinstance(value, (datetime.datetime, datetime.date)):
+            return int(_datetime_to_excel_float(value))
+        try:
+            return int(value)
+        except Exception as ex:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid integer value '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': {str(ex)}",
+            )
+    if data_type.upper() in ("NUMERIC", "FLOAT", "REAL", "NUMBER"):
+        if isinstance(value, (datetime.datetime, datetime.date)):
+            return _datetime_to_excel_float(value)
+        try:
+            return float(value)
+        except Exception as ex:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid numeric value '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': {str(ex)}",
+            )
+    return value
+
+
+def _datetime_to_excel_float(dt):
+    # Excel's base date is Dec 30, 1899
+    """
+    Convert a Python date or datetime to an Excel serial date number.
+
+    Parameters:
+        dt (datetime.date | datetime.datetime): The date or datetime to convert. If a plain date is provided it is treated as midnight.
+
+    Returns:
+        float: Excel serial date value representing days (and fractional day for time) since 1899-12-30.
+    """
+    if isinstance(dt, datetime.date) and not isinstance(dt, datetime.datetime):
+        dt = datetime.datetime.combine(dt, datetime.time())
+    base_date = datetime.datetime(1899, 12, 30)
+    delta = dt - base_date
+    # Convert the time difference to total days (including fractional time)
+    return delta.total_seconds() / 86400.0
