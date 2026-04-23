@@ -921,7 +921,7 @@ def _get_cell_value(value, data_type, column_type, row_idx, col_idx, table_name)
                     status_code=400,
                     detail=f"Invalid date value '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': expected a date string, not a numeric value",
                 )
-            if isinstance(value, datetime.datetime) or isinstance(value, datetime.date):
+            if isinstance(value, (datetime.datetime, datetime.date)):
                 return value.strftime("%Y-%m-%d")
             try:
                 parsed_date = datetime.datetime.strptime(str(value)[:10], "%Y-%m-%d")
@@ -937,12 +937,12 @@ def _get_cell_value(value, data_type, column_type, row_idx, col_idx, table_name)
                     status_code=400,
                     detail=f"Invalid datetime value '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': expected a datetime string, not a numeric value",
                 )
-            if isinstance(value, datetime.datetime) or isinstance(value, datetime.date):
+            if isinstance(value, (datetime.datetime, datetime.date)):
                 return value.strftime("%Y-%m-%d %H:%M:%S")
         return str(value)
 
     if data_type.upper() in ("INT", "INTEGER", "BIGINT", "SMALLINT"):
-        if isinstance(value, datetime.datetime) or isinstance(value, datetime.date):
+        if isinstance(value, (datetime.datetime, datetime.date)):
             return int(_datetime_to_excel_float(value))
         try:
             return int(value)
@@ -952,7 +952,7 @@ def _get_cell_value(value, data_type, column_type, row_idx, col_idx, table_name)
                 detail=f"Invalid integer value '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': {str(ex)}",
             )
     if data_type.upper() in ("NUMERIC", "FLOAT", "REAL", "NUMBER"):
-        if isinstance(value, datetime.datetime) or isinstance(value, datetime.date):
+        if isinstance(value, (datetime.datetime, datetime.date)):
             return _datetime_to_excel_float(value)
         try:
             return float(value)

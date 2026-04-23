@@ -414,6 +414,8 @@ def upload_excel_file(
     user_data: tuple = Depends(_get_user_from_token),
     upload_file: UploadFile = File(...),
 ) -> table_schemas.UploadExcelToTableResponse:
+    if not upload_file.filename or not upload_file.filename.lower().endswith((".xlsx", ".xls")):
+        raise ValueError("Invalid file type. Please upload an Excel file with .xlsx or .xls extension.")
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:
         row_count = table_methods.upload_excel(cursor, useremail, model_name, project_name, table_name, upload_file)
