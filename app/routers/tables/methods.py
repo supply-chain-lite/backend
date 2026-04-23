@@ -77,28 +77,31 @@ def get_table_data(
     column_names: list[str],
     select_filters: dict[str, list[str | int | float | bool | None]],
     text_filters: dict[str, str],
+    date_columns: list[str],
+    numeric_filters: list[tuple[str, str, str | int | float]],
     sort_columns: list[list[str, str]],
     page_number: int,
     page_size: int,
 ) -> list[tuple[str | int | float | bool | None, ...]]:
     """
-    Fetch rows from a table using the requested columns, filters, sorting, and pagination.
+    Fetch rows from a table applying selection, filters, sorting, and pagination.
 
     Parameters:
-        cursor: Database cursor used to resolve the target model and to check access.
-        user_email (str): Requesting user's email for model resolution and access checks.
+        user_email (str): Requesting user's email used for model resolution and access checks.
         model_name (str): Name of the model containing the table.
         project_name (str): Project name containing the model.
         table_name (str): Target table name.
-        column_names (list[str]): Columns to return, in the requested order; must contain at least one column.
+        column_names (list[str]): Columns to return in the requested order; must contain at least one column.
         select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters mapping column names to allowed values.
         text_filters (dict[str, str]): Substring/text filters mapping column names to search terms.
-        sort_columns (list[list[str, str]]): Sort specification as a list of [column_name, direction] pairs (e.g., ["col", "asc"]).
+        date_columns (list[str]): Columns from `text_filters` that should be interpreted and compared as dates.
+        numeric_filters (list[tuple[str, str, str | int | float]]): Numeric filter tuples referencing columns to include in validation and query construction.
+        sort_columns (list[list[str, str]]): List of [column_name, direction] pairs specifying sort order (e.g., ["col", "asc"]).
         page_number (int): 1-based page number for pagination.
         page_size (int): Number of rows per page.
 
     Returns:
-        list[tuple[str | int | float | bool | None, ...]]: Rows matching the query; each row is a tuple of column values in the same order as `column_names`.
+        list[tuple[str | int | float | bool | None, ...]]: Rows matching the query; each tuple contains column values in the same order as `column_names`.
 
     Raises:
         HTTPException: 404 if the model cannot be resolved for the given user/model/project.
@@ -115,6 +118,7 @@ def get_table_data(
     query_columns.extend(select_filters.keys())
     query_columns.extend(text_filters.keys())
     query_columns.extend([col for col, _ in sort_columns])
+    query_columns.extend([col for col, _, _ in numeric_filters])
 
     with sql_connection(model_id, model_path) as model_cursor:
         object_type = _validate_table_and_column_names(model_cursor, table_name, query_columns)
@@ -123,7 +127,15 @@ def get_table_data(
             object_type = "read_only_object"
         select_columns = ["rowid", *column_names] if object_type == "table" else list(column_names or [])
         query, params = table_queries.get_table_query(
-            table_name, select_columns, select_filters, text_filters, sort_columns, page_number, page_size
+            table_name,
+            select_columns,
+            select_filters,
+            text_filters,
+            date_columns,
+            numeric_filters,
+            sort_columns,
+            page_number,
+            page_size,
         )
         data = model_cursor.execute(query, params).fetchall()
         return data
@@ -138,23 +150,22 @@ def get_distinct_column_values(
     column_name: str,
     select_filters: dict[str, list[str | int | float | bool | None]],
     text_filters: dict[str, str],
+    date_columns: list[str],
+    numeric_filters: list[tuple[str, str, str | int | float]],
     page_size: int,
 ) -> list[str | int | float | bool | None]:
     """
-    Return distinct values for a specific column in a table, applying exact-match and text filters and limiting the result size.
+    Retrieve distinct values for a column applying exact-match, text, date, and numeric filters, limited to page_size.
 
     Parameters:
-        user_email (str): Email of the authenticated user owning the model.
-        model_name (str): Name of the model containing the table.
-        project_name (str): Project name containing the model.
-        table_name (str): Table to query.
-        column_name (str): Column whose distinct values to retrieve.
         select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters keyed by column name.
-        text_filters (dict[str, str]): Full-text or substring filters keyed by column name.
+        text_filters (dict[str, str]): Text filters keyed by column name; columns listed in `date_columns` are matched against converted date strings.
+        date_columns (list[str]): Columns from `text_filters` that should be interpreted as dates.
+        numeric_filters (list[tuple[str, str, str | int | float]]): Numeric filter tuples (column, operator, value) to include in validation and query construction.
         page_size (int): Maximum number of distinct values to return.
 
     Returns:
-        list[str | int | float | bool | None]: Distinct values for the specified column as produced by the database, ordered by the database and limited to page_size.
+        list[str | int | float | bool | None]: Distinct values for the specified column as produced by the database, ordered by the database and limited to `page_size`.
 
     Raises:
         HTTPException: Raised with status_code 404 and detail "Model not found" when the model cannot be resolved for the given user.
@@ -164,13 +175,13 @@ def get_distinct_column_values(
         raise HTTPException(status_code=404, detail="Model not found")
 
     query, params = table_queries.get_distinct_column_values_query(
-        table_name, column_name, select_filters, text_filters, page_size
+        table_name, column_name, select_filters, text_filters, date_columns, numeric_filters, page_size
     )
 
     column_names = [column_name]
     column_names.extend(select_filters.keys())
     column_names.extend(text_filters.keys())
-
+    column_names.extend([col for col, _, _ in numeric_filters])
     with sql_connection(model_id, model_path) as model_cursor:
         _validate_table_and_column_names(model_cursor, table_name, column_names)
         values = model_cursor.execute(query, params).fetchall()
@@ -185,6 +196,8 @@ def get_row_count(
     table_name: str,
     select_filters: dict[str, list[str | int | float | bool | None]],
     text_filters: dict[str, str],
+    date_columns: list[str],
+    numeric_filters: list[tuple[str, str, str | int | float]],
 ) -> int:
     """
     Compute the number of rows in a table that match the given selection and text filters.
@@ -195,7 +208,8 @@ def get_row_count(
         project_name (str): Project name containing the model.
         table_name (str): Table to query.
         select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters keyed by column name; each key maps to allowed values for that column.
-        text_filters (dict[str, str]): Full-text or substring filters keyed by column name.
+        text_filters (dict[str, str]): Text filters keyed by column name. Filters for columns listed in `date_columns` are applied against converted date strings.
+        date_columns (list[str]): Columns from `text_filters` that should be matched as dates after converting Excel-style serial values to SQLite dates.
 
     Returns:
         int: Count of rows matching the filters.
@@ -207,10 +221,13 @@ def get_row_count(
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    query, params = table_queries.get_row_count_query(table_name, select_filters, text_filters)
+    query, params = table_queries.get_row_count_query(
+        table_name, select_filters, text_filters, date_columns, numeric_filters
+    )
 
     column_names = list(select_filters.keys())
     column_names.extend(text_filters.keys())
+    column_names.extend([col for col, _, _ in numeric_filters])
     with sql_connection(model_id, model_path) as model_cursor:
         _validate_table_and_column_names(model_cursor, table_name, column_names)
         row = model_cursor.execute(query, params).fetchone()
@@ -498,23 +515,28 @@ def update_rows(
     column_value: str | int | float | bool | None,
     select_filters: dict[str, list[str | int | float | bool | None]],
     text_filters: dict[str, str],
+    date_columns: list[str],
+    numeric_filters: list[tuple[str, str, str | int | float]],
 ):
     """
-    Update a single column on multiple rows in a model table and return the number of rows changed.
+    Update a single column for multiple rows in a model table.
 
     Parameters:
-        row_ids (list[int]): Primary-key IDs of rows targeted for the update.
+        row_ids (list[int]): Primary-key IDs of rows targeted for the update; only these rows are considered.
         column_name (str): Name of the column to set.
         column_value (str | int | float | bool | None): Value to assign to the column for each specified row.
-        select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters whose keys are column names and values are lists of allowed values; only rows that match both the provided `row_ids` and these filters will be updated.
-        text_filters (dict[str, str]): Substring/text filters whose keys are column names and values are the text to search for; only rows that match both the provided `row_ids` and these text filters will be updated.
+        select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters whose keys are column names and values are lists of allowed values; rows must match these in addition to being in `row_ids`.
+        text_filters (dict[str, str]): Text-search filters whose keys are column names and values are the substring to match; for columns listed in `date_columns`, matching is performed against converted date strings.
+        date_columns (list[str]): Column names from `text_filters` that should be interpreted and matched as dates.
+        numeric_filters (list[tuple[str, str, str | int | float]]): Numeric filter tuples (column, operator, value) whose referenced columns are validated and applied together with other filters.
 
     Returns:
         int: Number of rows modified by the update.
 
     Raises:
-        HTTPException(404): If the model cannot be resolved or the target table is not found or is a non-updatable view.
-        HTTPException(403): If the user does not have permission to modify the model (read-only access).
+        HTTPException(404): If the model cannot be resolved, the target table does not exist, or the target is a non-updatable view.
+        HTTPException(403): If the user does not have permission to modify the model.
+        HTTPException(400): If attempting to update a generated column or if provided filters/values are invalid.
     """
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
@@ -529,11 +551,12 @@ def update_rows(
         column_names = [column_name]
         column_names.extend(select_filters.keys())
         column_names.extend(text_filters.keys())
+        column_names.extend([col for col, _, _ in numeric_filters])
         object_type = _validate_table_and_column_names(model_cursor, table_name, column_names)
         if object_type != "table":
             raise HTTPException(status_code=404, detail=f"View: {table_name} is not updatable")
         query, values = table_queries.update_rows(
-            table_name, row_ids, column_name, column_value, select_filters, text_filters
+            table_name, row_ids, column_name, column_value, select_filters, text_filters, date_columns, numeric_filters
         )
         model_cursor.execute(query, values)
         return model_cursor.rowcount()
@@ -570,25 +593,26 @@ def delete_rows(
     row_ids: list[int],
     select_filters: dict[str, list[str | int | float | bool | None]],
     text_filters: dict[str, str],
+    date_columns: list[str],
+    numeric_filters: list[tuple[str, str, str | int | float]],
 ):
     """
-    Delete rows from the specified table that match the given row IDs and filter criteria.
+    Delete rows from a table that match the provided row IDs and filter criteria.
 
     Parameters:
-        user_email (str): Email of the requesting user.
-        model_name (str): Name of the model containing the table.
-        project_name (str): Project that scopes the model.
         table_name (str): Target table name.
         row_ids (list[int]): Row IDs to delete.
         select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters mapping column names to lists of allowed values.
-        text_filters (dict[str, str]): Text-match filters mapping column names to search strings.
+        text_filters (dict[str, str]): Text-match filters mapping column names to search strings; columns listed in `date_columns` are matched as dates after conversion.
+        date_columns (list[str]): Column names from `text_filters` that should be interpreted and matched as dates.
+        numeric_filters (list[tuple[str, str, str | int | float]]): Numeric-range or comparison filters as tuples (column_name, operator, value).
 
     Returns:
-        int: Number of rows deleted.
+        Number of rows deleted.
 
     Raises:
         fastapi.HTTPException:
-            - 404 if the model is not found or the target is a view (not updatable) or a referenced column/table is missing.
+            - 404 if the model is not found, the target is a view (not updatable), or a referenced table/column is missing.
             - 403 if the user does not have permission to modify the model.
     """
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
@@ -600,10 +624,13 @@ def delete_rows(
     with sql_connection(model_id, model_path) as model_cursor:
         column_names = list(select_filters.keys())
         column_names.extend(text_filters.keys())
+        column_names.extend([col for col, _, _ in numeric_filters])
         object_type = _validate_table_and_column_names(model_cursor, table_name, column_names)
         if object_type != "table":
             raise HTTPException(status_code=404, detail=f"View: {table_name} is not updatable")
-        query, values = table_queries.delete_rows(table_name, row_ids, select_filters, text_filters)
+        query, values = table_queries.delete_rows(
+            table_name, row_ids, select_filters, text_filters, date_columns, numeric_filters
+        )
         model_cursor.execute(query, values)
         return model_cursor.rowcount()
 
@@ -617,20 +644,24 @@ def get_summary_stats(
     column_names: dict[str, str],
     select_filters: dict[str, list[str | int | float | bool | None]],
     text_filters: dict[str, str],
+    date_columns: list[str],
+    numeric_filters: list[tuple[str, str, str | int | float]],
 ):
     """
-    Return summary statistics for the specified columns in a table.
+    Compute selected aggregate statistics for specified columns of a table.
 
     Parameters:
-        column_names (dict[str, str]): Mapping of column names to summary functions to compute (e.g., {"price": "avg", "id": "count"}). Only the functions "count", "avg", "sum", "min", and "max" (case-insensitive) are accepted; others are ignored.
-        select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters where keys are column names and values are lists of allowed values for that column; these filter columns will be validated.
-        text_filters (dict[str, str]): Text-search filters where keys are column names and values are search strings; these filter columns will be validated.
+        column_names (dict[str, str]): Mapping of target column names to aggregate functions to compute. Only the functions "count", "avg", "sum", "min", and "max" (case-insensitive) are honored; others are ignored.
+        select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters applied to the query; filter columns are validated against the table.
+        text_filters (dict[str, str]): Text-search filters applied to the query; filter columns are validated. Entries listed in `date_columns` are matched as dates (converted from Excel-style serials when applicable).
+        date_columns (list[str]): Column names from `text_filters` that should be treated and matched as dates.
+        numeric_filters (list[tuple[str, str, str | int | float]]): Numeric filters as tuples of (column, operator, value); referenced columns are validated and forwarded to the query builder.
 
     Returns:
-        dict[str, Any]: Mapping from each requested column name (that used an allowed summary function) to its computed aggregate value.
+        dict[str, Any]: Mapping from each requested column name (that used an allowed aggregate function) to its computed aggregate value.
 
     Raises:
-        fastapi.HTTPException: 404 if the model, table, or any referenced column is not found; 400 if no valid summary functions are provided.
+        fastapi.HTTPException: 404 if the model, table, or any referenced column is not found; 400 if no valid aggregate functions are provided.
     """
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
@@ -640,6 +671,7 @@ def get_summary_stats(
         column_names_list = list(column_names.keys())
         column_names_list.extend(select_filters.keys())
         column_names_list.extend(text_filters.keys())
+        column_names_list.extend([col for col, _, _ in numeric_filters])
         _validate_table_and_column_names(model_cursor, table_name, column_names_list)
         validated_columns = {}
         allowed_functions = {"count", "avg", "sum", "min", "max"}
@@ -650,7 +682,7 @@ def get_summary_stats(
         if not validated_columns:
             raise HTTPException(status_code=400, detail="No valid summary functions provided")
         query, values = table_queries.get_summary_stats_query(
-            table_name, validated_columns, select_filters, text_filters
+            table_name, validated_columns, select_filters, text_filters, date_columns, numeric_filters
         )
         result = model_cursor.execute(query, values).fetchone()
         summary_stats = {}
@@ -743,7 +775,9 @@ def export_tables_to_excel(cursor, user_email: str, model_name: str, project_nam
                 table_headers = _get_table_headers_with_types(model_cursor, table_name)
                 column_formatting = _get_column_formatting(model_cursor, table_name)
                 select_columns = [col for col, _ in table_headers]
-                query, params = table_queries.get_table_query(table_name, select_columns, {}, {}, [], 1, 1000000)
+                query, params = table_queries.get_table_query(
+                    table_name, select_columns, {}, {}, [], [], [], 1, 1000000
+                )
                 data = model_cursor.execute(query, params).fetchall()
                 sheet_name = re.sub(r"[\[\]:*?/\\]", "_", table_name)
                 sheet_name = sheet_name.strip("'")
