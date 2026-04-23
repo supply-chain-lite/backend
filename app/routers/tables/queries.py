@@ -35,6 +35,9 @@ get_column_formatting = """SELECT ColumnName, ParameterType, ParameterValue FROM
 get_default_values_query = """select name, [dflt_value] from pragma_table_xinfo(?)
                               WHERE [dflt_value] is not null;"""
 
+get_generated_columns = """select name from pragma_table_xinfo(?)
+                              WHERE hidden in (2, 3);"""
+
 
 def get_table_query(
     table_name: str,
@@ -390,7 +393,7 @@ def get_summary_stats_query(table_name, column_names, select_filters, text_filte
     return stats_query, params
 
 
-def add_row(table_name, values):
+def add_row(table_name, values, generated_columns):
     """
     Builds a parameterized INSERT statement for the given table using only non-null values.
 
@@ -408,10 +411,15 @@ def add_row(table_name, values):
     column_names = [col for col in values.keys() if values[col] is not None]
     if len(column_names) == 0:
         raise HTTPException(status_code=400, detail="At least one non-null value must be provided to add a row")
+    column_names = [col for col in column_names if col.lower() not in generated_columns]
+    if len(column_names) == 0:
+        raise HTTPException(
+            status_code=400, detail="No valid columns provided for new row after excluding generated columns"
+        )
     columns = ", ".join(f"[{col}]" for col in column_names)
     placeholders = ", ".join("?" for _ in column_names)
     insert_query = f"INSERT INTO [{table_name}] ({columns}) VALUES ({placeholders})"
-    params.extend(v for v in values.values() if v is not None)
+    params.extend(values[col] for col in column_names)
     if len(params) == 0:
         raise HTTPException(status_code=400, detail="At least one non-null value must be provided to add a row")
     return insert_query, params
