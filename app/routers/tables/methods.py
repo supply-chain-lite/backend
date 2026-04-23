@@ -85,7 +85,7 @@ def get_table_data(
 ) -> list[tuple[str | int | float | bool | None, ...]]:
     """
     Fetch rows from a table applying selection, filters, sorting, and pagination.
-    
+
     Parameters:
         user_email (str): Requesting user's email used for model resolution and access checks.
         model_name (str): Name of the model containing the table.
@@ -99,10 +99,10 @@ def get_table_data(
         sort_columns (list[list[str, str]]): List of [column_name, direction] pairs specifying sort order (e.g., ["col", "asc"]).
         page_number (int): 1-based page number for pagination.
         page_size (int): Number of rows per page.
-    
+
     Returns:
         list[tuple[str | int | float | bool | None, ...]]: Rows matching the query; each tuple contains column values in the same order as `column_names`.
-    
+
     Raises:
         HTTPException: 404 if the model cannot be resolved for the given user/model/project.
         HTTPException: 400 if `column_names` is empty.
@@ -156,17 +156,17 @@ def get_distinct_column_values(
 ) -> list[str | int | float | bool | None]:
     """
     Retrieve distinct values for a column applying exact-match, text, date, and numeric filters, limited to page_size.
-    
+
     Parameters:
         select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters keyed by column name.
         text_filters (dict[str, str]): Text filters keyed by column name; columns listed in `date_columns` are matched against converted date strings.
         date_columns (list[str]): Columns from `text_filters` that should be interpreted as dates.
         numeric_filters (list[tuple[str, str, str | int | float]]): Numeric filter tuples (column, operator, value) to include in validation and query construction.
         page_size (int): Maximum number of distinct values to return.
-    
+
     Returns:
         list[str | int | float | bool | None]: Distinct values for the specified column as produced by the database, ordered by the database and limited to `page_size`.
-    
+
     Raises:
         HTTPException: Raised with status_code 404 and detail "Model not found" when the model cannot be resolved for the given user.
     """
@@ -520,7 +520,7 @@ def update_rows(
 ):
     """
     Update a single column for multiple rows in a model table.
-    
+
     Parameters:
         row_ids (list[int]): Primary-key IDs of rows targeted for the update; only these rows are considered.
         column_name (str): Name of the column to set.
@@ -529,10 +529,10 @@ def update_rows(
         text_filters (dict[str, str]): Text-search filters whose keys are column names and values are the substring to match; for columns listed in `date_columns`, matching is performed against converted date strings.
         date_columns (list[str]): Column names from `text_filters` that should be interpreted and matched as dates.
         numeric_filters (list[tuple[str, str, str | int | float]]): Numeric filter tuples (column, operator, value) whose referenced columns are validated and applied together with other filters.
-    
+
     Returns:
         int: Number of rows modified by the update.
-    
+
     Raises:
         HTTPException(404): If the model cannot be resolved, the target table does not exist, or the target is a non-updatable view.
         HTTPException(403): If the user does not have permission to modify the model.
@@ -598,7 +598,7 @@ def delete_rows(
 ):
     """
     Delete rows from a table that match the provided row IDs and filter criteria.
-    
+
     Parameters:
         table_name (str): Target table name.
         row_ids (list[int]): Row IDs to delete.
@@ -606,10 +606,10 @@ def delete_rows(
         text_filters (dict[str, str]): Text-match filters mapping column names to search strings; columns listed in `date_columns` are matched as dates after conversion.
         date_columns (list[str]): Column names from `text_filters` that should be interpreted and matched as dates.
         numeric_filters (list[tuple[str, str, str | int | float]]): Numeric-range or comparison filters as tuples (column_name, operator, value).
-    
+
     Returns:
         Number of rows deleted.
-    
+
     Raises:
         fastapi.HTTPException:
             - 404 if the model is not found, the target is a view (not updatable), or a referenced table/column is missing.
@@ -649,17 +649,17 @@ def get_summary_stats(
 ):
     """
     Compute selected aggregate statistics for specified columns of a table.
-    
+
     Parameters:
         column_names (dict[str, str]): Mapping of target column names to aggregate functions to compute. Only the functions "count", "avg", "sum", "min", and "max" (case-insensitive) are honored; others are ignored.
         select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters applied to the query; filter columns are validated against the table.
         text_filters (dict[str, str]): Text-search filters applied to the query; filter columns are validated. Entries listed in `date_columns` are matched as dates (converted from Excel-style serials when applicable).
         date_columns (list[str]): Column names from `text_filters` that should be treated and matched as dates.
         numeric_filters (list[tuple[str, str, str | int | float]]): Numeric filters as tuples of (column, operator, value); referenced columns are validated and forwarded to the query builder.
-    
+
     Returns:
         dict[str, Any]: Mapping from each requested column name (that used an allowed aggregate function) to its computed aggregate value.
-    
+
     Raises:
         fastapi.HTTPException: 404 if the model, table, or any referenced column is not found; 400 if no valid aggregate functions are provided.
     """

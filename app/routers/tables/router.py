@@ -35,7 +35,7 @@ def get_table_data(
 ) -> table_schemas.TableDataResponse:
     """
     Retrieve rows from a table according to requested columns, filters (including select, text, date, and numeric), sorting, and pagination for the authenticated user.
-    
+
     Parameters:
         request (TableDataRequest): Contains table identifiers (model_name, project_name, table_name) and retrieval options:
             - column_names: list of columns to return
@@ -45,7 +45,7 @@ def get_table_data(
             - numeric_filters: numeric range or comparison filters
             - sort_columns: ordering instructions
             - page_number, page_size: pagination controls
-    
+
     Returns:
         TableDataResponse: Object whose `data` field contains the rows matching the provided identifiers and filters.
     """
@@ -75,7 +75,7 @@ def get_distinct_column_values(
 ) -> table_schemas.DistinctColumnValuesResponse:
     """
     Get distinct values for a specified column in a table, applying the provided filters and page size.
-    
+
     Returns:
         table_schemas.DistinctColumnValuesResponse: Response containing the list of distinct values for the requested column.
     """
@@ -103,7 +103,7 @@ def get_row_count(
 ) -> table_schemas.RowCountResponse:
     """
     Return the number of rows for the specified table and authenticated user, honoring select, text, date, and numeric filters.
-    
+
     Returns:
         RowCountResponse: contains `row_count`, the number of rows matching the provided model_name, project_name, table_name, and any filters.
     """
@@ -282,7 +282,7 @@ def update_rows(
 ) -> table_schemas.updateRowValuesResponse:
     """
     Update a single column's value for multiple rows in a table, optionally constrained by filters.
-    
+
     Parameters:
         request (updateRowValuesRequest): Request containing:
             - model_name, project_name, table_name: target table identifiers
@@ -290,7 +290,7 @@ def update_rows(
             - column_name: name of the column to set
             - column_value: value to assign to the column for each listed row
             - select_filters, text_filters, date_columns, numeric_filters: optional filters that further restrict which rows are affected
-    
+
     Returns:
         updateRowValuesResponse: Object with `rows_updated` set to the number of rows that were updated.
     """
@@ -319,13 +319,13 @@ def delete_rows(
 ) -> table_schemas.DeleteRowsResponse:
     """
     Delete rows in the specified table that match the provided row IDs and/or filter criteria.
-    
+
     Parameters:
         request (DeleteRowsRequest): Request containing table identifiers and selection criteria:
             - model_name, project_name, table_name: Identify the target table.
             - row_ids: Optional list of explicit row identifiers to delete.
             - select_filters, text_filters, date_columns, numeric_filters: Optional filter groups used to match rows to delete.
-    
+
     Returns:
         rows_deleted (int): Number of rows that were deleted.
     """
@@ -352,10 +352,10 @@ def get_summary_stats(
 ) -> table_schemas.getSummaryStatsResponse:
     """
     Return aggregated summary statistics for the specified columns of a table filtered by the request.
-    
+
     Parameters:
         request (getSummaryStatsRequest): Contains `model_name`, `project_name`, `table_name`, `column_names`, and optional filter sets: `select_filters`, `text_filters`, `date_columns`, and `numeric_filters` which scope the aggregation to a subset of rows.
-    
+
     Returns:
         getSummaryStatsResponse: Mapping from each column name to its computed summary statistics (for example: `count`, `mean`, `min`, `max`) for rows matching the provided filters.
     """

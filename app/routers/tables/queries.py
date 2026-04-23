@@ -151,7 +151,7 @@ def get_distinct_column_values_query(
 ) -> tuple[str, list]:
     """
     Get distinct values of a single column from a table applying exact-match, text/date substring, and numeric filters, limited by page_size.
-    
+
     Parameters:
         table_name (str): Table to query.
         column_name (str): Target column whose distinct values to return; must be non-empty.
@@ -160,10 +160,10 @@ def get_distinct_column_values_query(
         date_columns (list[str]): Columns from `text_filters` that should be matched as dates after converting Excel-style serial values to SQLite dates.
         numeric_filters (list[tuple[str, str, str | int | float]]): Numeric comparisons as (column_name, operator, value); `operator` must be one of the keys in `operation_dict`.
         page_size (int): Maximum number of distinct values to return; must be greater than 0.
-    
+
     Returns:
         tuple[str, list]: Parameterized SQL SELECT DISTINCT query (with `?` placeholders) and the ordered list of parameters; results are ordered case-insensitively and limited to `page_size`.
-    
+
     Raises:
         HTTPException: If `column_name` is missing/blank, if `page_size <= 0`, or if a numeric filter `operator` is invalid.
     """
@@ -319,7 +319,7 @@ def update_rows(
 ):
     """
     Builds a parameterized UPDATE statement that sets a single column's value, optionally restricted by rowids and filters.
-    
+
     Parameters:
         table_name (str): Table to update.
         row_ids (Sequence): Iterable of rowid values to restrict the update; if empty, no rowid restriction is applied (the update is constrained only by the provided filters).
@@ -329,7 +329,7 @@ def update_rows(
         text_filters (dict[str, str]): Substring filters where each key is a column name and each value is the text to match; empty strings are ignored. For columns listed in `date_columns`, matching uses a date conversion (`DATE([col] + julianday('1899-12-30')) LIKE ?`); otherwise it uses `LIKE ? COLLATE NOCASE`.
         date_columns (list[str]): Column names (from text_filters) that should be matched as converted dates.
         numeric_filters (list[tuple[str, str, str | int | float]]): Numeric comparisons as tuples of (column_name, operator, value). `operator` must be a key in `operation_dict`; an invalid operator raises HTTPException(status_code=400).
-    
+
     Returns:
         tuple[str, list]: The SQL UPDATE string with bracket-quoted identifiers and the ordered list of bound parameters.
     """
@@ -381,7 +381,7 @@ def update_rows(
 def delete_rows(table_name, row_ids, select_filters, text_filters, date_columns, numeric_filters):
     """
     Build a parameterized DELETE SQL statement for a table with optional rowid, exact-match (including NULL), text/date substring, and numeric filters.
-    
+
     Parameters:
         table_name (str): Target table name inserted as a bracket-quoted identifier.
         row_ids (Sequence): If non-empty, restricts deletion to rows whose `rowid` is in this sequence; if empty, no rowid restriction is applied.
@@ -389,7 +389,7 @@ def delete_rows(table_name, row_ids, select_filters, text_filters, date_columns,
         text_filters (Mapping[str, str]): Substring filters mapping column -> text; falsy or empty values are ignored. For columns listed in `date_columns`, matches use `DATE([col] + julianday('1899-12-30')) LIKE ?`; otherwise matches use `LIKE ? COLLATE NOCASE`.
         date_columns (list[str]): Columns from `text_filters` that should be compared as converted Excel-style serial dates.
         numeric_filters (list[tuple[str, str, int | float | str]]): Numeric comparisons as tuples of `(column_name, operator_key, value)`. `operator_key` must be present in `operation_dict` or a 400 HTTPException is raised.
-    
+
     Returns:
         tuple: `(query, params)` where `query` is the DELETE SQL with `?` placeholders and `params` is the list of bound values in order.
     """
@@ -440,7 +440,7 @@ def delete_rows(table_name, row_ids, select_filters, text_filters, date_columns,
 def get_summary_stats_query(table_name, column_names, select_filters, text_filters, date_columns, numeric_filters):
     """
     Builds a parameterized SQL SELECT that returns aggregate statistics for the given columns, applying exact-match, text/date-aware substring, and numeric comparison filters.
-    
+
     Parameters:
         table_name (str): Table to query.
         column_names (dict[str, str]): Mapping of column name -> aggregate function name (e.g., {"age": "MAX", "salary": "AVG"}).
@@ -448,10 +448,10 @@ def get_summary_stats_query(table_name, column_names, select_filters, text_filte
         text_filters (dict[str, str]): Substring filters where each key is a column and the value is the text to match; columns listed in `date_columns` use date conversion before matching, others use case-insensitive `LIKE`.
         date_columns (list[str]): Columns from `text_filters` that should be compared as dates using `DATE([col] + julianday('1899-12-30'))`.
         numeric_filters (list[tuple[str, str, int | float | str]]): Numeric comparisons as tuples of `(column_name, operator_key, value)`. `operator_key` must be one of the keys in `operation_dict` (e.g., "gte", "lt").
-    
+
     Returns:
         tuple[str, list]: The SQL query string and the ordered list of parameters to bind.
-    
+
     Raises:
         HTTPException: If a numeric filter uses an operator not present in `operation_dict` (status code 400).
     """
