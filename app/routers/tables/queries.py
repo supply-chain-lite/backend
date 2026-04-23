@@ -38,6 +38,14 @@ get_default_values_query = """select name, [dflt_value] from pragma_table_xinfo(
 get_generated_columns = """select name from pragma_table_xinfo(?)
                               WHERE hidden in (2, 3);"""
 
+operation_dict = {
+    "gte": ">=",
+    "lte": "<=",
+    "eq": "=",
+    "gt": ">",
+    "lt": "<",
+}
+
 
 def get_table_query(
     table_name: str,
@@ -45,6 +53,7 @@ def get_table_query(
     select_filters: dict[str, list[str]],
     text_filters: dict[str, str],
     date_columns: list[str],
+    numeric_filters: list[tuple[str, str, str | int | float]],
     sort_columns: list[list[str, str]],
     page_number: int,
     page_size: int,
@@ -106,6 +115,15 @@ def get_table_query(
             select_query += f"AND [{column_name}] LIKE ? COLLATE NOCASE "
         params.append(f"%{text}%")
 
+    for column_name, operator, value in numeric_filters:
+        if operator not in operation_dict:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid operator '{operator}' for numeric filter on column '{column_name}'"
+            )
+        sql_operator = operation_dict[operator]
+        select_query += f"AND [{column_name}] {sql_operator} ? "
+        params.append(value)
+
     offset = (page_number - 1) * page_size
     if len(sort_columns) > 0:
         select_query += "ORDER BY "
@@ -128,6 +146,7 @@ def get_distinct_column_values_query(
     select_filters: dict[str, list[str | int | float | bool | None]],
     text_filters: dict[str, str],
     date_columns: list[str],
+    numeric_filters: list[tuple[str, str, str | int | float]],
     page_size: int,
 ) -> tuple[str, list]:
     """
@@ -181,6 +200,15 @@ def get_distinct_column_values_query(
             query += f"AND [{filter_col}] LIKE ? COLLATE NOCASE "
         params.append(f"%{text}%")
 
+    for column_name, operator, value in numeric_filters:
+        if operator not in operation_dict:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid operator '{operator}' for numeric filter on column '{column_name}'"
+            )
+        sql_operator = operation_dict[operator]
+        query += f"AND [{column_name}] {sql_operator} ? "
+        params.append(value)
+
     query += " ORDER BY 1 COLLATE NOCASE"
     query += " LIMIT ?"
     params.append(page_size)
@@ -193,6 +221,7 @@ def get_row_count_query(
     select_filters: dict[str, list[str | int | float | bool | None]],
     text_filters: dict[str, str],
     date_columns: list[str],
+    numeric_filters: list[tuple[str, str, str | int | float]],
 ) -> tuple[str, list]:
     """
     Build a parameterized COUNT(*) SQL query for a table applying exact-match (including nullable) and text/date-aware substring filters.
@@ -244,6 +273,15 @@ def get_row_count_query(
             query += f"AND [{filter_col}] LIKE ? COLLATE NOCASE "
         params.append(f"%{text}%")
 
+    for column_name, operator, value in numeric_filters:
+        if operator not in operation_dict:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid operator '{operator}' for numeric filter on column '{column_name}'"
+            )
+        sql_operator = operation_dict[operator]
+        query += f"AND [{column_name}] {sql_operator} ? "
+        params.append(value)
+
     return query, params
 
 
@@ -272,7 +310,9 @@ def update_row(table_name, row_id, updates):
     return update_query, params
 
 
-def update_rows(table_name, row_ids, column_name, column_value, select_filters, text_filters, date_columns):
+def update_rows(
+    table_name, row_ids, column_name, column_value, select_filters, text_filters, date_columns, numeric_filters
+):
     """
     Builds a parameterized UPDATE statement to set a single column's value, optionally restricted to specific rowids.
 
@@ -320,10 +360,19 @@ def update_rows(table_name, row_ids, column_name, column_value, select_filters, 
             update_query += f"AND [{filter_col}] LIKE ? COLLATE NOCASE "
         params.append(f"%{text}%")
 
+    for column_name, operator, value in numeric_filters:
+        if operator not in operation_dict:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid operator '{operator}' for numeric filter on column '{column_name}'"
+            )
+        sql_operator = operation_dict[operator]
+        update_query += f"AND [{column_name}] {sql_operator} ? "
+        params.append(value)
+
     return update_query, params
 
 
-def delete_rows(table_name, row_ids, select_filters, text_filters, date_columns):
+def delete_rows(table_name, row_ids, select_filters, text_filters, date_columns, numeric_filters):
     """
     Builds a parameterized DELETE SQL statement for a table with optional rowid, exact-match (including NULL) and text/date-aware substring filters.
 
@@ -369,10 +418,19 @@ def delete_rows(table_name, row_ids, select_filters, text_filters, date_columns)
             delete_query += f"AND [{filter_col}] LIKE ? COLLATE NOCASE "
         params.append(f"%{text}%")
 
+    for column_name, operator, value in numeric_filters:
+        if operator not in operation_dict:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid operator '{operator}' for numeric filter on column '{column_name}'"
+            )
+        sql_operator = operation_dict[operator]
+        delete_query += f"AND [{column_name}] {sql_operator} ? "
+        params.append(value)
+
     return delete_query, params
 
 
-def get_summary_stats_query(table_name, column_names, select_filters, text_filters, date_columns):
+def get_summary_stats_query(table_name, column_names, select_filters, text_filters, date_columns, numeric_filters):
     """
     Builds a parameterized SQL SELECT that returns aggregate statistics for specified columns with optional exact-match and text/date-aware filters.
 
@@ -418,6 +476,15 @@ def get_summary_stats_query(table_name, column_names, select_filters, text_filte
         else:
             stats_query += f"AND [{filter_col}] LIKE ? COLLATE NOCASE "
         params.append(f"%{text}%")
+
+    for column_name, operator, value in numeric_filters:
+        if operator not in operation_dict:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid operator '{operator}' for numeric filter on column '{column_name}'"
+            )
+        sql_operator = operation_dict[operator]
+        stats_query += f"AND [{column_name}] {sql_operator} ? "
+        params.append(value)
 
     return stats_query, params
 

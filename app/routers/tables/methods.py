@@ -78,6 +78,7 @@ def get_table_data(
     select_filters: dict[str, list[str | int | float | bool | None]],
     text_filters: dict[str, str],
     date_columns: list[str],
+    numeric_filters: list[tuple[str, str, str | int | float]],
     sort_columns: list[list[str, str]],
     page_number: int,
     page_size: int,
@@ -117,6 +118,7 @@ def get_table_data(
     query_columns.extend(select_filters.keys())
     query_columns.extend(text_filters.keys())
     query_columns.extend([col for col, _ in sort_columns])
+    query_columns.extend([col for col, _, _ in numeric_filters])
 
     with sql_connection(model_id, model_path) as model_cursor:
         object_type = _validate_table_and_column_names(model_cursor, table_name, query_columns)
@@ -125,7 +127,15 @@ def get_table_data(
             object_type = "read_only_object"
         select_columns = ["rowid", *column_names] if object_type == "table" else list(column_names or [])
         query, params = table_queries.get_table_query(
-            table_name, select_columns, select_filters, text_filters, date_columns, sort_columns, page_number, page_size
+            table_name,
+            select_columns,
+            select_filters,
+            text_filters,
+            date_columns,
+            numeric_filters,
+            sort_columns,
+            page_number,
+            page_size,
         )
         data = model_cursor.execute(query, params).fetchall()
         return data
@@ -141,6 +151,7 @@ def get_distinct_column_values(
     select_filters: dict[str, list[str | int | float | bool | None]],
     text_filters: dict[str, str],
     date_columns: list[str],
+    numeric_filters: list[tuple[str, str, str | int | float]],
     page_size: int,
 ) -> list[str | int | float | bool | None]:
     """
@@ -168,13 +179,13 @@ def get_distinct_column_values(
         raise HTTPException(status_code=404, detail="Model not found")
 
     query, params = table_queries.get_distinct_column_values_query(
-        table_name, column_name, select_filters, text_filters, date_columns, page_size
+        table_name, column_name, select_filters, text_filters, date_columns, numeric_filters, page_size
     )
 
     column_names = [column_name]
     column_names.extend(select_filters.keys())
     column_names.extend(text_filters.keys())
-
+    column_names.extend([col for col, _, _ in numeric_filters])
     with sql_connection(model_id, model_path) as model_cursor:
         _validate_table_and_column_names(model_cursor, table_name, column_names)
         values = model_cursor.execute(query, params).fetchall()
@@ -190,6 +201,7 @@ def get_row_count(
     select_filters: dict[str, list[str | int | float | bool | None]],
     text_filters: dict[str, str],
     date_columns: list[str],
+    numeric_filters: list[tuple[str, str, str | int | float]],
 ) -> int:
     """
     Compute the number of rows in a table that match the given selection and text filters.
@@ -213,10 +225,13 @@ def get_row_count(
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    query, params = table_queries.get_row_count_query(table_name, select_filters, text_filters, date_columns)
+    query, params = table_queries.get_row_count_query(
+        table_name, select_filters, text_filters, date_columns, numeric_filters
+    )
 
     column_names = list(select_filters.keys())
     column_names.extend(text_filters.keys())
+    column_names.extend([col for col, _, _ in numeric_filters])
     with sql_connection(model_id, model_path) as model_cursor:
         _validate_table_and_column_names(model_cursor, table_name, column_names)
         row = model_cursor.execute(query, params).fetchone()
@@ -505,6 +520,7 @@ def update_rows(
     select_filters: dict[str, list[str | int | float | bool | None]],
     text_filters: dict[str, str],
     date_columns: list[str],
+    numeric_filters: list[tuple[str, str, str | int | float]],
 ):
     """
     Update a single column on multiple rows in a model table and return the number of rows changed.
@@ -537,11 +553,12 @@ def update_rows(
         column_names = [column_name]
         column_names.extend(select_filters.keys())
         column_names.extend(text_filters.keys())
+        column_names.extend([col for col, _, _ in numeric_filters])
         object_type = _validate_table_and_column_names(model_cursor, table_name, column_names)
         if object_type != "table":
             raise HTTPException(status_code=404, detail=f"View: {table_name} is not updatable")
         query, values = table_queries.update_rows(
-            table_name, row_ids, column_name, column_value, select_filters, text_filters, date_columns
+            table_name, row_ids, column_name, column_value, select_filters, text_filters, date_columns, numeric_filters
         )
         model_cursor.execute(query, values)
         return model_cursor.rowcount()
@@ -579,6 +596,7 @@ def delete_rows(
     select_filters: dict[str, list[str | int | float | bool | None]],
     text_filters: dict[str, str],
     date_columns: list[str],
+    numeric_filters: list[tuple[str, str, str | int | float]],
 ):
     """
     Delete rows from the specified table that match the given row IDs and filter criteria.
@@ -610,10 +628,13 @@ def delete_rows(
     with sql_connection(model_id, model_path) as model_cursor:
         column_names = list(select_filters.keys())
         column_names.extend(text_filters.keys())
+        column_names.extend([col for col, _, _ in numeric_filters])
         object_type = _validate_table_and_column_names(model_cursor, table_name, column_names)
         if object_type != "table":
             raise HTTPException(status_code=404, detail=f"View: {table_name} is not updatable")
-        query, values = table_queries.delete_rows(table_name, row_ids, select_filters, text_filters, date_columns)
+        query, values = table_queries.delete_rows(
+            table_name, row_ids, select_filters, text_filters, date_columns, numeric_filters
+        )
         model_cursor.execute(query, values)
         return model_cursor.rowcount()
 
@@ -628,6 +649,7 @@ def get_summary_stats(
     select_filters: dict[str, list[str | int | float | bool | None]],
     text_filters: dict[str, str],
     date_columns: list[str],
+    numeric_filters: list[tuple[str, str, str | int | float]],
 ):
     """
     Return summary statistics for the specified columns in a table.
@@ -652,6 +674,7 @@ def get_summary_stats(
         column_names_list = list(column_names.keys())
         column_names_list.extend(select_filters.keys())
         column_names_list.extend(text_filters.keys())
+        column_names_list.extend([col for col, _, _ in numeric_filters])
         _validate_table_and_column_names(model_cursor, table_name, column_names_list)
         validated_columns = {}
         allowed_functions = {"count", "avg", "sum", "min", "max"}
@@ -662,7 +685,7 @@ def get_summary_stats(
         if not validated_columns:
             raise HTTPException(status_code=400, detail="No valid summary functions provided")
         query, values = table_queries.get_summary_stats_query(
-            table_name, validated_columns, select_filters, text_filters, date_columns
+            table_name, validated_columns, select_filters, text_filters, date_columns, numeric_filters
         )
         result = model_cursor.execute(query, values).fetchone()
         summary_stats = {}
@@ -755,7 +778,9 @@ def export_tables_to_excel(cursor, user_email: str, model_name: str, project_nam
                 table_headers = _get_table_headers_with_types(model_cursor, table_name)
                 column_formatting = _get_column_formatting(model_cursor, table_name)
                 select_columns = [col for col, _ in table_headers]
-                query, params = table_queries.get_table_query(table_name, select_columns, {}, {}, [], [], 1, 1000000)
+                query, params = table_queries.get_table_query(
+                    table_name, select_columns, {}, {}, [], [], [], 1, 1000000
+                )
                 data = model_cursor.execute(query, params).fetchall()
                 sheet_name = re.sub(r"[\[\]:*?/\\]", "_", table_name)
                 sheet_name = sheet_name.strip("'")

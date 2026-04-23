@@ -45,6 +45,7 @@ class TableDataRequest(BaseModel):
     select_filters: dict[str, list[str | int | float | bool | None]]
     text_filters: dict[str, str]
     date_columns: list[str]
+    numeric_filters: list[tuple[str, str, str | int | float]]
 
 
 class TableDataResponse(BaseModel):
@@ -60,6 +61,7 @@ class DistinctColumnValuesRequest(BaseModel):
     select_filters: dict[str, list[str | int | float | bool | None]]
     text_filters: dict[str, str]
     date_columns: list[str]
+    numeric_filters: list[tuple[str, str, str | int | float]]
 
 
 class DistinctColumnValuesResponse(BaseModel):
@@ -73,6 +75,7 @@ class RowCountRequest(BaseModel):
     select_filters: dict[str, list[str | int | float | bool | None]] = Field(default_factory=dict)
     text_filters: dict[str, str] = Field(default_factory=dict)
     date_columns: list[str]
+    numeric_filters: list[tuple[str, str, str | int | float]]
 
 
 class RowCountResponse(BaseModel):
@@ -109,6 +112,7 @@ class updateRowValuesRequest(BaseModel):
     select_filters: dict[str, list[str | int | float | bool | None]]
     text_filters: dict[str, str]
     date_columns: list[str]
+    numeric_filters: list[tuple[str, str, str | int | float]]
     row_ids: list[int]
 
 
@@ -124,6 +128,7 @@ class DeleteRowsRequest(BaseModel):
     select_filters: dict[str, list[str | int | float | bool | None]]
     text_filters: dict[str, str]
     date_columns: list[str]
+    numeric_filters: list[tuple[str, str, str | int | float]]
 
 
 class DeleteRowsResponse(BaseModel):
@@ -138,6 +143,7 @@ class getSummaryStatsRequest(BaseModel):
     select_filters: dict[str, list[str | int | float | bool | None]]
     text_filters: dict[str, str]
     date_columns: list[str]
+    numeric_filters: list[tuple[str, str, str | int | float]]
 
 
 class getSummaryStatsResponse(BaseModel):
