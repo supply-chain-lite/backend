@@ -384,17 +384,30 @@ def set_column_formatting(
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     with sql_connection(model_id, model_path) as model_cursor:
         _validate_table_and_column_names(model_cursor, table_name, [column_name])
-        row = model_cursor.execute(table_queries.check_if_table_exists, ("S_TableParameters",)).fetchone()
-        if not row:
+        status = _set_column_formatting(model_cursor, table_name, column_name, column_type, column_formatting)
+        if status == 0:
             raise HTTPException(status_code=404, detail="Cannot set column format: Table not found: S_TableParameters")
-        format_json = json.dumps(column_formatting)
-        all_rows = model_cursor.execute(
-            table_queries.set_column_formatting, (column_type, format_json, table_name, column_name)
-        ).fetchall()
-        if len(all_rows) == 0:
-            model_cursor.execute(
-                table_queries.insert_column_formatting, (table_name, column_name, column_type, format_json)
-            )
+
+
+def _set_column_formatting(
+    model_cursor,
+    table_name: str,
+    column_name: str,
+    column_type: str,
+    column_formatting: dict[str, str | int | float | bool | None],
+):
+    row = model_cursor.execute(table_queries.check_if_table_exists, ("S_TableParameters",)).fetchone()
+    if not row:
+        return 0
+    format_json = json.dumps(column_formatting)
+    all_rows = model_cursor.execute(
+        table_queries.set_column_formatting, (column_type, format_json, table_name, column_name)
+    ).fetchall()
+    if len(all_rows) == 0:
+        model_cursor.execute(
+            table_queries.insert_column_formatting, (table_name, column_name, column_type, format_json)
+        )
+    return 1
 
 
 def get_column_formatting(
@@ -953,7 +966,7 @@ def upload_excel(
                     continue
                 try:
                     table_headers = _create_table_from_excel(model_cursor, table_name, table_rows)
-                    column_formats = {}
+                    column_formats = _get_column_formatting(model_cursor, table_name)
                     rows_imported = _import_excel_to_table(
                         model_cursor, table_rows, table_name, table_headers, column_formats
                     )
@@ -1223,6 +1236,8 @@ def _create_table_from_excel(model_cursor, table_name, all_rows):
             raise Exception(f"Invalid column name '{col}'")
     data_frame = pd.DataFrame(all_rows[1:], columns=columns)
     column_types = {}
+    date_columns = []
+    datetime_columns = []
     for column in data_frame.columns:
         if pd.api.types.is_integer_dtype(data_frame[column]):
             column_types[column] = "INTEGER"
@@ -1232,9 +1247,45 @@ def _create_table_from_excel(model_cursor, table_name, all_rows):
             column_types[column] = "INTEGER"
         elif pd.api.types.is_datetime64_any_dtype(data_frame[column]):
             column_types[column] = "NUMERIC"
+            sample_values = data_frame[column].dropna().head(100)
+            if all(isinstance(val, pd.Timestamp) and val.time() == datetime.time(0, 0) for val in sample_values):
+                date_columns.append(column)
+            else:
+                datetime_columns.append(column)
+        elif pd.api.types.is_string_dtype(data_frame[column]):
+            column_types[column] = "TEXT"
+        elif pd.api.types.is_object_dtype(data_frame[column]):
+            sample_values = data_frame[column].dropna().head(100)
+            if len(sample_values) == 0:
+                column_types[column] = "TEXT"
+            elif all(
+                (
+                    isinstance(val, pd.Timestamp)
+                    or (isinstance(val, datetime.datetime) and not isinstance(val, pd.Timestamp))
+                )
+                and val.time() == datetime.time(0, 0)
+                for val in sample_values
+            ):
+                column_types[column] = "NUMERIC"
+                date_columns.append(column)
+            elif all(
+                isinstance(val, datetime.date) and not isinstance(val, datetime.datetime) for val in sample_values
+            ):
+                column_types[column] = "NUMERIC"
+                date_columns.append(column)
+            elif all(isinstance(val, (pd.Timestamp, datetime.datetime)) for val in sample_values):
+                column_types[column] = "NUMERIC"
+                datetime_columns.append(column)
+            else:
+                column_types[column] = "TEXT"
         else:
             column_types[column] = "TEXT"
+
     table_headers = [(col, column_types[col]) for col in columns]
     create_query = table_queries.create_table_query(table_name, table_headers)
     model_cursor.execute(create_query)
+    for date_column in date_columns:
+        _set_column_formatting(model_cursor, table_name, date_column, "DATE", {})
+    for datetime_column in datetime_columns:
+        _set_column_formatting(model_cursor, table_name, datetime_column, "DATETIME", {})
     return table_headers
