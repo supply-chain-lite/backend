@@ -1112,7 +1112,7 @@ def _get_cell_value(value, data_type, column_type, row_idx, col_idx, table_name)
     if str(value).strip() == "":
         return None
 
-    if data_type.upper() in ("STRING", "TEXT", "VARCHAR", "CHAR"):
+    if data_type.upper() in ("STRING", "TEXT", "VARCHAR", "CHAR", "DATE", "VARDATE"):
         if column_type is None or column_type.lower() not in ("date", "datetime"):
             return str(value)
         if column_type.lower() == "date":
@@ -1154,7 +1154,7 @@ def _get_cell_value(value, data_type, column_type, row_idx, col_idx, table_name)
             raise Exception(
                 f"Invalid integer value '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': {str(ex)}"
             )
-    if data_type.upper() in ("NUMERIC", "FLOAT", "REAL", "NUMBER"):
+    if data_type.upper() in ("NUMERIC", "FLOAT", "REAL", "NUMBER", "NUMDATE"):
         if isinstance(value, (datetime.datetime, datetime.date)):
             return _datetime_to_excel_float(value)
         try:
@@ -1163,6 +1163,10 @@ def _get_cell_value(value, data_type, column_type, row_idx, col_idx, table_name)
             raise Exception(
                 f"Invalid numeric value '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': {str(ex)}"
             )
+    if isinstance(value, (datetime.datetime, datetime.date)):
+        if column_type and column_type.lower() == "date":
+            return value.strftime("%Y-%m-%d")
+        return value.strftime("%Y-%m-%d %H:%M:%S")
     return value
 
 
