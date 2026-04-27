@@ -454,7 +454,18 @@ def upload_excel_file(
     Raises:
         HTTPException: Status 400 if `upload_file` is missing or does not have a `.xlsx` or `.xls` extension.
     """
-    sheet_action = json.loads(sheet_actions)
+    try:
+        sheet_action = json.loads(sheet_actions)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="sheet_actions must be valid JSON") from exc
+    if not isinstance(sheet_action, dict) or any(
+        not isinstance(sheet_name, str) or action not in {"ignore", "create", "upload", "delete"}
+        for sheet_name, action in sheet_action.items()
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="sheet_actions must be an object mapping sheet names to ignore/create/upload/delete",
+        )
     if not upload_file.filename or not upload_file.filename.lower().endswith((".xlsx", ".xls")):
         raise HTTPException(
             status_code=400, detail="Invalid file type. Please upload an Excel file with .xlsx or .xls extension."
@@ -462,7 +473,6 @@ def upload_excel_file(
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:
         request_resp = table_methods.upload_excel(cursor, useremail, model_name, project_name, sheet_action, upload_file)
-        print(f"Rows updated from Excel upload: {request_resp}")
     return table_schemas.UploadExcelToTableResponse(response=request_resp)
 
 

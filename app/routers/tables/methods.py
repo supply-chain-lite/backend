@@ -955,7 +955,12 @@ def upload_excel(
                     model_cursor.rollback_changes()
                     response_status[table_name] = {"status": "failed", "reason": str(e)}
                 continue
-            object_type = _validate_table_and_column_names(model_cursor, table_name, [])
+            try:
+                object_type = _validate_table_and_column_names(model_cursor, table_name, [])
+            except Exception as e:
+                model_cursor.rollback_changes()
+                response_status[table_name] = {"status": "failed", "reason": str(e)}
+                continue
             if object_type != "table" and action in ("upload", "delete", "create"):
                 response_status[table_name] = {"status": "failed", "reason": "not a table"}
                 continue
