@@ -985,7 +985,8 @@ def upload_excel(
                 response_status[table_name] = {"status": "failed", "reason": "not a table"}
                 continue
             if action == "delete":
-                model_cursor.execute(table_queries.delete_all_rows_query(table_name))
+                delete_query, _ = table_queries.delete_rows(table_name, [], {}, {}, [], [])
+                model_cursor.execute(delete_query)
                 rows_deleted = model_cursor.rowcount()
                 model_cursor.intermediate_commit()
                 response_status[table_name] = {"rows_deleted": rows_deleted, "status": "success"}
