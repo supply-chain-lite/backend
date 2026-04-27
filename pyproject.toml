@@ -16,6 +16,7 @@ dependencies = [
     "gunicorn>=25.3.0",
     "xlsxwriter>=3.2.9",
     "python-calamine>=0.6.2",
+    "pandas>=3.0.2",
 ]
 
 [dependency-groups]

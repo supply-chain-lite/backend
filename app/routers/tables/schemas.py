@@ -164,4 +164,14 @@ class ExportTablesToExcelRequest(BaseModel):
 
 
 class UploadExcelToTableResponse(BaseModel):
-    rows_inserted: int
+    response: dict[str, dict[str, str | int | float | bool | None]]
+
+
+class checkExcelSheetRequest(BaseModel):
+    model_name: str
+    project_name: str
+    sheet_names: list[str]
+
+
+class checkExcelSheetResponse(BaseModel):
+    sheet_types: dict[str, str]
