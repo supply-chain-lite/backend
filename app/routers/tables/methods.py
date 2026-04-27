@@ -1195,17 +1195,17 @@ def check_excel_sheets_exist(cursor, user_email: str, model_name: str, project_n
     with sql_connection(model_id, model_path) as model_cursor:
         query = table_queries.get_object_types.format(placeholders=",".join(["(?)"] * len(sheet_names)))
         object_types = {}
-        for name, type in model_cursor.execute(query, sheet_names).fetchall():
-            object_types[name] = type
-            if type != "table":
+        for name, obj_type in model_cursor.execute(query, sheet_names).fetchall():
+            object_types[name] = obj_type
+            if obj_type != "table":
                 object_types[name] = "not a table"
         row = model_cursor.execute(table_queries.check_if_table_exists, ("S_TableGroup",)).fetchone()
         if not row:
             return object_types
         query = table_queries.get_table_types.format(placeholders=",".join(["(?)"] * len(sheet_names)))
-        for name, type in model_cursor.execute(query, sheet_names).fetchall():
+        for name, obj_type in model_cursor.execute(query, sheet_names).fetchall():
             if object_types.get(name) == "table":
-                object_types[name] = type
+                object_types[name] = obj_type
 
     return object_types
 
