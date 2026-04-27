@@ -13,6 +13,8 @@ from app.routers.models.methods import get_model_id_and_path
 
 from . import queries as table_queries
 
+SQLITE_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_ ]*$")
+
 
 def get_table_headers(
     cursor, user_email: str, model_name: str, project_name: str, table_name: str
@@ -325,8 +327,8 @@ def add_new_column(
     if access_level is None or access_level[0] not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
 
-    if ";" in column_name or ";" in column_type or "[" in column_name or "]" in column_name:
-        raise HTTPException(status_code=400, detail="Invalid character ;[] in column name or type")
+    if not SQLITE_IDENTIFIER_RE.fullmatch(column_name):
+        raise HTTPException(status_code=400, detail="Invalid characters in column name")
 
     with sql_connection(model_id, model_path) as model_cursor:
         object_type = _validate_table_and_column_names(model_cursor, table_name, [])
@@ -966,7 +968,9 @@ def upload_excel(
                 continue
             if action == "delete":
                 model_cursor.execute(table_queries.delete_all_rows_query(table_name))
-                response_status[table_name] = {"rows_deleted": model_cursor.rowcount(), "status": "success"}
+                rows_deleted = model_cursor.rowcount()
+                model_cursor.intermediate_commit()
+                response_status[table_name] = {"rows_deleted": rows_deleted, "status": "success"}
                 continue
             if action == "upload":
                 if table_name not in workbook.sheet_names:
@@ -1192,16 +1196,16 @@ def _create_table_from_excel(model_cursor, table_name, all_rows):
         all_rows (list[list]): Excel sheet rows as returned by the workbook reader; the first row is expected to be the header row.
     Behavior:
         """
-    if ';' in table_name:
-        raise Exception(f"Invalid table name '{table_name}': semicolons are not allowed")
+    if not SQLITE_IDENTIFIER_RE.fullmatch(table_name):
+        raise Exception(f"Invalid table name '{table_name}'")
     columns = [str(cell).strip() for cell in all_rows[0]]
     if len(set(columns)) != len(columns):
         raise Exception(f"Duplicate column names found in the header row: {columns}")
     if len(columns) == 0:
         raise Exception("The header row must contain at least one column name")
     for col in columns:
-        if ';' in col:
-            raise Exception(f"Invalid column name '{col}': semicolons are not allowed")
+        if not SQLITE_IDENTIFIER_RE.fullmatch(col):
+            raise Exception(f"Invalid column name '{col}'")
     data_frame = pd.DataFrame(all_rows[1:], columns=columns)
     column_types = {}
     for column in data_frame.columns:
