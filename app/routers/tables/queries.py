@@ -38,6 +38,30 @@ get_default_values_query = """select name, [dflt_value] from pragma_table_xinfo(
 get_generated_columns = """select name from pragma_table_xinfo(?)
                               WHERE hidden in (2, 3);"""
 
+get_object_types = """SELECT t1.table_name, sqlite_master.type 
+                        FROM
+                        (
+                        SELECT column1 AS table_name
+                        FROM (VALUES
+                            {placeholders}
+                        ) ) as t1, sqlite_master
+                        WHERE T1.table_name = sqlite_master.name COLLATE NOCASE
+                        """
+get_table_types = """SELECT t1.table_name, S_TableGroup.TableType 
+                        FROM
+                        (
+                        SELECT column1 AS table_name
+                        FROM (VALUES
+                            {placeholders}
+                        ) ) as t1, S_TableGroup
+                        WHERE T1.table_name = S_TableGroup.TableName COLLATE NOCASE
+                        """
+
+def create_table_query(table_name, columns):
+    column_defs = ", ".join(f"[{col_name}] {col_type}" for col_name, col_type in columns)
+    return f"CREATE TABLE [{table_name}] ({column_defs})"
+
+
 operation_dict = {
     "gte": ">=",
     "lte": "<=",

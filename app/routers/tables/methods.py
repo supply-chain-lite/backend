@@ -1,5 +1,6 @@
 import datetime
 import json
+import pandas as pd
 import re
 import tempfile
 
@@ -903,7 +904,7 @@ def upload_excel(
     user_email: str,
     model_name: str,
     project_name: str,
-    table_name: str,
+    sheet_actions: dict[str, str],
     file: UploadFile,
 ):
     """
@@ -928,18 +929,57 @@ def upload_excel(
     if access_level is None or access_level[0] in ("read", "reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     with sql_connection(model_id, model_path) as model_cursor:
-        object_type = _validate_table_and_column_names(model_cursor, table_name, [])
-        if object_type != "table":
-            raise HTTPException(status_code=404, detail=f"View: {table_name} is not updatable")
-        table_headers = _get_table_headers_with_types(model_cursor, table_name, True)
-        column_formats = _get_column_formatting(model_cursor, table_name)
         workbook = CalamineWorkbook.from_object(file.file)
-        if table_name not in workbook.sheet_names:
-            raise HTTPException(status_code=404, detail=f"Worksheet named '{table_name}' not found in the Excel file")
-        table_rows = workbook.get_sheet_by_name(table_name).to_python()
-        if not table_rows or len(table_rows) < 1:
-            raise HTTPException(status_code=400, detail="The Excel file must contain at least a header row")
-        return _import_excel_to_table(model_cursor, table_rows, table_name, table_headers, column_formats)
+        response_status = {}
+        for table_name, action in sheet_actions.items():
+            if action == "ignore":
+                continue
+            if action == "create":
+                row = model_cursor.execute(table_queries.check_if_table_exists, (table_name,)).fetchone()
+                if row:
+                    response_status[table_name] = {"status": "failed", "reason": "object already exists"}
+                    continue
+                if table_name not in workbook.sheet_names:
+                    response_status[table_name] = {"status": "failed", "reason": "worksheet not found"}
+                    continue
+                table_rows = workbook.get_sheet_by_name(table_name).to_python()
+                if not table_rows or len(table_rows) < 1:
+                    response_status[table_name] = {"status": "failed", "reason": "The Excel file must contain at least a header row"}
+                    continue
+                try:
+                    table_headers = _create_table_from_excel(model_cursor, table_name, table_rows)
+                    column_formats = {}
+                    rows_imported = _import_excel_to_table(model_cursor, table_rows, table_name, table_headers, column_formats)
+                    response_status[table_name] = {"rows_imported": rows_imported, "status": "success"}
+                except Exception as e:
+                    model_cursor.rollback_changes()
+                    response_status[table_name] = {"status": "failed", "reason": str(e)}
+                continue
+            object_type = _validate_table_and_column_names(model_cursor, table_name, [])
+            if object_type != "table" and action in ("upload", "delete", "create"):
+                response_status[table_name] = {"status": "failed", "reason": "not a table"}
+                continue
+            if action == "delete":
+                model_cursor.execute(table_queries.delete_all_rows_query(table_name))
+                response_status[table_name] = {"rows_deleted": model_cursor.rowcount(), "status": "success"}
+                continue
+            if action == "upload":
+                if table_name not in workbook.sheet_names:
+                    response_status[table_name] = {"status": "failed", "reason": "worksheet not found"}
+                    continue
+                table_rows = workbook.get_sheet_by_name(table_name).to_python()
+                if not table_rows or len(table_rows) < 1:
+                    response_status[table_name] = {"status": "failed", "reason": "The Excel file must contain at least a header row"}
+                    continue
+                try:
+                    table_headers = _get_table_headers_with_types(model_cursor, table_name, True)
+                    column_formats = _get_column_formatting(model_cursor, table_name)
+                    rows_imported = _import_excel_to_table(model_cursor, table_rows, table_name, table_headers, column_formats)
+                    response_status[table_name] = {"rows_imported": rows_imported, "status": "success"}
+                except Exception as e:
+                    model_cursor.rollback_changes()
+                    response_status[table_name] = {"status": "failed", "reason": str(e)}
+        return response_status
 
 
 def _import_excel_to_table(model_cursor, all_rows, table_name, table_headers, column_formats):
@@ -978,9 +1018,7 @@ def _import_excel_to_table(model_cursor, all_rows, table_name, table_headers, co
     common_column_formats = tuple(column_formats.get(col, {}).get("column_type", None) for col in common_columns)
 
     if len(common_column_idxs) == 0:
-        raise HTTPException(
-            status_code=400, detail="No matching columns found between the Excel file and the target table"
-        )
+        raise Exception("No matching columns found between the Excel file and the target table")
 
     default_values = {}
     for column_name, default_value in model_cursor.execute(
@@ -1046,9 +1084,8 @@ def _get_cell_value(value, data_type, column_type, row_idx, col_idx, table_name)
             return str(value)
         if column_type.lower() == "date":
             if isinstance(value, (int, float)):
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid date value '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': expected a date string, not a numeric value",
+                raise Exception(
+                    f"Invalid date value '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': expected a date string, not a numeric value"
                 )
             if isinstance(value, (datetime.datetime, datetime.date)):
                 return value.strftime("%Y-%m-%d")
@@ -1056,15 +1093,13 @@ def _get_cell_value(value, data_type, column_type, row_idx, col_idx, table_name)
                 parsed_date = datetime.datetime.strptime(str(value)[:10], "%Y-%m-%d")
                 return parsed_date.strftime("%Y-%m-%d")
             except Exception:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid date string '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': expected format YYYY-MM-DD",
+                raise Exception(
+                    f"Invalid date string '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': expected format YYYY-MM-DD"
                 )
         if column_type.lower() == "datetime":
             if isinstance(value, (int, float)):
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid datetime value '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': expected a datetime string, not a numeric value",
+                raise Exception(
+                    f"Invalid datetime value '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': expected a datetime string, not a numeric value"
                 )
             if isinstance(value, (datetime.datetime, datetime.date)):
                 return value.strftime("%Y-%m-%d %H:%M:%S")
@@ -1072,9 +1107,8 @@ def _get_cell_value(value, data_type, column_type, row_idx, col_idx, table_name)
                 parsed_date = datetime.datetime.strptime(str(value)[:19], "%Y-%m-%d %H:%M:%S")
                 return parsed_date.strftime("%Y-%m-%d %H:%M:%S")
             except Exception:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid datetime string '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': expected format YYYY-MM-DD HH:MM:SS",
+                raise Exception(
+                    f"Invalid datetime string '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': expected format YYYY-MM-DD HH:MM:SS"
                 )
         return str(value)
 
@@ -1084,9 +1118,8 @@ def _get_cell_value(value, data_type, column_type, row_idx, col_idx, table_name)
         try:
             return int(value)
         except Exception as ex:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid integer value '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': {str(ex)}",
+            raise Exception(
+                f"Invalid integer value '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': {str(ex)}"
             )
     if data_type.upper() in ("NUMERIC", "FLOAT", "REAL", "NUMBER"):
         if isinstance(value, (datetime.datetime, datetime.date)):
@@ -1094,9 +1127,8 @@ def _get_cell_value(value, data_type, column_type, row_idx, col_idx, table_name)
         try:
             return float(value)
         except Exception as ex:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid numeric value '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': {str(ex)}",
+            raise Exception(
+                f"Invalid numeric value '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': {str(ex)}"
             )
     return value
 
@@ -1118,3 +1150,67 @@ def _datetime_to_excel_float(dt):
     delta = dt - base_date
     # Convert the time difference to total days (including fractional time)
     return delta.total_seconds() / 86400.0
+
+
+def check_excel_sheets_exist(cursor, user_email: str, model_name: str, project_name: str, sheet_names: list[str]):
+    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
+    if not model_id:
+        raise HTTPException(status_code=404, detail="Model not found")
+    
+    if len(sheet_names) == 0:
+        return {}
+
+    with sql_connection(model_id, model_path) as model_cursor:
+        query = table_queries.get_object_types.format(placeholders=",".join(["(?)"] * len(sheet_names)))
+        object_types = {}
+        for name, type in model_cursor.execute(query, sheet_names).fetchall():
+            object_types[name] = type
+            if type != "table":
+                object_types[name] = "not a table"
+        row = model_cursor.execute(table_queries.check_if_table_exists, ("S_TableGroup",)).fetchone()
+        if not row:
+            return object_types
+        query = table_queries.get_table_types.format(placeholders=",".join(["(?)"] * len(sheet_names)))
+        for name, type in model_cursor.execute(query, sheet_names).fetchall():
+            if object_types.get(name) == "table":
+                object_types[name] = type
+
+    return object_types
+
+def _create_table_from_excel(model_cursor, table_name, all_rows):
+    """
+    Create a new database table based on the header row of an Excel worksheet and insert the worksheet's data.
+
+    Parameters:
+        model_cursor: Database cursor for the target model; used to execute create and insert statements.
+        table_name (str): Name of the new table to create; also used for error messages.
+        all_rows (list[list]): Excel sheet rows as returned by the workbook reader; the first row is expected to be the header row.
+    Behavior:
+        """
+    if ';' in table_name:
+        raise Exception(f"Invalid table name '{table_name}': semicolons are not allowed")
+    columns = [str(cell).strip() for cell in all_rows[0]]
+    if len(set(columns)) != len(columns):
+        raise Exception(f"Duplicate column names found in the header row: {columns}")
+    if len(columns) == 0:
+        raise Exception("The header row must contain at least one column name")
+    for col in columns:
+        if ';' in col:
+            raise Exception(f"Invalid column name '{col}': semicolons are not allowed")
+    data_frame = pd.DataFrame(all_rows[1:], columns=columns)
+    column_types = {}
+    for column in data_frame.columns:
+        if pd.api.types.is_integer_dtype(data_frame[column]):
+            column_types[column] = "INTEGER"
+        elif pd.api.types.is_float_dtype(data_frame[column]):
+            column_types[column] = "NUMERIC"
+        elif pd.api.types.is_bool_dtype(data_frame[column]):
+            column_types[column] = "INTEGER"
+        elif pd.api.types.is_datetime64_any_dtype(data_frame[column]):
+            column_types[column] = "NUMERIC"
+        else:
+            column_types[column] = "TEXT"
+    table_headers = [(col, column_types[col]) for col in columns]
+    create_query = table_queries.create_table_query(table_name, table_headers)
+    model_cursor.execute(create_query)
+    return table_headers

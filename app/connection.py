@@ -126,6 +126,13 @@ class this_cursor:
         except Exception:
             raise
 
+    def rollback_changes(self):
+        try:
+            self.conn.execute("ROLLBACK")
+            self.conn.execute("BEGIN")
+        except Exception:
+            raise
+
 
 def close_all_conn():
     with _pool_lock:

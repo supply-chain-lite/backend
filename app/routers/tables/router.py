@@ -1,5 +1,7 @@
 """API routes for table-related operations."""
 
+import json
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from app.connection import master_connection
@@ -431,7 +433,7 @@ def export_tables_to_excel(
 def upload_excel_file(
     model_name: str = Form(...),
     project_name: str = Form(...),
-    table_name: str = Form(...),
+    sheet_actions: str = Form(...),
     user_data: tuple = Depends(_get_user_from_token),
     upload_file: UploadFile = File(...),
 ) -> table_schemas.UploadExcelToTableResponse:
@@ -443,20 +445,47 @@ def upload_excel_file(
     Parameters:
         model_name (str): Target model name.
         project_name (str): Target project name.
-        table_name (str): Target table name.
+        sheet_actions (str): Actions to perform on the sheets.
         upload_file (UploadFile): Uploaded Excel file; must have a `.xlsx` or `.xls` filename.
 
     Returns:
-        UploadExcelToTableResponse: Object with `rows_inserted` set to the number of rows successfully imported.
+        UploadExcelToTableResponse: Object with `response` set to a dictionary mapping sheet names to their import status.
 
     Raises:
         HTTPException: Status 400 if `upload_file` is missing or does not have a `.xlsx` or `.xls` extension.
     """
+    sheet_action = json.loads(sheet_actions)
     if not upload_file.filename or not upload_file.filename.lower().endswith((".xlsx", ".xls")):
         raise HTTPException(
             status_code=400, detail="Invalid file type. Please upload an Excel file with .xlsx or .xls extension."
         )
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:
-        row_count = table_methods.upload_excel(cursor, useremail, model_name, project_name, table_name, upload_file)
-    return table_schemas.UploadExcelToTableResponse(rows_inserted=row_count)
+        request_resp = table_methods.upload_excel(cursor, useremail, model_name, project_name, sheet_action, upload_file)
+        print(f"Rows updated from Excel upload: {request_resp}")
+    return table_schemas.UploadExcelToTableResponse(response=request_resp)
+
+
+@router.post("/check-excel-sheets", response_model=table_schemas.checkExcelSheetResponse)
+def check_excel_sheet(
+    request: table_schemas.checkExcelSheetRequest, user_data: tuple = Depends(_get_user_from_token)
+) -> table_schemas.checkExcelSheetResponse:
+    """
+    Check if the specified Excel sheet names exist in the model's database.
+
+    Parameters:
+        request (table_schemas.checkExcelSheetRequest): Request containing `model_name`, `project_name`, and `sheet_names` to check.
+        user_data (tuple): Injected authentication tuple (email, display name, role); only the email is used.
+
+    Returns:
+        table_schemas.checkExcelSheetResponse: Response indicating the types of the specified sheets.
+    """
+    useremail, _display_name, _role_name = user_data
+    model_name = request.model_name
+    project_name = request.project_name
+    sheet_names = request.sheet_names
+
+    with master_connection() as cursor:
+        sheet_types = table_methods.check_excel_sheets_exist(cursor, useremail, model_name, project_name, sheet_names)
+
+    return table_schemas.checkExcelSheetResponse(sheet_types=sheet_types)
