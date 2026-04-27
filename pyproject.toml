@@ -10,7 +10,7 @@ dependencies = [
     "pydantic-settings",
     "apsw>=3.53.0.0",
     "python-dotenv>=1.2.2",
-    "pydantic[email]>=2.12.5",
+    "pydantic[email]>=2.13.3",
     "pyjwt>=2.12.1",
     "python-multipart>=0.0.22",
     "gunicorn>=25.3.0",
