@@ -1164,7 +1164,7 @@ def _get_cell_value(value, data_type, column_type, row_idx, col_idx, table_name)
                 f"Invalid numeric value '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': {str(ex)}"
             )
     if isinstance(value, (datetime.datetime, datetime.date)):
-        if column_type.lower() == "date":
+        if column_type and column_type.lower() == "date":
             return value.strftime("%Y-%m-%d")
         return value.strftime("%Y-%m-%d %H:%M:%S")
     return value
