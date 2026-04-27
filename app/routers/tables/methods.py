@@ -1,9 +1,9 @@
 import datetime
 import json
-import pandas as pd
 import re
 import tempfile
 
+import pandas as pd
 import xlsxwriter as xw
 from fastapi import HTTPException, UploadFile, responses
 from python_calamine import CalamineWorkbook
@@ -946,12 +946,17 @@ def upload_excel(
                     continue
                 table_rows = workbook.get_sheet_by_name(table_name).to_python()
                 if not table_rows or len(table_rows) < 1:
-                    response_status[table_name] = {"status": "failed", "reason": "The Excel file must contain at least a header row"}
+                    response_status[table_name] = {
+                        "status": "failed",
+                        "reason": "The Excel file must contain at least a header row",
+                    }
                     continue
                 try:
                     table_headers = _create_table_from_excel(model_cursor, table_name, table_rows)
                     column_formats = {}
-                    rows_imported = _import_excel_to_table(model_cursor, table_rows, table_name, table_headers, column_formats)
+                    rows_imported = _import_excel_to_table(
+                        model_cursor, table_rows, table_name, table_headers, column_formats
+                    )
                     response_status[table_name] = {"rows_imported": rows_imported, "status": "success"}
                 except Exception as e:
                     model_cursor.rollback_changes()
@@ -978,12 +983,17 @@ def upload_excel(
                     continue
                 table_rows = workbook.get_sheet_by_name(table_name).to_python()
                 if not table_rows or len(table_rows) < 1:
-                    response_status[table_name] = {"status": "failed", "reason": "The Excel file must contain at least a header row"}
+                    response_status[table_name] = {
+                        "status": "failed",
+                        "reason": "The Excel file must contain at least a header row",
+                    }
                     continue
                 try:
                     table_headers = _get_table_headers_with_types(model_cursor, table_name, True)
                     column_formats = _get_column_formatting(model_cursor, table_name)
-                    rows_imported = _import_excel_to_table(model_cursor, table_rows, table_name, table_headers, column_formats)
+                    rows_imported = _import_excel_to_table(
+                        model_cursor, table_rows, table_name, table_headers, column_formats
+                    )
                     response_status[table_name] = {"rows_imported": rows_imported, "status": "success"}
                 except Exception as e:
                     model_cursor.rollback_changes()
@@ -1165,7 +1175,7 @@ def check_excel_sheets_exist(cursor, user_email: str, model_name: str, project_n
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
-    
+
     if len(sheet_names) == 0:
         return {}
 
@@ -1186,6 +1196,7 @@ def check_excel_sheets_exist(cursor, user_email: str, model_name: str, project_n
 
     return object_types
 
+
 def _create_table_from_excel(model_cursor, table_name, all_rows):
     """
     Create a new database table based on the header row of an Excel worksheet and insert the worksheet's data.
@@ -1195,10 +1206,14 @@ def _create_table_from_excel(model_cursor, table_name, all_rows):
         table_name (str): Name of the new table to create; also used for error messages.
         all_rows (list[list]): Excel sheet rows as returned by the workbook reader; the first row is expected to be the header row.
     Behavior:
-        """
+    """
     if not SQLITE_IDENTIFIER_RE.fullmatch(table_name):
         raise Exception(f"Invalid table name '{table_name}'")
-    columns = [str(cell).strip() for cell in all_rows[0]]
+    columns = []
+    for cell in all_rows[0]:
+        if cell is None or str(cell).strip() == "":
+            raise Exception("Column names cannot be empty")
+        columns.append(str(cell).strip())
     if len(set(columns)) != len(columns):
         raise Exception(f"Duplicate column names found in the header row: {columns}")
     if len(columns) == 0:

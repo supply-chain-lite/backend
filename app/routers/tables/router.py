@@ -472,7 +472,9 @@ def upload_excel_file(
         )
     useremail, _display_name, _role_name = user_data
     with master_connection() as cursor:
-        request_resp = table_methods.upload_excel(cursor, useremail, model_name, project_name, sheet_action, upload_file)
+        request_resp = table_methods.upload_excel(
+            cursor, useremail, model_name, project_name, sheet_action, upload_file
+        )
     return table_schemas.UploadExcelToTableResponse(response=request_resp)
 
 
