@@ -127,4 +127,4 @@ check_if_model_shared_with_user = """select 1
                                     and S_UserNotifications.NotificationType = 'model_share_request'
                                     AND  AT.key = 'model_id'
                                     AND  AT.value = ?
-                                    AND  S_UserNotifications.IsAccepted = 0;"""
+                                    AND  S_UserNotifications.IsAccepted = 0"""

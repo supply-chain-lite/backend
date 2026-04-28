@@ -278,3 +278,19 @@ def get_table_groups(
         table_groups = model_methods.get_table_groups(cursor, useremail, model_name, project_name)
 
     return model_schemas.tableGroupResponse(table_groups=table_groups)
+
+
+
+@router.post("/vacuum", response_model=model_schemas.MessageResponse)
+def vacuum_model(
+    request: model_schemas.modelRequest, user_data: tuple = Depends(_get_user_from_token)
+) -> model_schemas.MessageResponse:
+    """Perform a vacuum operation on the model's database to optimize it."""
+    useremail, _display_name, _role_name = user_data
+    model_name = request.model_name
+    project_name = request.project_name
+
+    with master_connection() as cursor:
+        model_methods.vacuum_model(cursor, useremail, model_name, project_name)
+
+    return model_schemas.MessageResponse(message="Model vacuumed successfully")

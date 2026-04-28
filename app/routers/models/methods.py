@@ -176,7 +176,7 @@ def delete_model(cursor, user_email: str, model_name: str, project_name: str):
         cursor.execute(model_queries.delete_user_model, (model_id, user_email))
         return 1
 
-    cursor.execute(model_queries.delete_model_for_all_users, (model_id, model_id))
+    cursor.executescript(model_queries.delete_model_for_all_users, (model_id, model_id))
 
     conn = sqlite3.connect(model_path)
     conn.close()
@@ -677,3 +677,20 @@ def _clean_up_temp_file(file_path: str):
     """
     if os.path.exists(file_path):
         os.remove(file_path)
+
+
+def vacuum_model(cursor, user_email: str, model_name: str, project_name: str):
+    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
+    if not model_id:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    access_level = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()[0]
+
+    if access_level != "owner":
+        raise HTTPException(status_code=403, detail="Only owner can vacuum the model")
+
+    connection = apsw.Connection(model_path)
+    connection.execute("VACUUM")
+    connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    connection.close()
+
