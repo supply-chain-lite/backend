@@ -299,7 +299,7 @@ def vacuum_model(
 @router.post("/info", response_model=model_schemas.modelDetailsResponse)
 def get_model_info(
     request: model_schemas.modelRequest, user_data: tuple = Depends(_get_user_from_token)
-) -> model_schemas.MessageResponse:
+) -> model_schemas.modelDetailsResponse:
     """Retrieve information about the model."""
     useremail, _display_name, _role_name = user_data
     model_name = request.model_name
