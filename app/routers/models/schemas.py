@@ -106,3 +106,19 @@ class acceptModelRequest(BaseModel):
 
 class tableGroupResponse(BaseModel):
     table_groups: dict[str, list[tuple[str, str]]]
+
+
+class modelDetailsResponse(BaseModel):
+    model_name: str
+    project_name: str
+    access_level: str
+    owner_email: str
+    owner_project_name: str
+    owner_model_name: str
+    template_name: str
+    access_user_list: list[dict[str, str]]
+
+class updateAccessLevelRequest(BaseModel):
+    model_name: str
+    project_name: str
+    access_list: list[tuple[str, str]]  # list of (username, new_access_level) for all models to update for the user
