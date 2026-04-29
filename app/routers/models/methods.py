@@ -176,7 +176,7 @@ def delete_model(cursor, user_email: str, model_name: str, project_name: str):
         cursor.execute(model_queries.delete_user_model, (model_id, user_email))
         return 1
 
-    cursor.execute(model_queries.delete_model_for_all_users, (model_id, model_id))
+    cursor.executescript(model_queries.delete_model_for_all_users, (model_id, model_id))
 
     conn = sqlite3.connect(model_path)
     conn.close()
@@ -531,32 +531,6 @@ def upload_model(
         backup_connection.close()
 
 
-def get_model_info(cursor, user_email: str, model_name: str, project_name: str):
-    model_id, _ = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
-        raise HTTPException(status_code=404, detail="Model not found")
-
-    access_level = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()[0]
-
-    owner_email, template_name = cursor.execute(model_queries.get_model_info, (model_id,)).fetchone()
-
-    access_user_list = []
-    if owner_email != user_email:
-        for user_id, user_access_level in cursor.execute(
-            model_queries.get_users_for_model, (model_id, owner_email)
-        ).fetchall():
-            access_user_list.append({"user_email": user_id, "access_level": user_access_level})
-
-    return {
-        "model_name": model_name,
-        "project_name": project_name,
-        "access_level": access_level,
-        "owner_email": owner_email,
-        "template_name": template_name,
-        "access_user_list": access_user_list,
-    }
-
-
 def update_model_access_level(cursor, user_email: str, model_name: str, project_name: str, access_list: list):
     model_id, _ = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
@@ -571,12 +545,24 @@ def update_model_access_level(cursor, user_email: str, model_name: str, project_
         if access_user == user_email:
             continue
         if access_level == "delete":
-            cursor.execute(model_queries.delete_user_model, (model_id, access_user))
+            count = cursor.execute(model_queries.delete_user_model, (model_id, access_user)).fetchall()
+            if len(count) == 0:
+                count = cursor.execute(model_queries.update_access_request_notification, 
+                                (-1, "Revoked", access_user, model_id)).fetchall()
+                if len(count) == 0:
+                    raise HTTPException(status_code=400, detail="Failed to revoke access and update notification")
         else:
-            cursor.execute(
+            if access_level not in ["read", "write", "execute", "admin"]:
+                raise HTTPException(status_code=400, detail="Invalid access level")
+            count = cursor.execute(
                 model_queries.update_user_access_level,
                 (access_level, model_id, access_user),
-            )
+            ).fetchall()
+            if len(count) == 0:
+                count = cursor.execute(model_queries.update_access_request_notification, 
+                                (0, access_level, access_user, model_id)).fetchall()
+                if len(count) == 0:
+                    raise HTTPException(status_code=400, detail="Failed to update access request notification")
 
 
 # added
@@ -677,3 +663,54 @@ def _clean_up_temp_file(file_path: str):
     """
     if os.path.exists(file_path):
         os.remove(file_path)
+
+
+def vacuum_model(cursor, user_email: str, model_name: str, project_name: str):
+    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
+    if not model_id:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    access_level = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()[0]
+
+    if access_level != "owner":
+        raise HTTPException(status_code=403, detail="Only owner can vacuum the model")
+
+    connection = apsw.Connection(model_path)
+    connection.execute("VACUUM")
+    connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    connection.close()
+
+def get_model_info(cursor, user_email: str, model_name: str, project_name: str):
+    model_id, _ = get_model_id_and_path(cursor, model_name, project_name, user_email)
+    if not model_id:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    access_level = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()[0]
+
+    owner_email, template_name = cursor.execute(model_queries.get_model_info, (model_id,)).fetchone()
+
+    owner_model_name, owner_project_name = cursor.execute(model_queries.get_model_name_and_project_name, 
+                                                          (model_id, owner_email)).fetchone()
+
+    access_user_list = []
+    if owner_email == user_email:
+        for user_id, user_access_level in cursor.execute(
+            model_queries.get_users_for_model, (model_id, owner_email)
+        ).fetchall():
+            access_user_list.append({'user_email': user_id, 'access_level': user_access_level, 'accepted': 'Yes'})
+
+        for user_id, user_access_level in cursor.execute(
+            model_queries.get_access_requests_for_model, (owner_email, model_id)
+        ).fetchall():
+            access_user_list.append({'user_email': user_id, 'access_level': user_access_level, 'accepted': 'No'})
+
+    return {
+        "model_name": model_name,
+        "project_name": project_name,
+        "access_level": access_level,
+        "owner_email": owner_email,
+        "template_name": template_name,
+        "access_user_list": access_user_list,
+        "owner_model_name": owner_model_name,
+        "owner_project_name": owner_project_name,
+    }

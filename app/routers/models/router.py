@@ -278,3 +278,59 @@ def get_table_groups(
         table_groups = model_methods.get_table_groups(cursor, useremail, model_name, project_name)
 
     return model_schemas.tableGroupResponse(table_groups=table_groups)
+
+
+
+@router.post("/vacuum", response_model=model_schemas.MessageResponse)
+def vacuum_model(
+    request: model_schemas.modelRequest, user_data: tuple = Depends(_get_user_from_token)
+) -> model_schemas.MessageResponse:
+    """Perform a vacuum operation on the model's database to optimize it."""
+    useremail, _display_name, _role_name = user_data
+    model_name = request.model_name
+    project_name = request.project_name
+
+    with master_connection() as cursor:
+        model_methods.vacuum_model(cursor, useremail, model_name, project_name)
+
+    return model_schemas.MessageResponse(message="Model vacuumed successfully")
+
+
+@router.post("/info", response_model=model_schemas.modelDetailsResponse)
+def get_model_info(
+    request: model_schemas.modelRequest, user_data: tuple = Depends(_get_user_from_token)
+) -> model_schemas.modelDetailsResponse:
+    """Retrieve information about the model."""
+    useremail, _display_name, _role_name = user_data
+    model_name = request.model_name
+    project_name = request.project_name
+
+    with master_connection() as cursor:
+        model_details = model_methods.get_model_info(cursor, useremail, model_name, project_name)
+
+    return model_schemas.modelDetailsResponse(
+        model_name=model_details["model_name"],
+        project_name=model_details["project_name"],
+        access_level=model_details["access_level"],
+        owner_email=model_details["owner_email"],
+        owner_project_name=model_details["owner_project_name"],
+        owner_model_name=model_details["owner_model_name"],
+        template_name=model_details["template_name"],
+        access_user_list=model_details["access_user_list"]
+    )
+
+
+@router.post("/update-access", response_model=model_schemas.MessageResponse)
+def update_model_access(
+    request: model_schemas.updateAccessLevelRequest, user_data: tuple = Depends(_get_user_from_token)
+) -> model_schemas.MessageResponse:
+    """Update access levels for users who have access to the model."""
+    useremail, _display_name, _role_name = user_data
+    model_name = request.model_name
+    project_name = request.project_name
+    access_list = request.access_list
+
+    with master_connection() as cursor:
+        model_methods.update_model_access_level(cursor, useremail, model_name, project_name, access_list)
+
+    return model_schemas.MessageResponse(message="Model access levels updated successfully")
