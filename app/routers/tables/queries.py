@@ -47,7 +47,7 @@ get_object_types = """SELECT t1.table_name, sqlite_master.type
                         ) ) as t1, sqlite_master
                         WHERE T1.table_name = sqlite_master.name COLLATE NOCASE
                         """
-get_table_types = """SELECT t1.table_name, S_TableGroup.TableType
+get_table_types = """SELECT t1.table_name, ifnull(S_TableGroup.TableType, 'table') as TableType
                         FROM
                         (
                         SELECT column1 AS table_name
@@ -113,7 +113,8 @@ def get_table_query(
     if page_number <= 0:
         raise HTTPException(status_code=400, detail="Page number must be greater than 0")
 
-    select_query = f"SELECT [{'], ['.join(col for col in column_names)}] FROM [{table_name}] WHERE 1=1 "
+    select_list = ", ".join(f"[{col}]" for col in column_names)
+    select_query = f"SELECT {select_list} FROM [{table_name}] WHERE 1=1 "
 
     for filter_col, filter_values in select_filters.items():
         if not filter_values:
@@ -482,8 +483,13 @@ def get_summary_stats_query(table_name, column_names, select_filters, text_filte
     """
     params = []
     stats_query = "SELECT "
+    allowed_stats = ("MAX", "MIN", "AVG", "SUM", "COUNT")
     for column_name, stat in column_names.items():
-        stats_query += f"{stat}([{column_name}]), "
+        if stat.upper() not in allowed_stats:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid aggregate function '{stat}' for column '{column_name}'"
+            )
+        stats_query += f"{stat.upper()}([{column_name}]), "
 
     stats_query = stats_query.rstrip(", ")  # Remove trailing comma and space
     stats_query += f" FROM [{table_name}] WHERE 1=1 "

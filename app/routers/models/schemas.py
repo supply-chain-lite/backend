@@ -118,6 +118,7 @@ class modelDetailsResponse(BaseModel):
     template_name: str
     access_user_list: list[dict[str, str]]
 
+
 class updateAccessLevelRequest(BaseModel):
     model_name: str
     project_name: str

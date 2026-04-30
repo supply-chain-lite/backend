@@ -122,6 +122,20 @@ create_user_notifications_table = """CREATE TABLE IF NOT EXISTS S_UserNotificati
                                             IsAccepted INTEGER DEFAULT 0
                                         )"""
 
+create_query_history_table = """CREATE TABLE IF NOT EXISTS S_SQLHistory (
+                                    HistoryId INTEGER PRIMARY KEY AUTOINCREMENT,
+                                    UserEmail TEXT NOT NULL,
+                                    ModelId INTEGER NOT NULL,
+                                    ModelName TEXT NOT NULL,
+                                    ProjectName TEXT NOT NULL,
+                                    SQLQuery TEXT NOT NULL,
+                                    IsErrored INTEGER NOT NULL,
+                                    Status TEXT NOT NULL,
+                                    RowsAffected INTEGER,
+                                    JSONData TEXT,
+                                    CreatedAt TEXT NOT NULL DEFAULT (datetime('now'))
+                                )"""
+
 
 _MIGRATIONS = []
 
@@ -183,4 +197,5 @@ def init_db() -> None:
             ),
         )
         cursor.execute(create_user_notifications_table)
+        cursor.execute(create_query_history_table)
     logger.info("Database schema initialization finished")

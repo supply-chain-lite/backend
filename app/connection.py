@@ -2,6 +2,7 @@ import os
 import threading
 
 import apsw
+import apsw.ext
 
 from .config import master_db
 from .logging_config import get_logger
@@ -13,12 +14,12 @@ logger = get_logger(__name__)
 
 class sql_connection:
     def __init__(self, db_id, db_path):
-        self.cursor = get_cursor(db_path)
+        self.connection, self.cursor = get_cursor(db_path)
         self.db_id = db_id
 
     def __enter__(self):
         self.cursor.execute("BEGIN")
-        return this_cursor(self.cursor, self.db_id)
+        return this_cursor(self.connection, self.cursor, self.db_id)
 
     def __exit__(self, exception_type, exception_value, traceback_val):
         if exception_type:
@@ -48,12 +49,18 @@ class sql_connection:
             self.cursor.close()
 
 
+def authorizer(action, arg1, arg2, dbname, source):
+    if action in (apsw.SQLITE_ATTACH, apsw.SQLITE_DETACH):
+        return apsw.SQLITE_DENY
+    return apsw.SQLITE_OK
+
+
 def get_cursor(db_path):
     thread_id = threading.get_ident()
     with _pool_lock:
         if db_path in connection_pool and thread_id in connection_pool[db_path]:
             connection = connection_pool[db_path][thread_id]
-            return connection.cursor()
+            return connection, connection.cursor()
 
         connection = init_db(db_path)
         if db_path in connection_pool:
@@ -61,7 +68,7 @@ def get_cursor(db_path):
         else:
             connection_pool[db_path] = {thread_id: connection}
 
-        return connection.cursor()
+        return connection, connection.cursor()
 
 
 def init_db(db_path, db_access=1):
@@ -72,6 +79,8 @@ def init_db(db_path, db_access=1):
     else:
         conn = apsw.Connection(db_path, flags=apsw.SQLITE_OPEN_READWRITE)
     conn.setbusytimeout(30000)
+    conn.setauthorizer(authorizer)
+    conn.enable_load_extension(False)
     conn.cursor().execute("PRAGMA journal_mode=WAL;")
     conn.cursor().execute("PRAGMA synchronous=NORMAL;")
     conn.cursor().execute("PRAGMA temp_store =  MEMORY")
@@ -79,57 +88,84 @@ def init_db(db_path, db_access=1):
 
 
 class this_cursor:
-    def __init__(self, conn, id):
+    def __init__(self, conn, cursor, id):
         self.conn = conn
+        self.cursor = cursor
         self.id = id
 
     def rowcount(self):
         count_query = "SELECT CHANGES()"
-        self.conn.execute(count_query)
-        return self.conn.fetchone()[0]
+        self.cursor.execute(count_query)
+        return self.cursor.fetchone()[0]
 
     def execute(self, query, args=tuple()):
         if ";" in query.strip().rstrip(";"):
             raise ValueError("; is not allowed in query to prevent SQL injection.")
         try:
-            self.conn.execute(query, args)
+            self.cursor.execute(query, args)
         except Exception:
             logger.exception("Query execution failed: %s", query)
             raise
-        return self.conn
+        return self.cursor
 
     def executemany(self, query, seq_of_args):
         if ";" in query.strip().rstrip(";"):
             raise ValueError("; is not allowed in query to prevent SQL injection.")
         try:
-            self.conn.executemany(query, seq_of_args)
+            self.cursor.executemany(query, seq_of_args)
         except Exception:
             logger.exception("Batch query execution failed: %s", query)
             raise
-        return self.conn
+        return self.cursor
 
     def executescript(self, query, args=tuple()):
         try:
-            self.conn.execute(query, args)
+            self.cursor.execute(query, args)
         except Exception:
             logger.exception("Query execution failed: %s", query)
             raise
-        return self.conn
+        return self.cursor
+
+    def get_description(self, query):
+        try:
+            qd = apsw.ext.query_info(
+                self.conn,
+                query,
+                actions=False,
+                explain=False,
+                explain_query_plan=False,
+            )
+            return qd.description
+        except Exception:
+            logger.exception("Query execution failed: %s", query)
+            raise
+
+    def fetchall(self):
+        return self.cursor.fetchall()
+
+    def fetchmany(self, size):
+        rows = []
+        for _ in range(size):
+            row = self.cursor.fetchone()
+            if row is None:
+                break
+            rows.append(row)
+        return rows
 
     def description(self):
-        return self.conn.description
+        return self.cursor.description
 
     def intermediate_commit(self):
         try:
-            self.conn.execute("COMMIT")
-            self.conn.execute("BEGIN")
+            self.cursor.execute("COMMIT")
+            self.cursor.execute("BEGIN")
         except Exception:
             raise
 
     def rollback_changes(self):
         try:
-            self.conn.execute("ROLLBACK")
-            self.conn.execute("BEGIN")
+            self.cursor.execute("ROLLBACK")
+            self.cursor.execute("BEGIN")
         except Exception:
             raise
 
