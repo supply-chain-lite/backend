@@ -547,8 +547,9 @@ def update_model_access_level(cursor, user_email: str, model_name: str, project_
         if access_level == "delete":
             count = cursor.execute(model_queries.delete_user_model, (model_id, access_user)).fetchall()
             if len(count) == 0:
-                count = cursor.execute(model_queries.update_access_request_notification, 
-                                (-1, "Revoked", access_user, model_id)).fetchall()
+                count = cursor.execute(
+                    model_queries.update_access_request_notification, (-1, "Revoked", access_user, model_id)
+                ).fetchall()
                 if len(count) == 0:
                     raise HTTPException(status_code=400, detail="Failed to revoke access and update notification")
         else:
@@ -559,8 +560,9 @@ def update_model_access_level(cursor, user_email: str, model_name: str, project_
                 (access_level, model_id, access_user),
             ).fetchall()
             if len(count) == 0:
-                count = cursor.execute(model_queries.update_access_request_notification, 
-                                (0, access_level, access_user, model_id)).fetchall()
+                count = cursor.execute(
+                    model_queries.update_access_request_notification, (0, access_level, access_user, model_id)
+                ).fetchall()
                 if len(count) == 0:
                     raise HTTPException(status_code=400, detail="Failed to update access request notification")
 
@@ -680,6 +682,7 @@ def vacuum_model(cursor, user_email: str, model_name: str, project_name: str):
     connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
     connection.close()
 
+
 def get_model_info(cursor, user_email: str, model_name: str, project_name: str):
     model_id, _ = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
@@ -689,20 +692,21 @@ def get_model_info(cursor, user_email: str, model_name: str, project_name: str):
 
     owner_email, template_name = cursor.execute(model_queries.get_model_info, (model_id,)).fetchone()
 
-    owner_model_name, owner_project_name = cursor.execute(model_queries.get_model_name_and_project_name, 
-                                                          (model_id, owner_email)).fetchone()
+    owner_model_name, owner_project_name = cursor.execute(
+        model_queries.get_model_name_and_project_name, (model_id, owner_email)
+    ).fetchone()
 
     access_user_list = []
     if owner_email == user_email:
         for user_id, user_access_level in cursor.execute(
             model_queries.get_users_for_model, (model_id, owner_email)
         ).fetchall():
-            access_user_list.append({'user_email': user_id, 'access_level': user_access_level, 'accepted': 'Yes'})
+            access_user_list.append({"user_email": user_id, "access_level": user_access_level, "accepted": "Yes"})
 
         for user_id, user_access_level in cursor.execute(
             model_queries.get_access_requests_for_model, (owner_email, model_id)
         ).fetchall():
-            access_user_list.append({'user_email': user_id, 'access_level': user_access_level, 'accepted': 'No'})
+            access_user_list.append({"user_email": user_id, "access_level": user_access_level, "accepted": "No"})
 
     return {
         "model_name": model_name,

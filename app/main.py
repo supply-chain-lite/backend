@@ -14,6 +14,7 @@ from app.logging_config import configure_logging, get_logger
 from app.routers.auth.router import router as auth_router
 from app.routers.models.router import router as models_router
 from app.routers.projects.router import router as projects_router
+from app.routers.sql_client.router import router as sql_client_router
 from app.routers.tables.router import router as tables_router
 
 logger = get_logger(__name__)
@@ -46,6 +47,7 @@ app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(models_router, prefix="/api/models", tags=["models"])
 app.include_router(projects_router, prefix="/api/projects", tags=["projects"])
 app.include_router(tables_router, prefix="/api/tables", tags=["tables"])
+app.include_router(sql_client_router, prefix="/api/sql-client", tags=["sql-client"])
 
 
 @app.middleware("http")

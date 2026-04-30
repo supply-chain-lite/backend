@@ -47,7 +47,7 @@ get_object_types = """SELECT t1.table_name, sqlite_master.type
                         ) ) as t1, sqlite_master
                         WHERE T1.table_name = sqlite_master.name COLLATE NOCASE
                         """
-get_table_types = """SELECT t1.table_name, S_TableGroup.TableType
+get_table_types = """SELECT t1.table_name, ifnull(S_TableGroup.TableType, 'table') as TableType
                         FROM
                         (
                         SELECT column1 AS table_name

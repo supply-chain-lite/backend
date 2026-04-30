@@ -57,7 +57,7 @@ rename_model = "UPDATE S_UserModels SET ModelName = ? WHERE ModelId = ? AND User
 
 get_access_level = "SELECT lower(AccessLevel) FROM S_UserModels WHERE ModelId = ? AND UserEmail = ?"
 
-delete_user_model = """DELETE FROM S_UserModels WHERE ModelId = ? 
+delete_user_model = """DELETE FROM S_UserModels WHERE ModelId = ?
                        AND UserEmail = ?
                        RETURNING 1"""
 

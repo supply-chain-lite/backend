@@ -280,7 +280,6 @@ def get_table_groups(
     return model_schemas.tableGroupResponse(table_groups=table_groups)
 
 
-
 @router.post("/vacuum", response_model=model_schemas.MessageResponse)
 def vacuum_model(
     request: model_schemas.modelRequest, user_data: tuple = Depends(_get_user_from_token)
@@ -316,7 +315,7 @@ def get_model_info(
         owner_project_name=model_details["owner_project_name"],
         owner_model_name=model_details["owner_model_name"],
         template_name=model_details["template_name"],
-        access_user_list=model_details["access_user_list"]
+        access_user_list=model_details["access_user_list"],
     )
 
 
