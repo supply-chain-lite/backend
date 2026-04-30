@@ -61,7 +61,7 @@ def execute_sql_query(cursor, user_email: str, model_name: str, project_name: st
             if len(desc) == 0:
                 return {"type": "changes", "changes": model_cursor.rowcount(), "columns": None, "rows": None}
             columns = [description[0] for description in desc]
-            rows = model_cursor.fetchmany(1000)
+            rows = model_cursor.fetchmany(5000)
             count_rows = len(rows)
             return {"columns": columns, "rows": rows, "type": "rows", "changes": count_rows}
         except Exception as e:
