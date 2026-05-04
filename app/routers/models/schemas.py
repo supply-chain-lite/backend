@@ -129,8 +129,15 @@ class filesListRequest(BaseModel):
     model_name: str
     project_name: str
 
+class FileListItem(BaseModel):
+    file_id: int
+    file_name: str
+    file_type: str
+    file_extension: str
+    uploaded_file_name: str | None
+    last_updated: str | None
+    file_exists: bool
+
 
 class filesListResponse(BaseModel):
-    files: list[
-        dict[str, str | int | float | bool | None]
-    ]  # list of dicts with keys: FileId, FileName, FileType, FileExtension, FileExists
+    files: list[FileListItem]

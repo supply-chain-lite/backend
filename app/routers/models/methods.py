@@ -740,7 +740,7 @@ def get_files_list(cursor, user_email: str, model_name: str, project_name: str):
                 "file_extension": file_extension,
                 "uploaded_file_name": uploaded_file_name,
                 "last_updated": last_updated,
-                "file_exists": file_exists,
+                "file_exists": file_exists == "Yes",
             }
         )
     return files

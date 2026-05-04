@@ -335,7 +335,7 @@ def update_model_access(
     return model_schemas.MessageResponse(message="Model access levels updated successfully")
 
 
-@router.post("/files-list", response_model=model_schemas.filesListResponse)
+@router.post("/list-files", response_model=model_schemas.filesListResponse)
 def get_files_list(
     request: model_schemas.filesListRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> model_schemas.filesListResponse:
