@@ -1,3 +1,6 @@
+from datetime import datetime
+
+
 get_project_id = "SELECT ProjectId FROM S_Projects WHERE UserEmail=? AND ProjectName=?"
 
 get_model_id_and_path = """SELECT S_Models.ModelId, S_Models.ModelPath
@@ -163,3 +166,11 @@ check_if_table_exists = (
 
 get_data_files = """select FileId, FileName, FileType, FileExtension, UploadedFileName, LastUpdated,
                     CASE WHEN FileBlob Is NULL THEN 'No' ELSE 'Yes' END FileExists  from S_DataFiles"""
+
+get_file_blob_and_name = "SELECT FileBlob, ifnull(UploadedFileName, FileName) FROM S_DataFiles WHERE FileId = ?"
+
+update_file_blob = """UPDATE S_DataFiles SET FileBlob = ?, 
+                    UploadedFileName = ?,
+                    LastUpdated = datetime('now', 'localtime') 
+                    WHERE FileId = ?
+                    RETURNING 1"""

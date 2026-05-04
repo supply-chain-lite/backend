@@ -656,15 +656,17 @@ def get_table_groups(cursor, user_email: str, model_name: str, project_name: str
     return table_groups
 
 
-def _clean_up_temp_file(file_path: str):
+def _clean_up_temp_files():
     """
-    Remove a temporary file at the given path if it exists.
-
-    Parameters:
-        file_path (str): Path to the temporary file to remove. If the file does not exist, the function does nothing.
+    Remove all temporary files in the TEMP_FOLDER that are older than a certain threshold to prevent accumulation of unused files.
     """
-    if os.path.exists(file_path):
-        os.remove(file_path)
+    now = os.path.getmtime(__file__)
+    for filename in os.listdir(TEMP_FOLDER):
+        file_path = os.path.join(TEMP_FOLDER, filename)
+        if os.path.isfile(file_path):
+            file_age = now - os.path.getmtime(file_path)
+            if file_age > 3600:  # 1 hour
+                os.remove(file_path)
 
 
 def vacuum_model(cursor, user_email: str, model_name: str, project_name: str):
@@ -681,7 +683,7 @@ def vacuum_model(cursor, user_email: str, model_name: str, project_name: str):
     connection.execute("VACUUM")
     connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
     connection.close()
-
+    _clean_up_temp_files()
 
 def get_model_info(cursor, user_email: str, model_name: str, project_name: str):
     model_id, _ = get_model_id_and_path(cursor, model_name, project_name, user_email)
@@ -739,8 +741,75 @@ def get_files_list(cursor, user_email: str, model_name: str, project_name: str):
                 "file_type": file_type,
                 "file_extension": file_extension,
                 "uploaded_file_name": uploaded_file_name,
-                "last_updated": last_updated,
+                "last_updated": None if file_exists != "Yes" else last_updated,
                 "file_exists": file_exists == "Yes",
             }
         )
     return files
+
+
+def delete_file(cursor, user_email: str, model_name: str, project_name: str, file_id: int):
+    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
+    if not model_id:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    access_level = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()
+
+    if access_level is None or access_level[0] in ("read", "reader", "readonly"):
+        raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
+
+    with sql_connection(model_id, model_path) as model_cursor:
+        rows = model_cursor.execute(model_queries.update_file_blob, 
+                                    (None, None, file_id)).fetchall()
+        if len(rows) == 0:
+            raise HTTPException(status_code=400, detail="Failed to delete the file")
+        
+def download_file(cursor, user_email: str, model_name: str, project_name: str, file_id: int):
+    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
+    if not model_id:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    access_level = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()
+
+    if access_level is None:
+        raise HTTPException(status_code=403, detail="User does not have permission to access the model")
+
+    with sql_connection(model_id, model_path) as model_cursor:
+        row = model_cursor.execute(model_queries.get_file_blob_and_name, (file_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="File not found")
+        file_blob = row[0]
+        file_name = row[1]
+        if file_name is None:
+            file_name = f"scl_export_file"
+
+    if file_blob is None:
+        raise HTTPException(status_code=404, detail="File content not found")
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file_name)[1], dir=TEMP_FOLDER)
+    tmp.write(file_blob)
+    tmp.close()
+
+    return responses.FileResponse(
+        path=tmp.name,
+        filename=file_name,
+        media_type="application/octet-stream",
+    )
+
+def upload_file(cursor, user_email: str, model_name: str, project_name: str, file_id: int, file_name: str, file: UploadFile):
+    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
+    if not model_id:
+        raise HTTPException(status_code=404, detail=f"Model not found for model_name: {model_name}, project_name: {project_name}, user_email: {user_email}")
+
+    access_level = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()
+
+    if access_level is None or access_level[0] in ("read", "reader", "readonly"):
+        raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
+
+    file_content = file.file.read()
+
+    with sql_connection(model_id, model_path) as model_cursor:
+        rows = model_cursor.execute(model_queries.update_file_blob, 
+                                    (file_content, file_name, file_id)).fetchall()
+        if len(rows) == 0:
+            raise HTTPException(status_code=400, detail="Failed to upload the file")

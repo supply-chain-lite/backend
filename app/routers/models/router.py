@@ -348,3 +348,51 @@ def get_files_list(
         files = model_methods.get_files_list(cursor, useremail, model_name, project_name)
 
     return model_schemas.filesListResponse(files=files)
+
+
+@router.post("/download-file", response_class=FileResponse)
+def download_file(
+    request: model_schemas.downloadFileRequest, user_data: tuple = Depends(_get_user_from_token)
+):
+    """Download a specific file associated with a model."""
+    useremail, _display_name, _role_name = user_data
+    file_id = request.file_id
+    model_name = request.model_name
+    project_name = request.project_name
+
+    with master_connection() as cursor:
+        file_response = model_methods.download_file(cursor, useremail, model_name, project_name, file_id)
+
+    return file_response
+
+@router.post("/delete-file", response_model=model_schemas.MessageResponse)
+def delete_file(
+    request: model_schemas.deleteFileRequest, user_data: tuple = Depends(_get_user_from_token)
+) -> model_schemas.MessageResponse:
+    """Delete a specific file associated with a model."""
+    useremail, _display_name, _role_name = user_data
+    file_id = request.file_id
+    model_name = request.model_name
+    project_name = request.project_name
+
+    with master_connection() as cursor:
+        model_methods.delete_file(cursor, useremail, model_name, project_name, file_id)
+
+    return model_schemas.MessageResponse(message="File deleted successfully")
+
+
+
+@router.post("/upload-file", response_model=model_schemas.MessageResponse)
+def upload_file(
+    model_name: str = Form(...),
+    project_name: str = Form(...),
+    file_name: str = Form(...),
+    file_id: int = Form(...),
+    user_data: tuple = Depends(_get_user_from_token),
+    upload_file: UploadFile = File(...),
+) -> model_schemas.MessageResponse:
+    """Upload a model artifact and register it under the specified project and model name."""
+    useremail, _display_name, _role_name = user_data
+    with master_connection() as cursor:
+        model_methods.upload_file(cursor, useremail, model_name, project_name, file_id, file_name, upload_file)
+    return model_schemas.MessageResponse(message="Model uploaded successfully")

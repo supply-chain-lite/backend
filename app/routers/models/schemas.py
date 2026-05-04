@@ -141,3 +141,14 @@ class FileListItem(BaseModel):
 
 class filesListResponse(BaseModel):
     files: list[FileListItem]
+
+
+class deleteFileRequest(BaseModel):
+    file_id: int
+    project_name: str
+    model_name: str
+
+class downloadFileRequest(BaseModel):
+    file_id: int
+    project_name: str
+    model_name: str
