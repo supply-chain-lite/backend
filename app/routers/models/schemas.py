@@ -123,3 +123,10 @@ class updateAccessLevelRequest(BaseModel):
     model_name: str
     project_name: str
     access_list: list[tuple[str, str]]  # list of (username, new_access_level) for all models to update for the user
+
+class filesListRequest(BaseModel):
+    model_name: str
+    project_name: str
+
+class filesListResponse(BaseModel):
+    files: list[dict[str, str | int | float | bool | None]]  # list of dicts with keys: FileId, FileName, FileType, FileExtension, FileExists

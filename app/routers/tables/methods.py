@@ -1042,12 +1042,14 @@ def _import_excel_to_table(model_cursor, all_rows, table_name, table_headers, co
     generated_columns = _get_generated_columns(model_cursor, table_name)
     excel_headers = [str(cell).strip() for cell in all_rows[0]]
     table_headers = [header for header in table_headers if header[0].lower() not in generated_columns]
-    table_column_names = [col[0] for col in table_headers]
+    table_column_names = [col[0].lower() for col in table_headers]
 
-    common_column_idxs = tuple(idx for idx, col in enumerate(excel_headers) if col in table_column_names)
-    common_columns = tuple(excel_headers[idx] for idx in common_column_idxs)
+    common_column_idxs = tuple(idx for idx, col in enumerate(excel_headers) if col.lower() in table_column_names)
+    common_columns = tuple(excel_headers[idx].lower() for idx in common_column_idxs)
 
-    common_column_data_types = tuple(table_headers[table_column_names.index(col)][1] for col in common_columns)
+    for column_name in column_formats:
+        column_formats[column_name.lower()] = column_formats[column_name]
+    common_column_data_types = tuple(table_headers[table_column_names.index(col.lower())][1] for col in common_columns)
     common_column_formats = tuple(column_formats.get(col, {}).get("column_type", None) for col in common_columns)
 
     if len(common_column_idxs) == 0:
@@ -1057,10 +1059,9 @@ def _import_excel_to_table(model_cursor, all_rows, table_name, table_headers, co
     for column_name, default_value in model_cursor.execute(
         table_queries.get_default_values_query, (table_name,)
     ).fetchall():
-        default_values[column_name] = default_value
+        default_values[column_name.lower()] = default_value
 
     delete_query, insert_query = table_queries.get_excel_upload_insert_query(table_name, common_columns, default_values)
-
     insert_rows = []
     for row_idx, row in enumerate(all_rows[1:]):
         values = []
