@@ -157,8 +157,9 @@ check_if_model_shared_with_user = """select 1
                                     AND  AT.value = ?
                                     AND  S_UserNotifications.IsAccepted = 0"""
 
-check_if_table_exists = \
+check_if_table_exists = (
     "select type from sqlite_master where type in ('table') collate nocase and name=? collate nocase"
+)
 
 get_data_files = """select FileId, FileName, FileType, FileExtension, UploadedFileName, LastUpdated,
                     CASE WHEN FileBlob Is NULL THEN 'No' ELSE 'Yes' END FileExists  from S_DataFiles"""

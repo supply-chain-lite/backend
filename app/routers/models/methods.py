@@ -728,11 +728,19 @@ def get_files_list(cursor, user_email: str, model_name: str, project_name: str):
     with sql_connection(model_id, model_path) as model_cursor:
         try:
             rows = model_cursor.execute(model_queries.get_data_files).fetchall()
-        except Exception as e:
+        except Exception:
             return []
     files = []
     for file_id, file_name, file_type, file_extension, uploaded_file_name, last_updated, file_exists in rows:
-        files.append({"file_id": file_id, "file_name": file_name, "file_type": file_type, 
-                      "file_extension": file_extension, "uploaded_file_name": uploaded_file_name, 
-                      "last_updated": last_updated, "file_exists": file_exists})
+        files.append(
+            {
+                "file_id": file_id,
+                "file_name": file_name,
+                "file_type": file_type,
+                "file_extension": file_extension,
+                "uploaded_file_name": uploaded_file_name,
+                "last_updated": last_updated,
+                "file_exists": file_exists,
+            }
+        )
     return files
