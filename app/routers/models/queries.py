@@ -1,4 +1,3 @@
-from datetime import datetime
 
 
 get_project_id = "SELECT ProjectId FROM S_Projects WHERE UserEmail=? AND ProjectName=?"
@@ -169,8 +168,8 @@ get_data_files = """select FileId, FileName, FileType, FileExtension, UploadedFi
 
 get_file_blob_and_name = "SELECT FileBlob, ifnull(UploadedFileName, FileName) FROM S_DataFiles WHERE FileId = ?"
 
-update_file_blob = """UPDATE S_DataFiles SET FileBlob = ?, 
+update_file_blob = """UPDATE S_DataFiles SET FileBlob = ?,
                     UploadedFileName = ?,
-                    LastUpdated = datetime('now', 'localtime') 
+                    LastUpdated = datetime('now', 'localtime')
                     WHERE FileId = ?
                     RETURNING 1"""

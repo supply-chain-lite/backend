@@ -68,11 +68,9 @@ def execute_sql_query(cursor, user_email: str, model_name: str, project_name: st
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Error executing SQL query: {str(e)}")
 
+
 def mask_blob_values(row):
-    return tuple(
-        "<BLOB_DATA>" if isinstance(value, (bytes, bytearray, memoryview)) else value
-        for value in row
-    )
+    return tuple("<BLOB_DATA>" if isinstance(value, (bytes, bytearray, memoryview)) else value for value in row)
 
 
 def get_sql_history(cursor, user_email: str, model_name: str, project_name: str):

@@ -685,6 +685,7 @@ def vacuum_model(cursor, user_email: str, model_name: str, project_name: str):
     connection.close()
     _clean_up_temp_files()
 
+
 def get_model_info(cursor, user_email: str, model_name: str, project_name: str):
     model_id, _ = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
@@ -759,11 +760,11 @@ def delete_file(cursor, user_email: str, model_name: str, project_name: str, fil
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
 
     with sql_connection(model_id, model_path) as model_cursor:
-        rows = model_cursor.execute(model_queries.update_file_blob, 
-                                    (None, None, file_id)).fetchall()
+        rows = model_cursor.execute(model_queries.update_file_blob, (None, None, file_id)).fetchall()
         if len(rows) == 0:
             raise HTTPException(status_code=400, detail="Failed to delete the file")
-        
+
+
 def download_file(cursor, user_email: str, model_name: str, project_name: str, file_id: int):
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
@@ -781,7 +782,7 @@ def download_file(cursor, user_email: str, model_name: str, project_name: str, f
         file_blob = row[0]
         file_name = row[1]
         if file_name is None:
-            file_name = f"scl_export_file"
+            file_name = "scl_export_file"
 
     if file_blob is None:
         raise HTTPException(status_code=404, detail="File content not found")
@@ -796,10 +797,16 @@ def download_file(cursor, user_email: str, model_name: str, project_name: str, f
         media_type="application/octet-stream",
     )
 
-def upload_file(cursor, user_email: str, model_name: str, project_name: str, file_id: int, file_name: str, file: UploadFile):
+
+def upload_file(
+    cursor, user_email: str, model_name: str, project_name: str, file_id: int, file_name: str, file: UploadFile
+):
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
-        raise HTTPException(status_code=404, detail=f"Model not found for model_name: {model_name}, project_name: {project_name}, user_email: {user_email}")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Model not found for model_name: {model_name}, project_name: {project_name}, user_email: {user_email}",
+        )
 
     access_level = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()
 
@@ -809,7 +816,6 @@ def upload_file(cursor, user_email: str, model_name: str, project_name: str, fil
     file_content = file.file.read()
 
     with sql_connection(model_id, model_path) as model_cursor:
-        rows = model_cursor.execute(model_queries.update_file_blob, 
-                                    (file_content, file_name, file_id)).fetchall()
+        rows = model_cursor.execute(model_queries.update_file_blob, (file_content, file_name, file_id)).fetchall()
         if len(rows) == 0:
             raise HTTPException(status_code=400, detail="Failed to upload the file")

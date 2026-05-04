@@ -351,9 +351,7 @@ def get_files_list(
 
 
 @router.post("/download-file", response_class=FileResponse)
-def download_file(
-    request: model_schemas.downloadFileRequest, user_data: tuple = Depends(_get_user_from_token)
-):
+def download_file(request: model_schemas.downloadFileRequest, user_data: tuple = Depends(_get_user_from_token)):
     """Download a specific file associated with a model."""
     useremail, _display_name, _role_name = user_data
     file_id = request.file_id
@@ -364,6 +362,7 @@ def download_file(
         file_response = model_methods.download_file(cursor, useremail, model_name, project_name, file_id)
 
     return file_response
+
 
 @router.post("/delete-file", response_model=model_schemas.MessageResponse)
 def delete_file(
@@ -379,7 +378,6 @@ def delete_file(
         model_methods.delete_file(cursor, useremail, model_name, project_name, file_id)
 
     return model_schemas.MessageResponse(message="File deleted successfully")
-
 
 
 @router.post("/upload-file", response_model=model_schemas.MessageResponse)

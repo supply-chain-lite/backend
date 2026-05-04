@@ -129,6 +129,7 @@ class filesListRequest(BaseModel):
     model_name: str
     project_name: str
 
+
 class FileListItem(BaseModel):
     file_id: int
     file_name: str
@@ -147,6 +148,7 @@ class deleteFileRequest(BaseModel):
     file_id: int
     project_name: str
     model_name: str
+
 
 class downloadFileRequest(BaseModel):
     file_id: int
