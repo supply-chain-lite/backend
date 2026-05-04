@@ -1047,15 +1047,13 @@ def _import_excel_to_table(model_cursor, all_rows, table_name, table_headers, co
     common_column_idxs = tuple(idx for idx, col in enumerate(excel_headers) if col.lower() in table_column_names)
     common_columns = tuple(excel_headers[idx].lower() for idx in common_column_idxs)
     if len(set(common_columns)) != len(common_columns):
-        raise Exception(
-            "Duplicate Excel headers map to the same table column after case-insensitive matching"
-        )
+        raise Exception("Duplicate Excel headers map to the same table column after case-insensitive matching")
 
-    normalized_column_formats = {
-        str(column_name).lower(): spec for column_name, spec in (column_formats or {}).items()
-    }
+    normalized_column_formats = {str(column_name).lower(): spec for column_name, spec in (column_formats or {}).items()}
     common_column_data_types = tuple(table_headers[table_column_names.index(col.lower())][1] for col in common_columns)
-    common_column_formats = tuple(normalized_column_formats.get(col, {}).get("column_type", None) for col in common_columns)
+    common_column_formats = tuple(
+        normalized_column_formats.get(col, {}).get("column_type", None) for col in common_columns
+    )
 
     if len(common_column_idxs) == 0:
         raise Exception("No matching columns found between the Excel file and the target table")

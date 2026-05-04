@@ -63,9 +63,14 @@ def execute_sql_query(cursor, user_email: str, model_name: str, project_name: st
             columns = [description[0] for description in desc]
             rows = model_cursor.fetchmany(5000)
             count_rows = len(rows)
+            rows = [mask_blob_values(row) for row in rows]
             return {"columns": columns, "rows": rows, "type": "rows", "changes": count_rows}
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Error executing SQL query: {str(e)}")
+
+
+def mask_blob_values(row):
+    return tuple("<BLOB_DATA>" if isinstance(value, (bytes, bytearray, memoryview)) else value for value in row)
 
 
 def get_sql_history(cursor, user_email: str, model_name: str, project_name: str):
