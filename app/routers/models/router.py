@@ -333,3 +333,18 @@ def update_model_access(
         model_methods.update_model_access_level(cursor, useremail, model_name, project_name, access_list)
 
     return model_schemas.MessageResponse(message="Model access levels updated successfully")
+
+
+@router.post("/list-files", response_model=model_schemas.filesListResponse)
+def get_files_list(
+    request: model_schemas.filesListRequest, user_data: tuple = Depends(_get_user_from_token)
+) -> model_schemas.filesListResponse:
+    """Retrieve the list of files associated with a model."""
+    useremail, _display_name, _role_name = user_data
+    model_name = request.model_name
+    project_name = request.project_name
+
+    with master_connection() as cursor:
+        files = model_methods.get_files_list(cursor, useremail, model_name, project_name)
+
+    return model_schemas.filesListResponse(files=files)

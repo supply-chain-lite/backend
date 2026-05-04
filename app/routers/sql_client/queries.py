@@ -1,5 +1,6 @@
 get_sql_objects = """select type, name from sqlite_master
-                     where type in ('table', 'view') COLLATE NOCASE"""
+                     where type in ('table', 'view') COLLATE NOCASE
+                     ORDER BY 1, 2"""
 
 get_object_ddl = """select sql from sqlite_master
                     where name = ? COLLATE NOCASE"""

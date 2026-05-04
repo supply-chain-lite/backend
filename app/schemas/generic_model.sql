@@ -9,11 +9,13 @@ BEGIN TRANSACTION;
 -- Table: S_DataFiles
 CREATE TABLE S_DataFiles (
 	FileId	            INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-	FileName	        VARCHAR,
-	FileType   	        VARCHAR,
-    FileBlob            BLOB NOT NULL,
-	Status	            VARCHAR DEFAULT ('Active'),
-    UNIQUE(FileName,FileType)	
+	FileName	        VARCHAR NOT NULL,
+	FileType   	        VARCHAR NOT NULL,
+    FileExtension       VARCHAR NOT NULL,
+    UploadedFileName    VARCHAR,
+    FileBlob            BLOB,
+    LastUpdated         VARDATE DEFAULT (datetime('now', 'localtime') ),
+    UNIQUE(FileName)	
 );
 
 

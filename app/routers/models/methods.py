@@ -718,3 +718,29 @@ def get_model_info(cursor, user_email: str, model_name: str, project_name: str):
         "owner_model_name": owner_model_name,
         "owner_project_name": owner_project_name,
     }
+
+
+def get_files_list(cursor, user_email: str, model_name: str, project_name: str):
+    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
+    if not model_id:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    with sql_connection(model_id, model_path) as model_cursor:
+        try:
+            rows = model_cursor.execute(model_queries.get_data_files).fetchall()
+        except Exception:
+            return []
+    files = []
+    for file_id, file_name, file_type, file_extension, uploaded_file_name, last_updated, file_exists in rows:
+        files.append(
+            {
+                "file_id": file_id,
+                "file_name": file_name,
+                "file_type": file_type,
+                "file_extension": file_extension,
+                "uploaded_file_name": uploaded_file_name,
+                "last_updated": last_updated,
+                "file_exists": file_exists == "Yes",
+            }
+        )
+    return files
