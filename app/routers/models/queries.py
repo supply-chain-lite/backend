@@ -1,5 +1,3 @@
-
-
 get_project_id = "SELECT ProjectId FROM S_Projects WHERE UserEmail=? AND ProjectName=?"
 
 get_model_id_and_path = """SELECT S_Models.ModelId, S_Models.ModelPath

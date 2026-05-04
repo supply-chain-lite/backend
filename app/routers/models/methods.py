@@ -3,6 +3,7 @@ import os
 import shutil
 import sqlite3
 import tempfile
+import time
 import uuid
 
 import apsw
@@ -660,7 +661,7 @@ def _clean_up_temp_files():
     """
     Remove all temporary files in the TEMP_FOLDER that are older than a certain threshold to prevent accumulation of unused files.
     """
-    now = os.path.getmtime(__file__)
+    now = time.time()
     for filename in os.listdir(TEMP_FOLDER):
         file_path = os.path.join(TEMP_FOLDER, filename)
         if os.path.isfile(file_path):
