@@ -2,13 +2,15 @@ import os
 import shutil
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
-from app.config import TEMP_FOLDER
+from app.config import STATIC_FOLDER, TEMP_FOLDER
 from app.database import init_db, migrate_db
 from app.logging_config import configure_logging, get_logger
 from app.routers.auth.router import router as auth_router
@@ -31,9 +33,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Starting Supply Chain Lite API")
     init_db()
     migrate_db()
-    if os.path.exists(TEMP_FOLDER):
-        shutil.rmtree(TEMP_FOLDER)
-    os.makedirs(TEMP_FOLDER, exist_ok=True)
+    folder_path = Path(TEMP_FOLDER)
+    if folder_path.exists():
+        for item in folder_path.iterdir():
+            if item.is_file() or item.is_symlink():
+                item.unlink()
+            elif item.is_dir():
+                shutil.rmtree(item)
+    else:
+        os.makedirs(folder_path, exist_ok=True)
     logger.info("Database initialization completed")
     try:
         yield
@@ -48,6 +56,7 @@ app.include_router(models_router, prefix="/api/models", tags=["models"])
 app.include_router(projects_router, prefix="/api/projects", tags=["projects"])
 app.include_router(tables_router, prefix="/api/tables", tags=["tables"])
 app.include_router(sql_client_router, prefix="/api/sql-client", tags=["sql-client"])
+app.mount("/", StaticFiles(directory=STATIC_FOLDER, html=True), name="static")
 
 
 @app.middleware("http")

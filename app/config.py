@@ -31,6 +31,7 @@ ROOT_DATA_FOLDER = Path(_data_folder_env)
 
 MAX_BACKUPS = int(os.getenv("MAX_BACKUPS", 10))
 TEMP_FOLDER = ROOT_DATA_FOLDER / "temp"
+STATIC_FOLDER = ROOT_DATA_FOLDER / "static"
 BACKUP_FOLDER = ROOT_DATA_FOLDER / "backup"
 LOG_FOLDER = ROOT_DATA_FOLDER / "logs"
 DATA_FOLDER = ROOT_DATA_FOLDER / "models"
@@ -39,6 +40,9 @@ LOG_FILE = Path(os.getenv("LOG_FILE", str(LOG_FOLDER / "app.log")))
 
 if not os.path.exists(DATA_FOLDER):
     os.makedirs(DATA_FOLDER)
+
+if not os.path.exists(STATIC_FOLDER):
+    os.makedirs(STATIC_FOLDER)
 
 if not os.path.exists(BACKUP_FOLDER):
     os.makedirs(BACKUP_FOLDER)

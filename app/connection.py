@@ -27,7 +27,8 @@ class sql_connection:
                 self.cursor.execute("ROLLBACK")
             except Exception as _e:
                 logger.warning("Rollback failed for connection %s", self.db_id, exc_info=_e)
-            self.cursor.close()
+            finally:
+                self.cursor.close()
 
             if issubclass(exception_type, apsw.ReadOnlyError):
                 logger.warning("Read-only access denied on connection %s", self.db_id)
@@ -46,7 +47,8 @@ class sql_connection:
                 self.cursor.close()
                 logger.exception("Commit failed on connection %s", self.db_id)
                 raise
-            self.cursor.close()
+            finally:
+                self.cursor.close()
 
 
 def authorizer(action, arg1, arg2, dbname, source):
