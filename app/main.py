@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             elif item.is_dir():
                 shutil.rmtree(item)
     else:
-        os.makedirs(folder_path)
+        os.makedirs(folder_path, exist_ok=True)
     logger.info("Database initialization completed")
     try:
         yield
