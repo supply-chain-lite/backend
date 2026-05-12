@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+import redis
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -18,6 +19,19 @@ SMTP_USER = os.getenv("SMTP_USER")
 SMTP_PWD = os.getenv("SMTP_PWD")
 master_db = os.getenv("SQLITE_DB_PATH")
 BASE_URL = os.getenv("BASE_URL", "http://localhost:3000")
+BROKER_URL = os.getenv("BROKER_URL", "redis://localhost:6379/0")
+S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY")
+S3_SECRET_KEY = os.getenv("S3_SECRET_KEY")
+S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
+S3_URL = os.getenv("S3_URL")
+SETUP_S3 = int(os.getenv("SETUP_S3", "0"))
+
+redis_instance = redis.Redis.from_url(BROKER_URL, socket_connect_timeout=1)
+try:
+    redis_instance.ping()
+except redis.exceptions.RedisError as e:
+    raise Exception(f"Could not connect to Redis at {BROKER_URL}. Error: {e}")
+
 
 if not master_db:
     raise Exception("SQLITE_DB_PATH is not set in environment variables.")
@@ -35,6 +49,7 @@ STATIC_FOLDER = ROOT_DATA_FOLDER / "static"
 BACKUP_FOLDER = ROOT_DATA_FOLDER / "backup"
 LOG_FOLDER = ROOT_DATA_FOLDER / "logs"
 DATA_FOLDER = ROOT_DATA_FOLDER / "models"
+MODELS_FOLDER = ROOT_DATA_FOLDER / "task_models"
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 LOG_FILE = Path(os.getenv("LOG_FILE", str(LOG_FOLDER / "app.log")))
 
@@ -52,3 +67,6 @@ if not os.path.exists(TEMP_FOLDER):
 
 if not os.path.exists(LOG_FILE.parent):
     os.makedirs(LOG_FILE.parent)
+
+if not os.path.exists(MODELS_FOLDER):
+    os.makedirs(MODELS_FOLDER)

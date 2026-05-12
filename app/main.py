@@ -18,6 +18,7 @@ from app.routers.models.router import router as models_router
 from app.routers.projects.router import router as projects_router
 from app.routers.sql_client.router import router as sql_client_router
 from app.routers.tables.router import router as tables_router
+from app.routers.tasks.router import router as tasks_router
 
 logger = get_logger(__name__)
 
@@ -56,6 +57,7 @@ app.include_router(models_router, prefix="/api/models", tags=["models"])
 app.include_router(projects_router, prefix="/api/projects", tags=["projects"])
 app.include_router(tables_router, prefix="/api/tables", tags=["tables"])
 app.include_router(sql_client_router, prefix="/api/sql-client", tags=["sql-client"])
+app.include_router(tasks_router, prefix="/api/tasks", tags=["tasks"])
 app.mount("/", StaticFiles(directory=STATIC_FOLDER, html=True), name="static")
 
 
