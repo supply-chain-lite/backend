@@ -76,11 +76,6 @@ def run_model_task(cursor, user_email: str, model_name: str, project_name: str, 
             "Please wait for one of your running tasks to finish before starting a new one.",
         )
 
-    redis_instance = redis.Redis.from_url(BROKER_URL, socket_connect_timeout=1)
-    try:
-        redis_instance.ping()
-    except redis.exceptions.RedisError as e:
-        raise Exception(f"Could not connect to Redis at {BROKER_URL}. Error: {e}")
 
     with sql_connection(model_id, model_path) as model_cursor:
         task_name = update_task_param_values(model_cursor, task_id, task_param_values)
@@ -91,6 +86,12 @@ def run_model_task(cursor, user_email: str, model_name: str, project_name: str, 
             this_broker_url = BROKER_URL
         else:
             this_broker_url = this_broker_url[0]
+
+        redis_instance = redis.Redis.from_url(this_broker_url, socket_connect_timeout=1)
+        try:
+            redis_instance.ping()
+        except redis.exceptions.RedisError as e:
+            raise Exception(f"Could not connect to Redis at {this_broker_url}. Error: {e}")
 
     file_url = _copy_db_and_upload_to_broker(model_path)
 
