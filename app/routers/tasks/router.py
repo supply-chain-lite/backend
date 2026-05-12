@@ -11,11 +11,10 @@ from . import schemas as run_schemas
 router = APIRouter()
 
 
-@router.post("/list")
+@router.post("/list", response_model=run_schemas.ListTasksResponse)
 def list_model_tasks(
     request: run_schemas.ListTasksRequest,
     user_data: tuple = Depends(_get_user_from_token),
-    response_model=run_schemas.ListTasksResponse,
 ) -> run_schemas.ListTasksResponse:
     useremail, _display_name, _role_name = user_data
     model_name = request.model_name
@@ -25,11 +24,10 @@ def list_model_tasks(
     return run_schemas.ListTasksResponse(tasks=tasks)
 
 
-@router.post("/run")
+@router.post("/run", response_model=run_schemas.MessageResponse)
 def run_model_task(
     request: run_schemas.runTaskRequest,
     user_data: tuple = Depends(_get_user_from_token),
-    response_model=run_schemas.MessageResponse,
 ) -> run_schemas.MessageResponse:
     useremail, _display_name, _role_name = user_data
     model_name = request.model_name

@@ -5,6 +5,7 @@ import tempfile
 
 import apsw
 import boto3
+import redis
 from botocore.exceptions import BotoCoreError, ClientError
 from celery import Celery
 from fastapi import HTTPException
@@ -74,6 +75,12 @@ def run_model_task(cursor, user_email: str, model_name: str, project_name: str, 
             f" of {user_run_count}. "
             "Please wait for one of your running tasks to finish before starting a new one.",
         )
+
+    redis_instance = redis.Redis.from_url(BROKER_URL, socket_connect_timeout=1)
+    try:
+        redis_instance.ping()
+    except redis.exceptions.RedisError as e:
+        raise Exception(f"Could not connect to Redis at {BROKER_URL}. Error: {e}")
 
     with sql_connection(model_id, model_path) as model_cursor:
         task_name = update_task_param_values(model_cursor, task_id, task_param_values)
