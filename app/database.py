@@ -56,6 +56,29 @@ create_user_error_table = """CREATE TABLE IF NOT EXISTS S_UserErrors (
                                     JsonData TEXT,
                                     CreatedAt TEXT NOT NULL DEFAULT (datetime('now'))
                                 )"""
+
+create_task_history_table = """CREATE TABLE IF NOT EXISTS S_TaskRecords (
+                                        TaskId          INTEGER PRIMARY KEY AUTOINCREMENT,
+                                        TaskUID         TEXT NOT NULL,
+                                        ClientTaskId    INTEGER NOT NULL,
+                                        TaskName        TEXT NOT NULL,
+                                        ProjectName     TEXT NOT NULL,
+                                        ModelName       TEXT NOT NULL,
+                                        ModelId         INTEGER NOT NULL,
+                                        SubmittedBy     TEXT NOT NULL,
+                                        SubmittedAt     TEXT NOT NULL DEFAULT (datetime('now')),
+                                        Status          TEXT NOT NULL,
+                                        JSONData        TEXT,
+                                        LastUpdated     TEXT NOT NULL DEFAULT (datetime('now'))
+                                    )"""
+
+create_task_logs_table = """CREATE TABLE IF NOT EXISTS S_TaskLogs (
+                                        TaskId      INTEGER NOT NULL,
+                                        LogText     TEXT NOT NULL,
+                                        LastUpdated   TEXT NOT NULL DEFAULT (datetime('now'))
+                                    )"""
+
+
 create_user_models_table = """CREATE TABLE IF NOT EXISTS S_UserModels (
                                     ModelId     INTEGER,
                                     UserEmail      TEXT,
@@ -198,4 +221,6 @@ def init_db() -> None:
         )
         cursor.execute(create_user_notifications_table)
         cursor.execute(create_query_history_table)
+        cursor.execute(create_task_history_table)
+        cursor.execute(create_task_logs_table)
     logger.info("Database schema initialization finished")
