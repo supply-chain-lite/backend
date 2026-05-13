@@ -57,5 +57,5 @@ def get_task_status(
     useremail, _display_name, _role_name = user_data
     task_id = request.task_id
     with master_connection() as cursor:
-        status = run_methods.get_task_status(cursor, task_id)
+        status = run_methods.get_task_status(cursor, task_id, useremail)
     return run_schemas.MessageResponse(message=status)

@@ -181,4 +181,5 @@ get_table_group_from_sqlite_master = """select CASE WHEN type = 'table' THEN 'Al
                                         END as TableGroup,  name as TableName, name as TableDisplayName, 1 as rowid
                                         from sqlite_master
                                         WHERE type in ('view', 'table')
+                                        AND name NOT LIKE 'sqlite_%' COLLATE NOCASE
                                         ORDER BY 1, 2;"""

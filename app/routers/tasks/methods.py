@@ -184,8 +184,8 @@ def get_running_tasks(cursor, user_email: str):
     ]
 
 
-def get_task_status(cursor, task_id: int):
-    status_row = cursor.execute(run_queries.get_task_status, (task_id,)).fetchone()
+def get_task_status(cursor, task_id: int, user_email: str):
+    status_row = cursor.execute(run_queries.get_task_status, (task_id, user_email)).fetchone()
     if not status_row:
         raise HTTPException(status_code=404, detail="Task not found")
     return status_row[0]

@@ -34,4 +34,11 @@ get_running_tasks = """select S_TaskRecords.taskid, S_TaskRecords.taskname, S_Us
                                 AND   S_UserModels.UserEmail= S_Projects.UserEmail
                                 AND   S_TaskRecords.Status in ('RUNNING', 'PENDING') COLLATE NOCASE
                                 AND   S_UserModels.UserEmail = ?"""
-get_task_status = "SELECT Status FROM S_TaskRecords WHERE TaskId = ?"
+
+get_task_status = """select S_TaskRecords.Status
+                                from S_UserModels, S_TaskRecords, S_Projects
+                                WHERE S_UserModels.ModelId = S_TaskRecords.ModelId
+                                AND   S_UserModels.ProjectId = S_Projects.ProjectId
+                                AND   S_UserModels.UserEmail= S_Projects.UserEmail
+                                AND   S_TaskRecords.TaskId = ?
+                                AND   S_UserModels.UserEmail = ?"""
