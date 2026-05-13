@@ -39,3 +39,16 @@ class runTaskRequest(TaskBaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+
+
+class runningTaskInfo(TaskBaseModel):
+    task_id: int
+    task_name: str
+
+
+class runningTasksResponse(BaseModel):
+    running_tasks: list[runningTaskInfo]
+
+
+class taskStatusRequest(BaseModel):
+    task_id: int

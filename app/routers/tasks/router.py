@@ -37,3 +37,25 @@ def run_model_task(
     with master_connection() as cursor:
         run_methods.run_model_task(cursor, useremail, model_name, project_name, task_id, task_param_values)
     return run_schemas.MessageResponse(message="Task executed successfully")
+
+
+@router.post("/running", response_model=run_schemas.runningTasksResponse)
+def get_running_tasks(
+    user_data: tuple = Depends(_get_user_from_token),
+) -> run_schemas.runningTasksResponse:
+    useremail, _display_name, _role_name = user_data
+    with master_connection() as cursor:
+        running_tasks = run_methods.get_running_tasks(cursor, useremail)
+    return run_schemas.runningTasksResponse(running_tasks=running_tasks)
+
+
+@router.post("/status", response_model=run_schemas.MessageResponse)
+def get_task_status(
+    request: run_schemas.taskStatusRequest,
+    user_data: tuple = Depends(_get_user_from_token),
+) -> run_schemas.MessageResponse:
+    useremail, _display_name, _role_name = user_data
+    task_id = request.task_id
+    with master_connection() as cursor:
+        status = run_methods.get_task_status(cursor, task_id)
+    return run_schemas.MessageResponse(message=status)

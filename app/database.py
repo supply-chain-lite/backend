@@ -58,7 +58,9 @@ create_user_error_table = """CREATE TABLE IF NOT EXISTS S_UserErrors (
                                 )"""
 
 create_task_history_table = """CREATE TABLE IF NOT EXISTS S_TaskRecords (
-                                        TaskId          TEXT PRIMARY KEY NOT NULL,
+                                        TaskId          INTEGER PRIMARY KEY AUTOINCREMENT,
+                                        TaskUID         TEXT NOT NULL,
+                                        ClientTaskId    INTEGER NOT NULL,
                                         TaskName        TEXT NOT NULL,
                                         ProjectName     TEXT NOT NULL,
                                         ModelName       TEXT NOT NULL,
@@ -71,7 +73,7 @@ create_task_history_table = """CREATE TABLE IF NOT EXISTS S_TaskRecords (
                                     )"""
 
 create_task_logs_table = """CREATE TABLE IF NOT EXISTS S_TaskLogs (
-                                        TaskId      TEXT NOT NULL,
+                                        TaskId      INTEGER NOT NULL,
                                         LogText     TEXT NOT NULL,
                                         LastUpdated   TEXT NOT NULL DEFAULT (datetime('now'))
                                     )"""

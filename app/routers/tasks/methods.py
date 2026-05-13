@@ -76,11 +76,10 @@ def run_model_task(cursor, user_email: str, model_name: str, project_name: str, 
             "Please wait for one of your running tasks to finish before starting a new one.",
         )
 
-
     with sql_connection(model_id, model_path) as model_cursor:
-        task_name = update_task_param_values(model_cursor, task_id, task_param_values)
+        task_name, task_display_name = update_task_param_values(model_cursor, task_id, task_param_values)
         if not task_name:
-            raise HTTPException(status_code=404, detail="Task not found")
+            raise HTTPException(status_code=404, detail=f"Task: {task_display_name} not found")
         this_broker_url = model_cursor.execute(run_queries.get_broker_url).fetchone()
         if not this_broker_url:
             this_broker_url = BROKER_URL
@@ -106,7 +105,8 @@ def run_model_task(cursor, user_email: str, model_name: str, project_name: str, 
     row_tuple = (
         model_id,
         task_uid,
-        task_name,
+        task_id,
+        task_display_name,
         model_name,
         project_name,
         user_email,
@@ -120,9 +120,9 @@ def update_task_param_values(model_cursor, task_id: int, new_param_values: list)
     task_row = model_cursor.execute(run_queries.get_task_params, (task_id,)).fetchone()
     if not task_row:
         raise HTTPException(status_code=404, detail="Task not found")
-    task_name, task_params_json = task_row
+    task_name, task_display_name, task_params_json = task_row
     if len(new_param_values) == 0:
-        return task_name
+        return task_name, task_display_name
     task_params = json.loads(task_params_json) if task_params_json else []
     for this_dict in task_params:
         for new_param in new_param_values:
@@ -130,7 +130,7 @@ def update_task_param_values(model_cursor, task_id: int, new_param_values: list)
                 this_dict["ParameterValue"] = new_param.ParameterValue
                 break
     model_cursor.execute(run_queries.update_task_params, (json.dumps(task_params, indent=4), task_id))
-    return task_name
+    return task_name, task_display_name
 
 
 def _copy_db_and_upload_to_broker(model_path: str):
@@ -169,3 +169,23 @@ def _copy_db_and_upload_to_broker(model_path: str):
         shutil.copy(tmp_path, MODELS_FOLDER)
         os.remove(tmp_path)
         return os.path.join(MODELS_FOLDER, os.path.basename(tmp_path))
+
+
+def get_running_tasks(cursor, user_email: str):
+    running_tasks = cursor.execute(run_queries.get_running_tasks, (user_email,)).fetchall()
+    return [
+        {
+            "task_id": task_id,
+            "task_name": task_name,
+            "model_name": model_name,
+            "project_name": project_name,
+        }
+        for task_id, task_name, model_name, project_name in running_tasks
+    ]
+
+
+def get_task_status(cursor, task_id: int):
+    status_row = cursor.execute(run_queries.get_task_status, (task_id,)).fetchone()
+    if not status_row:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return status_row[0]
