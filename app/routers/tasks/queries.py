@@ -43,7 +43,7 @@ get_task_status = """select S_TaskRecords.Status
                                 AND   S_TaskRecords.TaskId = ?
                                 AND   S_UserModels.UserEmail = ?"""
 
-get_all_running_tasks = """select  TaskUID, TaskURL, Status from S_TaskRecords
+get_all_running_tasks = """select taskid,   TaskUID, TaskURL, Status from S_TaskRecords
                            WHERE Status in ('RUNNING', 'STARTED', 'PENDING') COLLATE NOCASE"""
 
 insert_task_notifications = """INSERT INTO S_UserNotifications (
@@ -60,6 +60,7 @@ insert_task_notifications = """INSERT INTO S_UserNotifications (
                                     RETURNING NotificationId"""
 
 update_task_status = """UPDATE S_TaskRecords SET Status = ?,
-                        LastUpdated = datetime('now') WHERE TaskUID = ?
+                        LastUpdated = datetime('now') WHERE TaskId = ?
+                        AND Status = ?
                         RETURNING TaskName, ModelName, ProjectName, SubmittedBy,
                         (unixepoch(datetime('now')) - unixepoch(SubmittedAt))/60 as ExecutionMinutes"""

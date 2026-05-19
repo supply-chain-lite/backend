@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import shutil
@@ -20,7 +21,7 @@ from app.config import (
     SETUP_S3,
     TEMP_FOLDER,
 )
-from app.connection import sql_connection
+from app.connection import master_connection, sql_connection
 from app.routers.models.methods import get_model_id_and_path
 from app.routers.models.queries import get_access_level
 
@@ -178,7 +179,6 @@ def _copy_db_and_upload_to_broker(model_path: str):
 
 
 def get_running_tasks(cursor, user_email: str):
-    update_task_status(cursor)
     running_tasks = cursor.execute(run_queries.get_running_tasks, (user_email,)).fetchall()
     return [
         {
@@ -198,20 +198,31 @@ def get_task_status(cursor, task_id: int, user_email: str):
     return status_row[0]
 
 
+async def recurring_task_update():
+    while True:
+        try:
+            print("Checking for task status updates...")
+            with master_connection() as cursor:
+                update_task_status(cursor)
+        except Exception as e:
+            print(f"Error updating task status: {e}")
+        await asyncio.sleep(15)  # Wait for 15 seconds before checking again
+
+
 def update_task_status(cursor):
     all_running_tasks = cursor.execute(run_queries.get_all_running_tasks).fetchall()
-    for task_uid, task_url, task_status in all_running_tasks:
+    for task_id, task_uid, task_url, task_status in all_running_tasks:
         celery_app = Celery("tasks", broker=task_url, backend=task_url)
         result = celery_app.AsyncResult(task_uid)
         new_status = result.state
         if new_status == task_status:
             continue
-        _update_task_status(cursor, task_uid, new_status)
+        _update_task_status(cursor, task_id, new_status, task_status)
 
 
-def _update_task_status(cursor, task_uid: str, new_status: str):
+def _update_task_status(cursor, task_id: int, new_status: str, old_status: str = None):
     cursor.intermediate_commit()
-    cursor.execute(run_queries.update_task_status, (new_status, task_uid))
+    cursor.execute(run_queries.update_task_status, (new_status, task_id, old_status))
     result = cursor.fetchall()
     if not result:
         raise HTTPException(status_code=404, detail="Task not found for status update")
