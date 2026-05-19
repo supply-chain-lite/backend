@@ -100,8 +100,13 @@ def run_model_task(cursor, user_email: str, model_name: str, project_name: str, 
         result = celery_app.send_task(task_name, kwargs=kwarg_data)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to enqueue task for execution: {str(e)}")
+    if not result or not result.id:
+        raise HTTPException(status_code=500, detail="Failed to enqueue task for execution: No task ID returned")
+    if result.state == "FAILURE":
+        raise HTTPException(status_code=500, detail="Failed to enqueue task for execution: Task is in FAILURE state")
     task_uid = result.id
     task_status = result.state
+    cursor.intermediate_commit()
     row_tuple = (
         model_id,
         task_uid,
@@ -111,6 +116,7 @@ def run_model_task(cursor, user_email: str, model_name: str, project_name: str, 
         project_name,
         user_email,
         task_status,
+        this_broker_url,
         json.dumps(kwarg_data),
     )
     cursor.execute(run_queries.insert_task_record, row_tuple)
@@ -172,6 +178,7 @@ def _copy_db_and_upload_to_broker(model_path: str):
 
 
 def get_running_tasks(cursor, user_email: str):
+    update_task_status(cursor)
     running_tasks = cursor.execute(run_queries.get_running_tasks, (user_email,)).fetchall()
     return [
         {
@@ -189,3 +196,61 @@ def get_task_status(cursor, task_id: int, user_email: str):
     if not status_row:
         raise HTTPException(status_code=404, detail="Task not found")
     return status_row[0]
+
+
+def update_task_status(cursor):
+    all_running_tasks = cursor.execute(run_queries.get_all_running_tasks).fetchall()
+    for task_uid, task_url, task_status in all_running_tasks:
+        celery_app = Celery("tasks", broker=task_url, backend=task_url)
+        result = celery_app.AsyncResult(task_uid)
+        new_status = result.state
+        if new_status == task_status:
+            continue
+        _update_task_status(cursor, task_uid, new_status)
+
+
+def _update_task_status(cursor, task_uid: str, new_status: str):
+    cursor.intermediate_commit()
+    cursor.execute(run_queries.update_task_status, (new_status, task_uid))
+    result = cursor.fetchall()
+    if not result:
+        raise HTTPException(status_code=404, detail="Task not found for status update")
+    task_name, model_name, project_name, submitted_by, execution_time = result[0]
+    if new_status in ("RUNNING", "STARTED", "PENDING"):
+        return  # Don't send notification for running status, only for completion or failure
+    notification_params = {
+        "model_name": model_name,
+        "project_name": project_name,
+        "task_name": task_name,
+        "run_status": new_status,
+        "run_time_minutes": execution_time,
+    }
+    notification_type = "task_update"
+    if new_status in ("SUCCESS", "COMPLETED"):
+        notification_params["LEVEL"] = "INFO"
+        title = f"Task {task_name} completed"
+        message = f"Your task {task_name} has completed successfully in {execution_time} minutes."
+    elif new_status in ("FAILURE", "ERRORED"):
+        notification_params["LEVEL"] = "ERROR"
+        title = f"Task {task_name} failed"
+        message = (
+            f"Your task {task_name} has failed in {execution_time} minutes. Please check the logs for more details."
+        )
+    elif new_status == "REVOKED":
+        notification_params["LEVEL"] = "WARNING"
+        title = f"Task {task_name} revoked"
+        message = f"Your task {task_name} has been revoked after {execution_time} minutes."
+    else:
+        notification_params["LEVEL"] = "WARNING"
+        title = f"Task {task_name} status update"
+        message = f"Your task {task_name} status has been updated to {new_status} after {execution_time} minutes."
+    insert_task_tuple = (
+        "System",
+        submitted_by,
+        title,
+        message,
+        notification_type,
+        json.dumps(notification_params),
+    )
+    cursor.execute(run_queries.insert_task_notifications, insert_task_tuple)
+    cursor.intermediate_commit()

@@ -2,7 +2,7 @@ list_task_query = """SELECT TaskId, TaskDisplayName, ifnull(TaskParameters, '[]'
                      FROM [S_TaskMaster]"""
 
 get_current_running_tasks = """select count(*) from S_TaskRecords
-                                WHERE Status in ('RUNNING', 'PENDING') COLLATE NOCASE
+                                WHERE Status in ('RUNNING', 'PENDING', 'STARTED') COLLATE NOCASE
                                 and   ModelID = ?"""
 
 get_user_run_count = """SELECT  ifnull(json_extract(ifnull(JsonData, '{}'), '$.max_concurrent_runs'),
@@ -11,7 +11,7 @@ get_user_run_count = """SELECT  ifnull(json_extract(ifnull(JsonData, '{}'), '$.m
 get_user_model_run_count = """select count(*)
                                 from S_UserModels, S_TaskRecords
                                 WHERE S_UserModels.ModelId = S_TaskRecords.ModelId
-                                AND   S_TaskRecords.Status in ('RUNNING', 'PENDING') COLLATE NOCASE
+                                AND   S_TaskRecords.Status in ('RUNNING', 'PENDING', 'STARTED') COLLATE NOCASE
                                 AND   S_UserModels.UserEmail = ?"""
 
 get_broker_url = "SELECT ParamValue FROM S_ModelParams WHERE ParamName = 'BROKER_URL' COLLATE NOCASE"
@@ -19,8 +19,8 @@ get_broker_url = "SELECT ParamValue FROM S_ModelParams WHERE ParamName = 'BROKER
 get_task_name = "SELECT TaskName FROM S_TaskMaster WHERE TaskId = ?"
 
 insert_task_record = """INSERT INTO S_TaskRecords (ModelId, TaskUID, ClientTaskId, TaskName, ModelName, ProjectName,
-                        SubmittedBy, Status, JSONData)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                        SubmittedBy, Status, TaskURL, JSONData)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
 
 update_task_params = "UPDATE S_TaskMaster  SET TaskParameters = ? WHERE TaskId = ?"
 
@@ -32,7 +32,7 @@ get_running_tasks = """select S_TaskRecords.taskid, S_TaskRecords.taskname, S_Us
                                 WHERE S_UserModels.ModelId = S_TaskRecords.ModelId
                                 AND   S_UserModels.ProjectId = S_Projects.ProjectId
                                 AND   S_UserModels.UserEmail= S_Projects.UserEmail
-                                AND   S_TaskRecords.Status in ('RUNNING', 'PENDING') COLLATE NOCASE
+                                AND   S_TaskRecords.Status in ('RUNNING', 'STARTED', 'PENDING') COLLATE NOCASE
                                 AND   S_UserModels.UserEmail = ?"""
 
 get_task_status = """select S_TaskRecords.Status
@@ -42,3 +42,24 @@ get_task_status = """select S_TaskRecords.Status
                                 AND   S_UserModels.UserEmail= S_Projects.UserEmail
                                 AND   S_TaskRecords.TaskId = ?
                                 AND   S_UserModels.UserEmail = ?"""
+
+get_all_running_tasks = """select  TaskUID, TaskURL, Status from S_TaskRecords
+                           WHERE Status in ('RUNNING', 'STARTED', 'PENDING') COLLATE NOCASE"""
+
+insert_task_notifications = """INSERT INTO S_UserNotifications (
+                                        FromUserEmail,
+                                        ToUserEmail,
+                                        Title,
+                                        Message,
+                                        NotificationType,
+                                        NotificationParams,
+                                        IsRead,
+                                        IsAccepted
+                                    )
+                                    VALUES (?, ?, ?, ?, ?, ?, 0,0)
+                                    RETURNING NotificationId"""
+
+update_task_status = """UPDATE S_TaskRecords SET Status = ?,
+                        LastUpdated = datetime('now') WHERE TaskUID = ?
+                        RETURNING TaskName, ModelName, ProjectName, SubmittedBy,
+                        (unixepoch(datetime('now')) - unixepoch(SubmittedAt))/60 as ExecutionMinutes"""

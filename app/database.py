@@ -68,6 +68,7 @@ create_task_history_table = """CREATE TABLE IF NOT EXISTS S_TaskRecords (
                                         SubmittedBy     TEXT NOT NULL,
                                         SubmittedAt     TEXT NOT NULL DEFAULT (datetime('now')),
                                         Status          TEXT NOT NULL,
+                                        TaskURL         TEXT,
                                         JSONData        TEXT,
                                         LastUpdated     TEXT NOT NULL DEFAULT (datetime('now'))
                                     )"""
@@ -160,7 +161,9 @@ create_query_history_table = """CREATE TABLE IF NOT EXISTS S_SQLHistory (
                                 )"""
 
 
-_MIGRATIONS = []
+_MIGRATIONS = [
+    ("S_TaskRecords", "TaskURL", "TEXT"),
+]
 
 
 def migrate_db() -> None:

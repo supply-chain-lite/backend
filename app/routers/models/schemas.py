@@ -86,6 +86,7 @@ class notificationBaseModel(BaseModel):
     title: str
     message: str
     notification_type: str
+    notification_level: str
     project_name: str | None
     model_name: str | None
     is_read: int
@@ -154,3 +155,7 @@ class downloadFileRequest(BaseModel):
     file_id: int
     project_name: str
     model_name: str
+
+
+class markNotificationsReadRequest(BaseModel):
+    notification_id: int
