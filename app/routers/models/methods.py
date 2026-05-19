@@ -449,6 +449,7 @@ def get_user_notifications(cursor, user_email: str):
         params_dict = json.loads(params) if params else {}
         project_name = params_dict.get("project_name")
         model_name = params_dict.get("model_name")
+        notification_level = params_dict.get("LEVEL", "INFO")
 
         notifications.append(
             {
@@ -461,6 +462,7 @@ def get_user_notifications(cursor, user_email: str):
                 "model_name": model_name,
                 "is_read": is_read,
                 "is_accepted": is_accepted,
+                "notification_level": notification_level,
             }
         )
     return notifications
@@ -843,3 +845,10 @@ def upload_file(
         rows = model_cursor.execute(model_queries.update_file_blob, (file_content, file_name, file_id)).fetchall()
         if len(rows) == 0:
             raise HTTPException(status_code=400, detail="Failed to upload the file")
+
+
+def mark_notification_read(cursor, notification_id: int, user_email: str):
+    cursor.execute(model_queries.read_notification, (notification_id, user_email))
+    ct = cursor.rowcount()
+    if ct == 0:
+        raise HTTPException(status_code=404, detail="Notification not found")

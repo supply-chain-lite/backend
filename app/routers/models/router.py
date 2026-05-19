@@ -229,6 +229,19 @@ def get_user_notifications(user_data: tuple = Depends(_get_user_from_token)) -> 
     return model_schemas.getNotificationsResponse(notifications=notifications)
 
 
+@router.post("/mark-notification-read", response_model=model_schemas.MessageResponse)
+def mark_notification_read(
+    request: model_schemas.markNotificationsReadRequest, user_data: tuple = Depends(_get_user_from_token)
+) -> model_schemas.MessageResponse:
+    """Mark a notification as read for the authenticated user."""
+    useremail, _display_name, _role_name = user_data
+
+    with master_connection() as cursor:
+        model_methods.mark_notification_read(cursor, request.notification_id, useremail)
+
+    return model_schemas.MessageResponse(message="Notification marked as read successfully")
+
+
 @router.post("/accept", response_model=model_schemas.MessageResponse)
 def accept_model_share(
     request: model_schemas.acceptModelRequest, user_data: tuple = Depends(_get_user_from_token)
