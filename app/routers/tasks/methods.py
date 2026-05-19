@@ -22,10 +22,13 @@ from app.config import (
     TEMP_FOLDER,
 )
 from app.connection import master_connection, sql_connection
+from app.logging_config import get_logger
 from app.routers.models.methods import get_model_id_and_path
 from app.routers.models.queries import get_access_level
 
 from . import queries as run_queries
+
+logger = get_logger(__name__)
 
 
 def list_model_tasks(cursor, user_email: str, model_name: str, project_name: str):
@@ -201,23 +204,26 @@ def get_task_status(cursor, task_id: int, user_email: str):
 async def recurring_task_update():
     while True:
         try:
-            print("Checking for task status updates...")
+            logger.info("Checking for task status updates...")
             with master_connection() as cursor:
                 update_task_status(cursor)
         except Exception as e:
-            print(f"Error updating task status: {e}")
+            logger.error(f"Error updating task status: {e}")
         await asyncio.sleep(15)  # Wait for 15 seconds before checking again
 
 
 def update_task_status(cursor):
     all_running_tasks = cursor.execute(run_queries.get_all_running_tasks).fetchall()
     for task_id, task_uid, task_url, task_status in all_running_tasks:
-        celery_app = Celery("tasks", broker=task_url, backend=task_url)
-        result = celery_app.AsyncResult(task_uid)
-        new_status = result.state
-        if new_status == task_status:
-            continue
-        _update_task_status(cursor, task_id, new_status, task_status)
+        try:
+            celery_app = Celery("tasks", broker=task_url, backend=task_url)
+            result = celery_app.AsyncResult(task_uid)
+            new_status = result.state
+            if new_status == task_status:
+                continue
+            _update_task_status(cursor, task_id, new_status, task_status)
+        except Exception as e:
+            logger.error(f"Error updating status for task {task_id}: {e}")
 
 
 def _update_task_status(cursor, task_id: int, new_status: str, old_status: str = None):
