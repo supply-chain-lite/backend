@@ -80,7 +80,7 @@ create_job_executions_table = """CREATE TABLE IF NOT EXISTS S_JobExecutions (
 )"""
 
 insert_scheduled_job = """INSERT INTO S_ScheduledJobs
-    (JobName, JobDescription, TaskCategory, TaskType, TaskParams, FlowId, CronExpression, IsEnabled, 
+    (JobName, JobDescription, TaskCategory, TaskType, TaskParams, FlowId, CronExpression, IsEnabled,
     MaxRetries, TimeoutSeconds)
     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     WHERE NOT EXISTS (
@@ -113,17 +113,51 @@ def init_scheduler_db() -> None:
         cursor.execute(create_job_executions_table)
 
         # Sample Job 1: Cleanup old task logs (runs daily at 2 AM) - individual task
-        cursor.execute(insert_scheduled_job, ("cleanup_old_logs", "Remove task logs older than 30 days", 
-            "Task", "cleanup_logs", '{"days_to_keep": 30}', None,  "0 2 * * *", 1, 3, 120, "cleanup_old_logs",))
+        cursor.execute(
+            insert_scheduled_job,
+            (
+                "cleanup_old_logs",
+                "Remove task logs older than 30 days",
+                "Task",
+                "cleanup_logs",
+                '{"days_to_keep": 30}',
+                None,
+                "0 2 * * *",
+                1,
+                3,
+                120,
+                "cleanup_old_logs",
+            ),
+        )
 
         # Sample Job 2: Database statistics report (runs every Monday at 6 AM) - individual task
-        cursor.execute(insert_scheduled_job, ("weekly_db_stats", "Generate weekly database statistics report", 
-            "Task", "db_stats_report",  '{"include_tables": ["S_Users", "S_Projects", "S_Models", "S_TaskRecords"]}', 
-            None, "0 6 * * 1", 1, 2, 300, "weekly_db_stats",))
+        cursor.execute(
+            insert_scheduled_job,
+            (
+                "weekly_db_stats",
+                "Generate weekly database statistics report",
+                "Task",
+                "db_stats_report",
+                '{"include_tables": ["S_Users", "S_Projects", "S_Models", "S_TaskRecords"]}',
+                None,
+                "0 6 * * 1",
+                1,
+                2,
+                300,
+                "weekly_db_stats",
+            ),
+        )
 
         # Sample Flow: Daily maintenance (cleanup logs + generate stats)
-        cursor.execute(insert_flow, ("daily_maintenance", 
-            "Daily maintenance: cleanup old logs then generate stats report", 1, "daily_maintenance",))
+        cursor.execute(
+            insert_flow,
+            (
+                "daily_maintenance",
+                "Daily maintenance: cleanup old logs then generate stats report",
+                1,
+                "daily_maintenance",
+            ),
+        )
 
         # Get the flow ID for inserting steps
         cursor.execute("SELECT FlowId FROM S_Flows WHERE FlowName = 'daily_maintenance'")
@@ -132,17 +166,55 @@ def init_scheduler_db() -> None:
             flow_id = flow_result[0][0]
 
             # Step 1: Cleanup logs
-            cursor.execute(insert_flow_step, (flow_id, 1, "Cleanup Old Logs", "cleanup_logs", 
-                '{"days_to_keep": 30}', 3, 120, 0, flow_id, 1,))
+            cursor.execute(
+                insert_flow_step,
+                (
+                    flow_id,
+                    1,
+                    "Cleanup Old Logs",
+                    "cleanup_logs",
+                    '{"days_to_keep": 30}',
+                    3,
+                    120,
+                    0,
+                    flow_id,
+                    1,
+                ),
+            )
 
             # Step 2: Generate stats
-            cursor.execute(insert_flow_step, (flow_id, 2, "Generate DB Stats", "db_stats_report", 
-                '{"include_tables": ["S_Users", "S_Projects", "S_Models", "S_TaskRecords"]}', 2, 300, 0, 
-                flow_id, 2,))
+            cursor.execute(
+                insert_flow_step,
+                (
+                    flow_id,
+                    2,
+                    "Generate DB Stats",
+                    "db_stats_report",
+                    '{"include_tables": ["S_Users", "S_Projects", "S_Models", "S_TaskRecords"]}',
+                    2,
+                    300,
+                    0,
+                    flow_id,
+                    2,
+                ),
+            )
 
             # Schedule the flow to run on Sundays at 3 AM
-            cursor.execute(insert_scheduled_job, ("sunday_maintenance_flow", 
-                "Run daily maintenance flow on Sundays", "Flow", None, None, flow_id, "0 3 * * 0", 1, 1, 600, 
-                "sunday_maintenance_flow",))
+            cursor.execute(
+                insert_scheduled_job,
+                (
+                    "sunday_maintenance_flow",
+                    "Run daily maintenance flow on Sundays",
+                    "Flow",
+                    None,
+                    None,
+                    flow_id,
+                    "0 3 * * 0",
+                    1,
+                    1,
+                    600,
+                    "sunday_maintenance_flow",
+                ),
+            )
 
     logger.info("Scheduler database schema initialized")

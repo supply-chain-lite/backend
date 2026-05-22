@@ -11,14 +11,13 @@ This module provides a standalone scheduler that:
 import json
 import signal
 import sys
-import time, os
+import time
 from datetime import datetime, timezone
 
 from croniter import croniter
-from scheduler import methods as db_methods
-from app.connection import master_connection
 
 from app.logging_config import configure_logging, get_logger
+from scheduler import methods as db_methods
 from scheduler.database import init_scheduler_db
 from scheduler.tasks import run_task
 
@@ -82,13 +81,10 @@ def parse_last_run_at(last_run_at: str | None, job_name: str) -> datetime | None
         logger.warning("Job '%s' has invalid LastRunAt '%s'; treating as never run", job_name, last_run_at)
         return None
 
-def execute_single_task(task_type: str, task_params: str, max_retries: int, task_name: str) -> tuple[bool, dict | None, str | None]:
-    """
-    Execute a single task with retry logic.
 
-    Returns:
-        Tuple of (success, result_dict, error_message)
-    """
+def execute_single_task(
+    task_type: str, task_params: str, max_retries: int, task_name: str
+) -> tuple[bool, dict | None, str | None]:
     retry_count = 0
     last_error = None
 
@@ -108,29 +104,22 @@ def execute_single_task(task_type: str, task_params: str, max_retries: int, task
     return False, None, last_error
 
 
-def execute_flow(conn, job_id: int, job_name: str, flow_id: int, max_retries: int) -> bool:
-    """
-    Execute a flow (sequence of tasks).
-
-    Returns:
-        True if all steps completed successfully (or continued on error), False otherwise
-    """
+def execute_flow(job_id: int, job_name: str, flow_id: int, max_retries: int) -> bool:
     started_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
-    flow_info = db_methods.get_flow_info(conn, flow_id)
+    flow_info = db_methods.get_flow_info(flow_id)
     if not flow_info:
         logger.error("Flow %d not found for job '%s'", flow_id, job_name)
         return False
 
     _, flow_name, _, stop_on_error = flow_info
-    steps = db_methods.get_flow_steps(conn, flow_id)
+    steps = db_methods.get_flow_steps(flow_id)
 
     if not steps:
         logger.warning("Flow '%s' has no steps", flow_name)
         return True
 
     execution_id = db_methods.log_job_execution(
-        conn,
         job_id=job_id,
         job_name=job_name,
         status="running",
@@ -150,13 +139,15 @@ def execute_flow(conn, job_id: int, job_name: str, flow_id: int, max_retries: in
         step_id, step_name, task_type, task_params, step_retries, _step_timeout, continue_on_error = step
         success, result, error = execute_single_task(task_type, task_params, step_retries, step_name)
 
-        step_results.append({
-            "step_id": step_id,
-            "step_name": step_name,
-            "success": success,
-            "result": result,
-            "error": error,
-        })
+        step_results.append(
+            {
+                "step_id": step_id,
+                "step_name": step_name,
+                "success": success,
+                "result": result,
+                "error": error,
+            }
+        )
 
         if not success:
             flow_success = False
@@ -168,8 +159,7 @@ def execute_flow(conn, job_id: int, job_name: str, flow_id: int, max_retries: in
 
     completed_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     duration = (
-        datetime.strptime(completed_at, "%Y-%m-%d %H:%M:%S")
-        - datetime.strptime(started_at, "%Y-%m-%d %H:%M:%S")
+        datetime.strptime(completed_at, "%Y-%m-%d %H:%M:%S") - datetime.strptime(started_at, "%Y-%m-%d %H:%M:%S")
     ).total_seconds()
 
     # Determine overall status
@@ -184,7 +174,7 @@ def execute_flow(conn, job_id: int, job_name: str, flow_id: int, max_retries: in
         status = "failed"
 
     db_methods.update_job_execution(
-        conn, job_id,
+        job_id,
         execution_id=execution_id,
         status=status,
         completed_at=completed_at,
@@ -194,11 +184,10 @@ def execute_flow(conn, job_id: int, job_name: str, flow_id: int, max_retries: in
     )
 
     logger.info("Flow '%s' completed with status '%s' in %.2fs", flow_name, status, duration)
-    return flow_success
+    return True
 
 
-def execute_task_job(conn, job_id: int, job_name: str, task_type: str, 
-                     task_params: str, max_retries: int) -> bool:
+def execute_task_job(job_id: int, job_name: str, task_type: str, task_params: str, max_retries: int) -> bool:
     """
     Execute a single task job.
 
@@ -206,7 +195,7 @@ def execute_task_job(conn, job_id: int, job_name: str, task_type: str,
         True if successful, False otherwise
     """
     started_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    execution_id = db_methods.log_job_execution(conn, job_id, job_name, "running", started_at)
+    execution_id = db_methods.log_job_execution(job_id, job_name, "running", started_at)
 
     if execution_id == -1:
         logger.warning("Job '%s' is already running, skipping execution", job_name)
@@ -216,12 +205,10 @@ def execute_task_job(conn, job_id: int, job_name: str, task_type: str,
 
     completed_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     duration = (
-        datetime.strptime(completed_at, "%Y-%m-%d %H:%M:%S")
-        - datetime.strptime(started_at, "%Y-%m-%d %H:%M:%S")
+        datetime.strptime(completed_at, "%Y-%m-%d %H:%M:%S") - datetime.strptime(started_at, "%Y-%m-%d %H:%M:%S")
     ).total_seconds()
 
     db_methods.update_job_execution(
-        conn,
         job_id,
         execution_id=execution_id,
         status="success" if success else "failed",
@@ -236,7 +223,7 @@ def execute_task_job(conn, job_id: int, job_name: str, task_type: str,
     else:
         logger.error("Job '%s' failed after retries: %s", job_name, error)
 
-    return success
+    return True
 
 
 def run_scheduler(poll_interval: int = 60):
@@ -258,35 +245,45 @@ def run_scheduler(poll_interval: int = 60):
 
     while not _shutdown_requested:
         logger.info("Polling for jobs to run...")
-        with master_connection() as conn:
-            try:        
-                jobs = db_methods.get_enabled_jobs(conn)
-                logger.info("Found %d enabled jobs", len(jobs))
+        try:
+            jobs = db_methods.get_enabled_jobs()
+            logger.info("Found %d enabled jobs", len(jobs))
 
-                for job in jobs:
-                    if _shutdown_requested:
-                        break
+            for job in jobs:
+                if _shutdown_requested:
+                    break
 
-                    job_id, job_name, task_category, task_type, task_params, \
-                        flow_id, cron_expr, max_retries, _, last_run_at = job
-                    last_run = parse_last_run_at(last_run_at, job_name)
+                (
+                    job_id,
+                    job_name,
+                    task_category,
+                    task_type,
+                    task_params,
+                    flow_id,
+                    cron_expr,
+                    max_retries,
+                    _,
+                    last_run_at,
+                ) = job
+                last_run = parse_last_run_at(last_run_at, job_name)
 
-                    # Check if job should run
-                    if should_run_now(cron_expr, last_run):
-                        now = datetime.now(timezone.utc)
-                        now_str = now.strftime("%Y-%m-%d %H:%M:%S")
-                        next_run = get_next_run(cron_expr, now)
-                        next_run_str = next_run.strftime("%Y-%m-%d %H:%M:%S")
+                # Check if job should run
+                if should_run_now(cron_expr, last_run):
+                    now = datetime.now(timezone.utc)
+                    now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+                    next_run = get_next_run(cron_expr, now)
+                    next_run_str = next_run.strftime("%Y-%m-%d %H:%M:%S")
 
-                        if task_category == "Flow":
-                            execute_flow(conn, job_id, job_name, flow_id, max_retries)
-                        else:
-                            execute_task_job(conn, job_id, job_name, task_type, task_params, max_retries)
-    
-                        db_methods.update_job_run_times(conn, job_id, now_str, next_run_str)
+                    if task_category == "Flow":
+                        job_status = execute_flow(job_id, job_name, flow_id, max_retries)
+                    else:
+                        job_status = execute_task_job(job_id, job_name, task_type, task_params, max_retries)
 
-            except Exception as e:
-                logger.exception("Error in scheduler loop: %s", e)
+                    if job_status:
+                        db_methods.update_job_run_times(job_id, now_str, next_run_str)
+
+        except Exception as e:
+            logger.exception("Error in scheduler loop: %s", e)
 
         # Wait before next poll
         for _ in range(poll_interval):

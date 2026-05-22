@@ -9,8 +9,8 @@ Supports two job types:
 - flow: Sequential execution of multiple tasks
 """
 
-from scheduler.methods import get_flow_info, get_flow_steps
 from scheduler.database import init_scheduler_db
+from scheduler.methods import get_flow_info, get_flow_steps
 from scheduler.runner import run_scheduler
 from scheduler.tasks import TASK_REGISTRY, run_task
 

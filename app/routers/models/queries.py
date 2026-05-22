@@ -168,7 +168,7 @@ get_file_blob_and_name = "SELECT FileBlob, ifnull(UploadedFileName, FileName) FR
 
 update_file_blob = """UPDATE S_DataFiles SET FileBlob = ?,
                     UploadedFileName = ?,
-                    LastUpdated = datetime('now', 'localtime')
+                    LastUpdated = datetime('now')
                     WHERE FileId = ?
                     RETURNING 1"""
 
