@@ -124,7 +124,6 @@ Defined in `.env` (see `.env.example`):
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | Token expiry in minutes |
 | `SQLITE_DB_PATH` | `./data.db` | Path to SQLite database file |
 | `LOG_LEVEL` | `INFO` | Minimum log level for console and file logging |
-| `LOG_FILE` | `./data/logs/app.log` | Log file path for the rotating file handler |
 
 ## Logging
 

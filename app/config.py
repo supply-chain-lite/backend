@@ -44,7 +44,6 @@ LOG_FOLDER = ROOT_DATA_FOLDER / "logs"
 DATA_FOLDER = ROOT_DATA_FOLDER / "models"
 MODELS_FOLDER = ROOT_DATA_FOLDER / "task_models"
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-LOG_FILE = Path(os.getenv("LOG_FILE", str(LOG_FOLDER / "app.log")))
 
 if not os.path.exists(DATA_FOLDER):
     os.makedirs(DATA_FOLDER)
@@ -58,8 +57,8 @@ if not os.path.exists(BACKUP_FOLDER):
 if not os.path.exists(TEMP_FOLDER):
     os.makedirs(TEMP_FOLDER)
 
-if not os.path.exists(LOG_FILE.parent):
-    os.makedirs(LOG_FILE.parent)
+if not os.path.exists(LOG_FOLDER):
+    os.makedirs(LOG_FOLDER)
 
 if not os.path.exists(MODELS_FOLDER):
     os.makedirs(MODELS_FOLDER)
