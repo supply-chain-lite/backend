@@ -1,17 +1,17 @@
 """
-Scheduler runner - main entry point for running scheduled jobs.
+Scheduler runner - async entry point for running scheduled jobs.
 
-This module provides a standalone scheduler that:
+This module provides an async scheduler that:
 - Loads job definitions from the database
 - Evaluates cron expressions to determine when to run jobs
-- Executes individual tasks or flows (task sequences)
-- Handles retries on failure
+- Executes due jobs concurrently via asyncio.gather
+- Handles retries with non-blocking exponential backoff
 """
 
+import asyncio
 import json
 import signal
 import sys
-import time
 from datetime import datetime, timezone
 
 from croniter import croniter
@@ -82,7 +82,7 @@ def parse_last_run_at(last_run_at: str | None, job_name: str) -> datetime | None
         return None
 
 
-def execute_single_task(
+async def execute_single_task(
     task_type: str, task_params: str, max_retries: int, task_name: str
 ) -> tuple[bool, dict | None, str | None]:
     retry_count = 0
@@ -92,34 +92,34 @@ def execute_single_task(
         try:
             params = json.loads(task_params) if task_params else {}
             logger.info("Executing task '%s' (attempt %d/%d)", task_name, retry_count + 1, max_retries + 1)
-            result = run_task(task_type, params)
+            result = await run_task(task_type, params)
             return True, result, None
         except Exception as e:
             last_error = str(e)
             retry_count += 1
             logger.warning("Task '%s' failed (attempt %d): %s", task_name, retry_count, last_error)
             if retry_count <= max_retries:
-                time.sleep(2**retry_count)  # Exponential backoff
+                await asyncio.sleep(2**retry_count)  # Non-blocking exponential backoff
 
     return False, None, last_error
 
 
-def execute_flow(job_id: int, job_name: str, flow_id: int, max_retries: int) -> bool:
+async def execute_flow(job_id: int, job_name: str, flow_id: int, max_retries: int) -> bool:
     started_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
-    flow_info = db_methods.get_flow_info(flow_id)
+    flow_info = await db_methods.get_flow_info(flow_id)
     if not flow_info:
         logger.error("Flow %d not found for job '%s'", flow_id, job_name)
         return False
 
     _, flow_name, _, stop_on_error = flow_info
-    steps = db_methods.get_flow_steps(flow_id)
+    steps = await db_methods.get_flow_steps(flow_id)
 
     if not steps:
         logger.warning("Flow '%s' has no steps", flow_name)
         return True
 
-    execution_id = db_methods.log_job_execution(
+    execution_id = await db_methods.log_job_execution(
         job_id=job_id,
         job_name=job_name,
         status="running",
@@ -137,7 +137,7 @@ def execute_flow(job_id: int, job_name: str, flow_id: int, max_retries: int) -> 
 
     for step in steps:
         step_id, step_name, task_type, task_params, step_retries, _step_timeout, continue_on_error = step
-        success, result, error = execute_single_task(task_type, task_params, step_retries, step_name)
+        success, result, error = await execute_single_task(task_type, task_params, step_retries, step_name)
 
         step_results.append(
             {
@@ -173,7 +173,7 @@ def execute_flow(job_id: int, job_name: str, flow_id: int, max_retries: int) -> 
     else:
         status = "failed"
 
-    db_methods.update_job_execution(
+    await db_methods.update_job_execution(
         job_id,
         execution_id=execution_id,
         status=status,
@@ -187,7 +187,7 @@ def execute_flow(job_id: int, job_name: str, flow_id: int, max_retries: int) -> 
     return True
 
 
-def execute_task_job(job_id: int, job_name: str, task_type: str, task_params: str, max_retries: int) -> bool:
+async def execute_task_job(job_id: int, job_name: str, task_type: str, task_params: str, max_retries: int) -> bool:
     """
     Execute a single task job.
 
@@ -195,20 +195,20 @@ def execute_task_job(job_id: int, job_name: str, task_type: str, task_params: st
         True if successful, False otherwise
     """
     started_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    execution_id = db_methods.log_job_execution(job_id, job_name, "running", started_at)
+    execution_id = await db_methods.log_job_execution(job_id, job_name, "running", started_at)
 
     if execution_id == -1:
         logger.warning("Job '%s' is already running, skipping execution", job_name)
         return False
 
-    success, result, error = execute_single_task(task_type, task_params, max_retries, job_name)
+    success, result, error = await execute_single_task(task_type, task_params, max_retries, job_name)
 
     completed_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     duration = (
         datetime.strptime(completed_at, "%Y-%m-%d %H:%M:%S") - datetime.strptime(started_at, "%Y-%m-%d %H:%M:%S")
     ).total_seconds()
 
-    db_methods.update_job_execution(
+    await db_methods.update_job_execution(
         job_id,
         execution_id=execution_id,
         status="success" if success else "failed",
@@ -226,9 +226,50 @@ def execute_task_job(job_id: int, job_name: str, task_type: str, task_params: st
     return True
 
 
-def run_scheduler(poll_interval: int = 60):
+async def run_job(job) -> None:
+    """Execute a single job (task or flow). Exceptions are logged, not propagated."""
+    (
+        job_id,
+        job_name,
+        task_category,
+        task_type,
+        task_params,
+        flow_id,
+        cron_expr,
+        max_retries,
+        _,
+        last_run_at,
+    ) = job
+
+    try:
+        last_run = parse_last_run_at(last_run_at, job_name)
+
+        if not should_run_now(cron_expr, last_run):
+            return
+
+        now = datetime.now(timezone.utc)
+        now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+        next_run = get_next_run(cron_expr, now)
+        next_run_str = next_run.strftime("%Y-%m-%d %H:%M:%S")
+
+        if task_category == "Flow":
+            job_status = await execute_flow(job_id, job_name, flow_id, max_retries)
+        else:
+            job_status = await execute_task_job(job_id, job_name, task_type, task_params, max_retries)
+
+        if job_status:
+            await db_methods.update_job_run_times(job_id, now_str, next_run_str)
+    except Exception as e:
+        logger.exception("Error executing job '%s': %s", job_name, e)
+
+
+async def run_scheduler(poll_interval: int = 60):
     """
-    Main scheduler loop.
+    Main async scheduler loop.
+
+    Due jobs are dispatched concurrently via asyncio.gather so that a job
+    waiting on network I/O or sleeping during retry backoff does not block
+    other jobs from making progress.
 
     Args:
         poll_interval: Seconds between checking for jobs to run
@@ -246,54 +287,25 @@ def run_scheduler(poll_interval: int = 60):
     while not _shutdown_requested:
         logger.info("Polling for jobs to run...")
         try:
-            jobs = db_methods.get_enabled_jobs()
+            jobs = await db_methods.get_enabled_jobs()
             logger.info("Found %d enabled jobs", len(jobs))
 
-            for job in jobs:
-                if _shutdown_requested:
-                    break
-
-                (
-                    job_id,
-                    job_name,
-                    task_category,
-                    task_type,
-                    task_params,
-                    flow_id,
-                    cron_expr,
-                    max_retries,
-                    _,
-                    last_run_at,
-                ) = job
-                last_run = parse_last_run_at(last_run_at, job_name)
-
-                # Check if job should run
-                if should_run_now(cron_expr, last_run):
-                    now = datetime.now(timezone.utc)
-                    now_str = now.strftime("%Y-%m-%d %H:%M:%S")
-                    next_run = get_next_run(cron_expr, now)
-                    next_run_str = next_run.strftime("%Y-%m-%d %H:%M:%S")
-
-                    if task_category == "Flow":
-                        job_status = execute_flow(job_id, job_name, flow_id, max_retries)
-                    else:
-                        job_status = execute_task_job(job_id, job_name, task_type, task_params, max_retries)
-
-                    if job_status:
-                        db_methods.update_job_run_times(job_id, now_str, next_run_str)
+            # Run all due jobs concurrently
+            if jobs and not _shutdown_requested:
+                await asyncio.gather(*(run_job(job) for job in jobs))
 
         except Exception as e:
             logger.exception("Error in scheduler loop: %s", e)
 
-        # Wait before next poll
+        # Wait before next poll, checking for shutdown every second
         for _ in range(poll_interval):
             if _shutdown_requested:
                 break
-            time.sleep(1)
+            await asyncio.sleep(1)
 
     logger.info("Scheduler shut down gracefully")
 
 
 if __name__ == "__main__":
     poll_interval = int(sys.argv[1]) if len(sys.argv) > 1 else 60
-    run_scheduler(poll_interval)
+    asyncio.run(run_scheduler(poll_interval))

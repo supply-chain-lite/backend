@@ -1,9 +1,12 @@
 """
-Sample scheduled task implementations.
+Scheduled task implementations.
 
-Each task function receives task_params (dict) and returns a result dict.
+Each task function is an async coroutine that receives task_params (dict)
+and returns a result dict. Blocking I/O (e.g. DB calls via apsw) should
+be wrapped with ``asyncio.to_thread`` so the event loop stays responsive.
 """
 
+import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 
@@ -13,7 +16,7 @@ from app.logging_config import get_logger
 logger = get_logger(__name__)
 
 
-def cleanup_logs(params: dict) -> dict:
+async def cleanup_logs(params: dict) -> dict:
     """
     Remove old task logs from S_TaskLogs table.
 
@@ -28,15 +31,18 @@ def cleanup_logs(params: dict) -> dict:
 
     logger.info("Cleaning up logs older than %s", cutoff_date)
 
-    with master_connection() as cursor:
-        cursor.execute("DELETE FROM S_TaskLogs WHERE LastUpdated < ?", (cutoff_date,))
-        deleted_count = cursor.rowcount()
+    def _query():
+        with master_connection() as cursor:
+            cursor.execute("DELETE FROM S_TaskLogs WHERE LastUpdated < ?", (cutoff_date,))
+            return cursor.rowcount()
+
+    deleted_count = await asyncio.to_thread(_query)
 
     logger.info("Deleted %d old log entries", deleted_count)
     return {"deleted_count": deleted_count, "cutoff_date": cutoff_date}
 
 
-def db_stats_report(params: dict) -> dict:
+async def db_stats_report(params: dict) -> dict:
     """
     Generate database statistics for specified tables.
 
@@ -47,19 +53,23 @@ def db_stats_report(params: dict) -> dict:
         {"stats": {table_name: row_count}, "generated_at": str}
     """
     include_tables = params.get("include_tables", [])
-    stats = {}
 
     logger.info("Generating database stats for tables: %s", include_tables)
 
-    with master_connection() as cursor:
-        for table in include_tables:
-            try:
-                cursor.execute(f"SELECT COUNT(*) FROM [{table}]")
-                result = cursor.fetchall()
-                stats[table] = result[0][0] if result else 0
-            except Exception as e:
-                logger.warning("Failed to get stats for table %s: %s", table, e)
-                stats[table] = f"error: {str(e)}"
+    def _query():
+        stats = {}
+        with master_connection() as cursor:
+            for table in include_tables:
+                try:
+                    cursor.execute(f"SELECT COUNT(*) FROM [{table}]")
+                    result = cursor.fetchall()
+                    stats[table] = result[0][0] if result else 0
+                except Exception as e:
+                    logger.warning("Failed to get stats for table %s: %s", table, e)
+                    stats[table] = f"error: {str(e)}"
+        return stats
+
+    stats = await asyncio.to_thread(_query)
 
     result = {
         "stats": stats,
@@ -70,14 +80,14 @@ def db_stats_report(params: dict) -> dict:
     return result
 
 
-# Registry mapping task types to their handler functions
+# Registry mapping task types to their async handler functions
 TASK_REGISTRY: dict[str, callable] = {
     "cleanup_logs": cleanup_logs,
     "db_stats_report": db_stats_report,
 }
 
 
-def run_task(task_type: str, params: dict) -> dict:
+async def run_task(task_type: str, params: dict) -> dict:
     """
     Execute a task by its type.
 
@@ -95,4 +105,4 @@ def run_task(task_type: str, params: dict) -> dict:
         raise ValueError(f"Unknown task type: {task_type}")
 
     handler = TASK_REGISTRY[task_type]
-    return handler(params)
+    return await handler(params)

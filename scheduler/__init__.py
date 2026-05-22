@@ -1,12 +1,12 @@
 """
-Scheduler package for running scheduled background jobs.
+Async scheduler package for running scheduled background jobs.
 
 Run separately from the main application:
     python -m scheduler.runner [poll_interval_seconds]
 
 Supports two job types:
-- task: Individual task execution
-- flow: Sequential execution of multiple tasks
+- task: Individual task execution (runs concurrently with other jobs)
+- flow: Sequential execution of multiple tasks within a single job
 """
 
 from scheduler.database import init_scheduler_db
