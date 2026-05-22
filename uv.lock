@@ -118,6 +118,7 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "python-multipart" },
     { name = "redis" },
+    { name = "urllib3" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "xlsxwriter" },
 ]
@@ -143,6 +144,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "python-multipart", specifier = "==0.0.27" },
     { name = "redis", specifier = ">=7.4.0" },
+    { name = "urllib3", specifier = ">=2.5.0,<3" },
     { name = "uvicorn", extras = ["standard"] },
     { name = "xlsxwriter", specifier = ">=3.2.9" },
 ]

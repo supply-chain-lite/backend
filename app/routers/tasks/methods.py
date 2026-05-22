@@ -94,7 +94,7 @@ def run_model_task(cursor, user_email: str, model_name: str, project_name: str, 
         try:
             redis_instance.ping()
         except redis.exceptions.RedisError as e:
-            raise Exception(f"Could not connect to Redis at {this_broker_url}. Error: {e}")
+            raise HTTPException(status_code=500, detail=f"Could not connect to Redis at {this_broker_url}. Error: {e}")
 
     file_url = _copy_db_and_upload_to_broker(model_path)
 
