@@ -185,9 +185,12 @@ def get_running_tasks(cursor, user_email: str):
     task_list = []
     for task_id, task_name, model_name, project_name, task_uid, task_url, task_status in running_tasks:
         try:
-            _update_task_status(cursor, task_id, task_uid, task_url, task_status)
+            current_status = _update_task_status(cursor, task_id, task_uid, task_url, task_status)
         except Exception as e:
             logger.error(f"Error updating status for task {task_id}: {e}")
+            current_status = task_status  # Fall back to existing status if update fails
+        if current_status not in ("RUNNING", "STARTED", "PENDING"):
+            continue  # Only include tasks that are still running
         task_list.append(
             {
                 "task_id": task_id,
