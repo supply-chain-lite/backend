@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.connection import master_connection
 from app.logging_config import get_logger
+from app.routers.tasks.methods import update_task_status
 
 logger = get_logger(__name__)
 
@@ -80,10 +81,20 @@ async def db_stats_report(params: dict) -> dict:
     return result
 
 
+async def celery_task_update(params: dict) -> dict:
+    def _update():
+        with master_connection() as cursor:
+            update_task_status(cursor)
+
+    await asyncio.to_thread(_update)
+    return {"status": "completed"}
+
+
 # Registry mapping task types to their async handler functions
 TASK_REGISTRY: dict[str, callable] = {
     "cleanup_logs": cleanup_logs,
     "db_stats_report": db_stats_report,
+    "celery_task_update": celery_task_update,
 }
 
 

@@ -1,4 +1,3 @@
-import asyncio
 import os
 import shutil
 from collections.abc import AsyncGenerator
@@ -19,7 +18,6 @@ from app.routers.models.router import router as models_router
 from app.routers.projects.router import router as projects_router
 from app.routers.sql_client.router import router as sql_client_router
 from app.routers.tables.router import router as tables_router
-from app.routers.tasks.methods import recurring_task_update
 from app.routers.tasks.router import router as tasks_router
 
 logger = get_logger(__name__)
@@ -47,9 +45,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         os.makedirs(folder_path, exist_ok=True)
     logger.info("Database initialization completed")
     try:
-        task = asyncio.create_task(recurring_task_update())
         yield
-        task.cancel()
     finally:
         logger.info("Shutting down Supply Chain Lite API")
 
