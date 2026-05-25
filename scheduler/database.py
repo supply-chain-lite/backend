@@ -33,7 +33,11 @@ create_scheduled_jobs_table = """CREATE TABLE IF NOT EXISTS S_ScheduledJobs (
     CreatedAt TEXT NOT NULL DEFAULT (datetime('now')),
     UpdatedAt TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (FlowId) REFERENCES S_Flows(FlowId),
-    CHECK (TaskCategory IN ('Task', 'Flow'))
+    CHECK (TaskCategory IN ('Task', 'Flow')),
+    CHECK (
+        (TaskCategory = 'Task' AND TaskType IS NOT NULL AND FlowId IS NULL) OR
+        (TaskCategory = 'Flow' AND FlowId IS NOT NULL AND TaskType IS NULL)
+    )
 )"""
 
 # Flows table: defines reusable sequences of tasks
@@ -145,6 +149,24 @@ def init_scheduler_db() -> None:
                 2,
                 300,
                 "weekly_db_stats",
+            ),
+        )
+
+        # Job: Celery task update (runs every 20 seconds)
+        cursor.execute(
+            insert_scheduled_job,
+            (
+                "celery_task_update",
+                "Celery task update job running every 20 seconds",
+                "Task",
+                "celery_task_update",
+                "{}",
+                None,
+                "* * * * *",
+                1,
+                3,
+                300,
+                "celery_task_update",
             ),
         )
 

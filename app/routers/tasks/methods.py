@@ -72,6 +72,7 @@ def run_model_task(cursor, user_email: str, model_name: str, project_name: str, 
 
     user_model_run_count = cursor.execute(run_queries.get_user_model_run_count, (user_email,)).fetchone()[0]
     user_run_count = cursor.execute(run_queries.get_user_run_count, (user_email,)).fetchone()[0]
+    user_run_count = 5
     if user_model_run_count >= user_run_count:
         raise HTTPException(
             status_code=400,
@@ -183,15 +184,16 @@ def _copy_db_and_upload_to_broker(model_path: str):
 
 def get_running_tasks(cursor, user_email: str):
     running_tasks = cursor.execute(run_queries.get_running_tasks, (user_email,)).fetchall()
-    return [
-        {
+    task_list = []
+    for task_id, task_name, model_name, project_name, task_uid, task_url, task_status in running_tasks:
+        _update_task_status(cursor, task_id, task_uid, task_url, task_status)
+        task_list.append({
             "task_id": task_id,
             "task_name": task_name,
             "model_name": model_name,
             "project_name": project_name,
-        }
-        for task_id, task_name, model_name, project_name in running_tasks
-    ]
+        })
+    return task_list
 
 
 def get_task_status(cursor, task_id: int, user_email: str):
@@ -201,40 +203,29 @@ def get_task_status(cursor, task_id: int, user_email: str):
     return status_row[0]
 
 
-async def recurring_task_update():
-    while True:
-        try:
-            logger.info("Checking for task status updates...")
-            with master_connection() as cursor:
-                update_task_status(cursor)
-        except Exception as e:
-            logger.error(f"Error updating task status: {e}")
-        await asyncio.sleep(15)  # Wait for 15 seconds before checking again
-
-
 def update_task_status(cursor):
     all_running_tasks = cursor.execute(run_queries.get_all_running_tasks).fetchall()
     for task_id, task_uid, task_url, task_status in all_running_tasks:
         try:
-            celery_app = Celery("tasks", broker=task_url, backend=task_url)
-            result = celery_app.AsyncResult(task_uid)
-            new_status = result.state
-            if new_status == task_status:
-                continue
-            _update_task_status(cursor, task_id, new_status, task_status)
+            _update_task_status(cursor, task_id, task_uid, task_url, task_status)
         except Exception as e:
             logger.error(f"Error updating status for task {task_id}: {e}")
 
 
-def _update_task_status(cursor, task_id: int, new_status: str, old_status: str = None):
+def _update_task_status(cursor, task_id: int, task_uid: str, task_url: str, task_status: str):
+    celery_app = Celery("tasks", broker=task_url, backend=task_url)
+    result = celery_app.AsyncResult(task_uid)
+    new_status = result.state
+    if new_status == task_status:
+        return new_status  # No status change, no update needed
     cursor.intermediate_commit()
-    cursor.execute(run_queries.update_task_status, (new_status, task_id, old_status))
+    cursor.execute(run_queries.update_task_status, (new_status, task_id, task_status))
     result = cursor.fetchall()
     if not result:
         raise HTTPException(status_code=404, detail="Task not found for status update")
     task_name, model_name, project_name, submitted_by, execution_time = result[0]
     if new_status in ("RUNNING", "STARTED", "PENDING"):
-        return  # Don't send notification for running status, only for completion or failure
+        return new_status  # Don't send notification for running status, only for completion or failure
     notification_params = {
         "model_name": model_name,
         "project_name": project_name,
@@ -271,3 +262,4 @@ def _update_task_status(cursor, task_id: int, new_status: str, old_status: str =
     )
     cursor.execute(run_queries.insert_task_notifications, insert_task_tuple)
     cursor.intermediate_commit()
+    return new_status

@@ -1,7 +1,7 @@
 import asyncio
 
 from app.connection import master_connection
-from scheduler import queries as db_queries
+from . import queries as db_queries
 
 
 async def get_enabled_jobs() -> list:

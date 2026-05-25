@@ -27,7 +27,7 @@ update_task_params = "UPDATE S_TaskMaster  SET TaskParameters = ? WHERE TaskId =
 get_task_params = "SELECT TaskName, TaskDisplayName, TaskParameters FROM S_TaskMaster WHERE TaskId = ?"
 
 get_running_tasks = """select S_TaskRecords.taskid, S_TaskRecords.taskname, S_UserModels.modelname,
-                        S_Projects.projectname
+                        S_Projects.projectname, S_TaskRecords.TaskUID, S_TaskRecords.TaskURL, S_TaskRecords.Status
                                 from S_UserModels, S_TaskRecords, S_Projects
                                 WHERE S_UserModels.ModelId = S_TaskRecords.ModelId
                                 AND   S_UserModels.ProjectId = S_Projects.ProjectId
