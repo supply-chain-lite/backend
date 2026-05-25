@@ -64,3 +64,24 @@ update_task_status = """UPDATE S_TaskRecords SET Status = ?,
                         AND Status = ?
                         RETURNING TaskName, ModelName, ProjectName, SubmittedBy,
                         (unixepoch(datetime('now')) - unixepoch(SubmittedAt))/60 as ExecutionMinutes"""
+
+get_task_file = """select Status,
+                            ifnull(json_extract(ifnull(S_TaskRecords.JsonData, '{}'), '$.file_url'), '') as output_model_path,
+                            S_Models.ModelId,
+                            S_Models.ModelPath
+                            from S_TaskRecords, S_Models
+                            WHERE S_TaskRecords.ModelId = S_Models.ModelId
+                            AND   S_TaskRecords.TaskId = ?;"""
+
+
+get_task_uid = """select TaskUID from S_TaskRecords WHERE TaskId = ?;"""
+
+
+insert_task_log = """INSERT INTO S_TaskLogs (LogText, TaskId) VALUES (?, ?)"""
+
+update_task_log = """UPDATE S_TaskLogs SET LogText = ?, LastUpdated = datetime('now') WHERE TaskId = ?
+                      RETURNING 1;"""
+
+update_model_lock = """UPDATE S_Models
+                        SET JSONData = json_set(COALESCE(JSONData, '{}'), '$.IsLocked', ?)
+                        WHERE ModelId = ?;"""

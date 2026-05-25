@@ -43,6 +43,7 @@ BACKUP_FOLDER = ROOT_DATA_FOLDER / "backup"
 LOG_FOLDER = ROOT_DATA_FOLDER / "logs"
 DATA_FOLDER = ROOT_DATA_FOLDER / "models"
 MODELS_FOLDER = ROOT_DATA_FOLDER / "task_models"
+CELERY_LOG_FOLDER = ROOT_DATA_FOLDER / "task_logs"
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
 if not os.path.exists(DATA_FOLDER):
@@ -62,3 +63,6 @@ if not os.path.exists(LOG_FOLDER):
 
 if not os.path.exists(MODELS_FOLDER):
     os.makedirs(MODELS_FOLDER)
+
+if not os.path.exists(CELERY_LOG_FOLDER):
+    os.makedirs(CELERY_LOG_FOLDER)
