@@ -81,9 +81,13 @@ async def db_stats_report(params: dict) -> dict:
     return result
 
 
-def celery_task_update(params: dict) -> dict:
-    with master_connection() as cursor:
-        update_task_status(cursor)
+async def celery_task_update(params: dict) -> dict:
+    def _update():
+        with master_connection() as cursor:
+            update_task_status(cursor)
+
+    await asyncio.to_thread(_update)
+    return {"status": "completed"}
 
 
 # Registry mapping task types to their async handler functions

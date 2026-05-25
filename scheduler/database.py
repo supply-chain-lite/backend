@@ -152,12 +152,12 @@ def init_scheduler_db() -> None:
             ),
         )
 
-        # Job: Celery task update (runs every 20 seconds)
+        # Job: Celery task update (runs every minute)
         cursor.execute(
             insert_scheduled_job,
             (
                 "celery_task_update",
-                "Celery task update job running every 20 seconds",
+                "Celery task update job running every minute",
                 "Task",
                 "celery_task_update",
                 "{}",

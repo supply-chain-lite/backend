@@ -1,4 +1,3 @@
-import asyncio
 import json
 import os
 import shutil
@@ -8,7 +7,6 @@ import apsw
 import boto3
 import redis
 from botocore.exceptions import BotoCoreError, ClientError
-from celery import Celery
 from fastapi import HTTPException
 
 from app.config import (
@@ -21,10 +19,11 @@ from app.config import (
     SETUP_S3,
     TEMP_FOLDER,
 )
-from app.connection import master_connection, sql_connection
+from app.connection import sql_connection
 from app.logging_config import get_logger
 from app.routers.models.methods import get_model_id_and_path
 from app.routers.models.queries import get_access_level
+from celery import Celery
 
 from . import queries as run_queries
 
@@ -72,7 +71,6 @@ def run_model_task(cursor, user_email: str, model_name: str, project_name: str, 
 
     user_model_run_count = cursor.execute(run_queries.get_user_model_run_count, (user_email,)).fetchone()[0]
     user_run_count = cursor.execute(run_queries.get_user_run_count, (user_email,)).fetchone()[0]
-    user_run_count = 5
     if user_model_run_count >= user_run_count:
         raise HTTPException(
             status_code=400,
@@ -186,13 +184,18 @@ def get_running_tasks(cursor, user_email: str):
     running_tasks = cursor.execute(run_queries.get_running_tasks, (user_email,)).fetchall()
     task_list = []
     for task_id, task_name, model_name, project_name, task_uid, task_url, task_status in running_tasks:
-        _update_task_status(cursor, task_id, task_uid, task_url, task_status)
-        task_list.append({
-            "task_id": task_id,
-            "task_name": task_name,
-            "model_name": model_name,
-            "project_name": project_name,
-        })
+        try:
+            _update_task_status(cursor, task_id, task_uid, task_url, task_status)
+        except Exception as e:
+            logger.error(f"Error updating status for task {task_id}: {e}")
+        task_list.append(
+            {
+                "task_id": task_id,
+                "task_name": task_name,
+                "model_name": model_name,
+                "project_name": project_name,
+            }
+        )
     return task_list
 
 
