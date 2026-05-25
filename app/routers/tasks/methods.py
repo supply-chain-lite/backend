@@ -3,16 +3,17 @@ import os
 import shutil
 import tempfile
 import time
+from contextlib import nullcontext
 
 import apsw
 import boto3
 import redis
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import BackgroundTasks, HTTPException
-from contextlib import nullcontext
 
 from app.config import (
     BROKER_URL,
+    CELERY_LOG_FOLDER,
     MODELS_FOLDER,
     S3_ACCESS_KEY,
     S3_BUCKET_NAME,
@@ -20,9 +21,8 @@ from app.config import (
     S3_URL,
     SETUP_S3,
     TEMP_FOLDER,
-    CELERY_LOG_FOLDER,
 )
-from app.connection import sql_connection, master_connection
+from app.connection import master_connection, sql_connection
 from app.logging_config import get_logger
 from app.routers.models.methods import get_model_id_and_path
 from app.routers.models.queries import get_access_level
@@ -143,6 +143,7 @@ def run_model_task(cursor, user_email: str, model_name: str, project_name: str, 
         cursor.execute(run_queries.update_model_lock, (0, model_id))
         cursor.intermediate_commit()
         raise HTTPException(status_code=500, detail=f"Failed to insert task record: {str(e)}")
+
 
 def update_task_param_values(model_cursor, task_id: int, new_param_values: list):
     task_row = model_cursor.execute(run_queries.get_task_params, (task_id,)).fetchone()
@@ -293,6 +294,7 @@ def _update_task_status(cursor, task_id: int, task_uid: str, task_url: str, task
     cursor.intermediate_commit()
     return new_status
 
+
 def add_error_notification(cursor, task_id: int, task_status: str, error_message: str):
     new_status = "POST-EXECUTION ERROR"
     cursor.intermediate_commit()
@@ -324,6 +326,7 @@ def add_error_notification(cursor, task_id: int, task_status: str, error_message
     cursor.intermediate_commit()
     return new_status
 
+
 def try_background_task():
     logger.info("Starting background task")
     time.sleep(10)
@@ -334,27 +337,35 @@ def try_background_task():
 def update_task_output_and_logs(this_cursor, task_id: int):
     cm = master_connection() if this_cursor is None else nullcontext(this_cursor)
     with cm as cursor:
-        task_status, output_model_path, model_id, model_path = \
-            cursor.execute(run_queries.get_task_file, (task_id,)).fetchone()
+        model_id = None
+        try:
+            task_status, output_model_path, model_id, model_path = cursor.execute(
+                run_queries.get_task_file, (task_id,)
+            ).fetchone()
 
-        update_task_log(cursor, task_id)
-        # s3 is not implemented for task output yet, so we only handle local file output for now
-        if os.path.exists(output_model_path) and task_status in ("SUCCESS", "COMPLETED"):
-            backup_connection = apsw.Connection(output_model_path)
-            this_connection = apsw.Connection(model_path)
-            try:
-                with this_connection.backup("main", backup_connection, "main") as backup:
-                    backup.step()  # copy entire database in one step
-            except Exception as e:
-                logger.error(f"Failed to update model with task output: {str(e)}")
-                add_error_notification(cursor, task_id, task_status, f"Failed to update model with task output: {str(e)}")
-            finally:
-                backup_connection.close()
-                this_connection.close()
+            update_task_log(cursor, task_id)
+            # s3 is not implemented for task output yet, so we only handle local file output for now
+            if os.path.exists(output_model_path) and task_status in ("SUCCESS", "COMPLETED"):
+                backup_connection = apsw.Connection(output_model_path)
+                this_connection = apsw.Connection(model_path)
+                try:
+                    with this_connection.backup("main", backup_connection, "main") as backup:
+                        backup.step()  # copy entire database in one step
+                except Exception as e:
+                    logger.error(f"Failed to update model with task output: {str(e)}")
+                    add_error_notification(
+                        cursor, task_id, task_status, f"Failed to update model with task output: {str(e)}"
+                    )
+                finally:
+                    backup_connection.close()
+                    this_connection.close()
+                    cursor.execute(run_queries.update_model_lock, (0, model_id))
+            else:
                 cursor.execute(run_queries.update_model_lock, (0, model_id))
-        else:
-            cursor.execute(run_queries.update_model_lock, (0, model_id))
-
+        finally:
+            if model_id:
+                cursor.execute(run_queries.update_model_lock, (0, model_id))
+                cursor.intermediate_commit()
 
 
 def update_task_log(cursor, task_id):
@@ -364,7 +375,7 @@ def update_task_log(cursor, task_id):
         return
     task_uid = this_rows[0][0]
     log_file_path = os.path.join(CELERY_LOG_FOLDER, f"{task_uid}.log")
-    if os.path.exists(log_file_path):        
+    if os.path.exists(log_file_path):
         with open(log_file_path, "r") as log_file:
             logs = log_file.read()
     else:
