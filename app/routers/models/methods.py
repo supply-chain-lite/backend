@@ -171,7 +171,9 @@ def delete_model(cursor, user_email: str, model_name: str, project_name: str):
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    access_level = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()[0]
+    access_level, is_running = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()
+    if is_running:
+        raise HTTPException(status_code=400, detail="Cannot delete model while a task using it is running")
     if access_level != "owner":
         cursor.execute(model_queries.delete_user_model, (model_id, user_email))
         return 1
@@ -200,7 +202,9 @@ def create_model_backup(cursor, user_email: str, model_name: str, project_name: 
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    access_level = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()[0]
+    access_level, is_running = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()
+    if is_running:
+        raise HTTPException(status_code=400, detail="Cannot create backup while a task using the model is running")
 
     if access_level != "owner":
         raise HTTPException(status_code=403, detail="Only owner can create backup")
@@ -237,7 +241,7 @@ def get_model_backups(cursor, user_email: str, model_name: str, project_name: st
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    access_level = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()[0]
+    access_level, _ = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()
 
     if access_level != "owner":
         raise HTTPException(status_code=403, detail="Only owner can get backups")
@@ -252,7 +256,11 @@ def restore_model_from_backup(cursor, user_email: str, model_name: str, project_
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    access_level = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()[0]
+    access_level, is_running = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()
+    if is_running:
+        raise HTTPException(
+            status_code=400, detail="Cannot restore from backup while a task using the model is running"
+        )
 
     if access_level != "owner":
         raise HTTPException(status_code=403, detail="Only owner can restore from backup")
@@ -313,7 +321,7 @@ def share_model(
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    from_user_access_level = cursor.execute(model_queries.get_access_level, (model_id, from_user_email)).fetchone()[0]
+    from_user_access_level, _ = cursor.execute(model_queries.get_access_level, (model_id, from_user_email)).fetchone()
 
     if from_user_access_level != "owner":
         raise HTTPException(status_code=403, detail="Only owner can share the model")
@@ -403,6 +411,10 @@ def accept_model_share(
 
     if not old_model_id:
         raise HTTPException(status_code=404, detail="Model not found for sharing")
+
+    _, is_running = cursor.execute(model_queries.get_access_level, (old_model_id, from_user_email)).fetchone()
+    if is_running:
+        raise HTTPException(status_code=400, detail="Cannot accept a shared model while a task using it is running")
 
     if old_model_id != model_id:
         raise HTTPException(status_code=400, detail="Model ID mismatch")
@@ -511,10 +523,13 @@ def upload_model(
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    access_level = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()[0]
+    access_level, is_running = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()
 
     if access_level not in ["owner", "editor"]:
         raise HTTPException(status_code=403, detail="Only owner and editor can upload the model")
+
+    if is_running:
+        raise HTTPException(status_code=400, detail="Cannot upload model while a task using it is running")
 
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db", dir=TEMP_FOLDER)
     tmp.close()
@@ -700,10 +715,13 @@ def vacuum_model(cursor, user_email: str, model_name: str, project_name: str):
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    access_level = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()[0]
+    access_level, is_running = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()
 
     if access_level != "owner":
         raise HTTPException(status_code=403, detail="Only owner can vacuum the model")
+
+    if is_running:
+        raise HTTPException(status_code=400, detail="Cannot vacuum model while a task using it is running")
 
     connection = apsw.Connection(model_path)
     connection.execute("VACUUM")
@@ -780,10 +798,13 @@ def delete_file(cursor, user_email: str, model_name: str, project_name: str, fil
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    access_level = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()
+    access_level, is_running = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()
 
-    if access_level is None or access_level[0] in ("read", "reader", "readonly"):
+    if access_level in ("read", "reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
+
+    if is_running:
+        raise HTTPException(status_code=400, detail="Cannot delete file while a task using the model is running")
 
     with sql_connection(model_id, model_path) as model_cursor:
         rows = model_cursor.execute(model_queries.update_file_blob, (None, None, file_id)).fetchall()
@@ -795,11 +816,6 @@ def download_file(cursor, user_email: str, model_name: str, project_name: str, f
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
-
-    access_level = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()
-
-    if access_level is None:
-        raise HTTPException(status_code=403, detail="User does not have permission to access the model")
 
     with sql_connection(model_id, model_path) as model_cursor:
         row = model_cursor.execute(model_queries.get_file_blob_and_name, (file_id,)).fetchone()
@@ -834,10 +850,13 @@ def upload_file(
             detail=f"Model not found for model_name: {model_name}, project_name: {project_name}, user_email: {user_email}",
         )
 
-    access_level = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()
+    access_level, is_running = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()
 
-    if access_level is None or access_level[0] in ("read", "reader", "readonly"):
+    if access_level in ("read", "reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
+
+    if is_running:
+        raise HTTPException(status_code=400, detail="Cannot upload file while a task using the model is running")
 
     file_content = file.file.read()
 

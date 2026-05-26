@@ -12,8 +12,8 @@ def get_sql_objects(cursor, user_email: str, model_name: str, project_name: str)
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    access_level = cursor.execute(get_access_level_query, (model_id, user_email)).fetchone()
-    if access_level is None or access_level[0] not in ("admin", "owner"):
+    access_level, _ = cursor.execute(get_access_level_query, (model_id, user_email)).fetchone()
+    if access_level not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="User does not have permission to get SQL objects")
     with sql_connection(model_id, model_path) as model_cursor:
         tables = []
@@ -32,8 +32,8 @@ def get_object_ddl(cursor, user_email: str, model_name: str, project_name: str, 
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    access_level = cursor.execute(get_access_level_query, (model_id, user_email)).fetchone()
-    if access_level is None or access_level[0] not in ("admin", "owner"):
+    access_level, _ = cursor.execute(get_access_level_query, (model_id, user_email)).fetchone()
+    if access_level not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="User does not have permission to get object DDL")
     with sql_connection(model_id, model_path) as model_cursor:
         ddl_row = model_cursor.execute(sql_client_queries.get_object_ddl, (object_name,)).fetchone()
@@ -47,9 +47,15 @@ def execute_sql_query(cursor, user_email: str, model_name: str, project_name: st
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    access_level = cursor.execute(get_access_level_query, (model_id, user_email)).fetchone()
-    if access_level is None or access_level[0] not in ("admin", "owner"):
+    access_level, is_running = cursor.execute(get_access_level_query, (model_id, user_email)).fetchone()
+    if access_level not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="User does not have permission to execute SQL queries")
+
+    if is_running and query.strip().lower().startswith(("insert", "update", "delete", "create", "alter", "drop")):
+        raise HTTPException(
+            status_code=403, detail="Cannot execute modifying SQL query while a task using the model is running"
+        )
+
     with sql_connection(model_id, model_path) as model_cursor:
         desc = ()
         try:
@@ -58,8 +64,13 @@ def execute_sql_query(cursor, user_email: str, model_name: str, project_name: st
             raise HTTPException(status_code=400, detail=f"Error validating SQL query: {str(e)}")
         try:
             model_cursor.execute(query)
+            count_changes = model_cursor.rowcount()
+            if is_running and count_changes > 0:
+                raise HTTPException(
+                    status_code=400, detail="Cannot execute modifying query while a task using the model is running"
+                )
             if len(desc) == 0:
-                return {"type": "changes", "changes": model_cursor.rowcount(), "columns": None, "rows": None}
+                return {"type": "changes", "changes": count_changes, "columns": None, "rows": None}
             columns = [description[0] for description in desc]
             rows = model_cursor.fetchmany(5000)
             count_rows = len(rows)
@@ -78,8 +89,8 @@ def get_sql_history(cursor, user_email: str, model_name: str, project_name: str)
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    access_level = cursor.execute(get_access_level_query, (model_id, user_email)).fetchone()
-    if access_level is None or access_level[0] not in ("admin", "owner"):
+    access_level, _ = cursor.execute(get_access_level_query, (model_id, user_email)).fetchone()
+    if access_level not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="User does not have permission to get SQL history")
     history_rows = cursor.execute(sql_client_queries.get_sql_history, (model_id, user_email)).fetchall()
     history = []
@@ -95,8 +106,8 @@ def add_sql_history(
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    access_level = cursor.execute(get_access_level_query, (model_id, user_email)).fetchone()
-    if access_level is None or access_level[0] not in ("admin", "owner"):
+    access_level, _ = cursor.execute(get_access_level_query, (model_id, user_email)).fetchone()
+    if access_level not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="User does not have permission to add SQL history")
     cursor.execute(
         sql_client_queries.add_sql_history,
