@@ -125,8 +125,8 @@ def get_table_data(
 
     with sql_connection(model_id, model_path) as model_cursor:
         object_type = _validate_table_and_column_names(model_cursor, table_name, query_columns)
-        access_level = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
-        if access_level is None or access_level[0] in ("read", "reader", "readonly"):
+        access_level, is_running = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
+        if access_level in ("read", "reader", "readonly") or is_running:
             object_type = "read_only_object"
         select_columns = ["rowid", *column_names] if object_type == "table" else list(column_names or [])
         query, params = table_queries.get_table_query(
@@ -286,9 +286,14 @@ def set_columns_order(
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    access_level = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
-    if access_level is None or access_level[0] not in ("admin", "owner"):
+    access_level, is_running = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
+    if access_level not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
+
+    if is_running:
+        raise HTTPException(
+            status_code=403, detail="Cannot modify column order while a task using the model is running"
+        )
 
     with sql_connection(model_id, model_path) as model_cursor:
         _validate_table_and_column_names(model_cursor, table_name, column_names)
@@ -323,9 +328,12 @@ def add_new_column(
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    access_level = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
-    if access_level is None or access_level[0] not in ("admin", "owner"):
+    access_level, is_running = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
+    if access_level not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
+
+    if is_running:
+        raise HTTPException(status_code=403, detail="Cannot add column while a task using the model is running")
 
     if not SQLITE_IDENTIFIER_RE.fullmatch(column_name):
         raise HTTPException(status_code=400, detail="Invalid characters in column name")
@@ -379,9 +387,13 @@ def set_column_formatting(
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    access_level = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
-    if access_level is None or access_level[0] not in ("admin", "owner"):
+    access_level, is_running = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
+    if access_level not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
+    if is_running:
+        raise HTTPException(
+            status_code=403, detail="Cannot modify column formatting while a task using the model is running"
+        )
     with sql_connection(model_id, model_path) as model_cursor:
         _validate_table_and_column_names(model_cursor, table_name, [column_name])
         status = _set_column_formatting(model_cursor, table_name, column_name, column_type, column_formatting)
@@ -487,9 +499,11 @@ def update_row(
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
-    access_level = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
-    if access_level is None or access_level[0] in ("read", "reader", "readonly"):
+    access_level, is_running = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
+    if access_level in ("read", "reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
+    if is_running:
+        raise HTTPException(status_code=403, detail="Cannot modify the model while a task using the model is running")
     with sql_connection(model_id, model_path) as model_cursor:
         column_names = list(updates.keys())
         generated_columns = _get_generated_columns(model_cursor, table_name)
@@ -557,9 +571,11 @@ def update_rows(
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
-    access_level = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
-    if access_level is None or access_level[0] in ("read", "reader", "readonly"):
+    access_level, is_running = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
+    if access_level in ("read", "reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
+    if is_running:
+        raise HTTPException(status_code=403, detail="Cannot modify the model while a task using the model is running")
     with sql_connection(model_id, model_path) as model_cursor:
         generated_columns = _get_generated_columns(model_cursor, table_name)
         if column_name.lower() in generated_columns:
@@ -634,9 +650,11 @@ def delete_rows(
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
-    access_level = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
-    if access_level is None or access_level[0] in ("read", "reader", "readonly"):
+    access_level, is_running = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
+    if access_level in ("read", "reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
+    if is_running:
+        raise HTTPException(status_code=403, detail="Cannot modify the model while a task using the model is running")
     with sql_connection(model_id, model_path) as model_cursor:
         column_names = list(select_filters.keys())
         column_names.extend(text_filters.keys())
@@ -727,14 +745,16 @@ def add_row(
         fastapi.HTTPException: 404 if the model is not found.
         fastapi.HTTPException: 404 if the model, table, or any referenced column is not found, or if the target is a view and not updatable.
         fastapi.HTTPException: 403 if the user does not have permission to modify the model.
-        fastapi.HTTPException: 404 if the target is a view and therefore not updatable.
+        fastapi.HTTPException: 403 if a task using the model is currently running.
     """
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
-    access_level = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
-    if access_level is None or access_level[0] in ("read", "reader", "readonly"):
+    access_level, is_running = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
+    if access_level in ("read", "reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
+    if is_running:
+        raise HTTPException(status_code=403, detail="Cannot modify the model while a task using the model is running")
     with sql_connection(model_id, model_path) as model_cursor:
         column_names = list(values.keys())
         object_type = _validate_table_and_column_names(model_cursor, table_name, column_names)
@@ -940,9 +960,11 @@ def upload_excel(
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
-    access_level = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
-    if access_level is None or access_level[0] in ("read", "reader", "readonly"):
+    access_level, is_running = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
+    if access_level in ("read", "reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
+    if is_running:
+        raise HTTPException(status_code=403, detail="Cannot modify the model while a task using the model is running")
     with sql_connection(model_id, model_path) as model_cursor:
         workbook = CalamineWorkbook.from_object(file.file)
         response_status = {}

@@ -55,7 +55,11 @@ get_template_name = "SELECT TemplateName FROM S_Models WHERE ModelId = ?"
 
 rename_model = "UPDATE S_UserModels SET ModelName = ? WHERE ModelId = ? AND UserEmail = ?"
 
-get_access_level = "SELECT lower(AccessLevel) FROM S_UserModels WHERE ModelId = ? AND UserEmail = ?"
+get_access_level = """SELECT lower(S_UserModels.AccessLevel) as AccessLevel,
+                        ifnull(json_extract(ifnull(S_Models.JsonData, '{}'), '$.is_running'), 0) as IsRunning
+                        FROM S_UserModels, S_Models
+                        WHERE S_UserModels.ModelId = S_Models.ModelId
+                        AND  S_UserModels.ModelId = ? AND S_UserModels.UserEmail = ? """
 
 delete_user_model = """DELETE FROM S_UserModels WHERE ModelId = ?
                        AND UserEmail = ?

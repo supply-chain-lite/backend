@@ -2,13 +2,14 @@ from fastapi import HTTPException
 
 get_table_columns = "select name, type from pragma_table_xinfo(?) where UPPER(type) != 'BLOB' "
 
-get_column_order = (
-    "select ifnull(ColumnOrder, '[]') as ColumnOrder from S_TableGroup WHERE TableName = ? collate nocase"
-)
+get_column_order = """select ifnull(ColumnOrder, '[]') as ColumnOrder
+                    from S_TableGroup WHERE TableName = ? collate nocase"""
 
-get_access_level = (
-    "select ifnull(lower(AccessLevel), 'read') from S_UserModels WHERE ModelId = ? and UserEmail = ? collate nocase"
-)
+get_access_level = """SELECT lower(S_UserModels.AccessLevel) as AccessLevel,
+                        ifnull(json_extract(ifnull(S_Models.JsonData, '{}'), '$.is_running'), 0) as IsRunning
+                        FROM S_UserModels, S_Models
+                        WHERE S_UserModels.ModelId = S_Models.ModelId
+                        AND  S_UserModels.ModelId = ? AND S_UserModels.UserEmail = ? """
 
 update_column_order = "UPDATE S_TableGroup SET ColumnOrder = ? WHERE TableName = ? RETURNING rowid"
 
