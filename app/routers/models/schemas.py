@@ -91,6 +91,7 @@ class notificationBaseModel(BaseModel):
     model_name: str | None
     is_read: int
     is_accepted: int
+    task_id: int | None
 
 
 class getNotificationsResponse(BaseModel):

@@ -2,7 +2,6 @@ import json
 import os
 import shutil
 import tempfile
-import time
 from contextlib import nullcontext
 
 import apsw
@@ -262,6 +261,7 @@ def _update_task_status(cursor, task_id: int, task_uid: str, task_url: str, task
         "task_name": task_name,
         "run_status": new_status,
         "run_time_minutes": execution_time,
+        "task_id": task_id,
     }
     notification_type = "task_update"
     if new_status in ("SUCCESS", "COMPLETED"):
@@ -310,6 +310,7 @@ def add_error_notification(cursor, task_id: int, task_status: str, error_message
         "run_status": new_status,
         "run_time_minutes": execution_time,
         "error_message": error_message,
+        "task_id": task_id,
     }
     notification_type = "task_update"
     title = f"Task {task_name} encountered an error"
@@ -325,13 +326,6 @@ def add_error_notification(cursor, task_id: int, task_status: str, error_message
     cursor.execute(run_queries.insert_task_notifications, insert_task_tuple)
     cursor.intermediate_commit()
     return new_status
-
-
-def try_background_task():
-    logger.info("Starting background task")
-    time.sleep(10)
-    logger.info("Background task is about to complete")
-    logger.info("Background task completed")
 
 
 def update_task_output_and_logs(this_cursor, task_id: int):
@@ -380,6 +374,43 @@ def update_task_log(cursor, task_id):
             logs = log_file.read()
     else:
         logs = "No logs found for this task."
+    cursor.intermediate_commit()
     this_row = cursor.execute(run_queries.update_task_log, (logs, task_id)).fetchone()
     if not this_row:
         cursor.execute(run_queries.insert_task_log, (logs, task_id))
+    cursor.intermediate_commit()
+    return logs
+
+
+def get_task_details(cursor, task_id: int, user_email: str, model_name: str, project_name: str):
+    model_id, _ = get_model_id_and_path(cursor, model_name, project_name, user_email)
+    if not model_id:
+        raise HTTPException(status_code=404, detail="Model not found")
+    task_details = cursor.execute(run_queries.get_task_details, (task_id, model_id)).fetchone()
+    if not task_details:
+        raise HTTPException(status_code=404, detail="Task not found")
+    (
+        task_name,
+        status,
+        submitted_by,
+        submission_time,
+        end_time,
+        task_uid,
+        task_url,
+    ) = task_details
+    current_status = status
+    if status in ("RUNNING", "STARTED", "PENDING"):
+        current_status = _update_task_status(cursor, task_id, task_uid, task_url, status)
+        log = update_task_log(cursor, task_id)
+    else:
+        log = cursor.execute(run_queries.get_task_log, (task_id,)).fetchone()
+        log = log[0] if log else "No logs found for this task."
+
+    return {
+        "task_name": task_name,
+        "submitted_by": submitted_by,
+        "start_time": submission_time,
+        "end_time": end_time,
+        "status": current_status,
+        "log": log,
+    }

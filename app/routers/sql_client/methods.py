@@ -64,12 +64,12 @@ def execute_sql_query(cursor, user_email: str, model_name: str, project_name: st
             raise HTTPException(status_code=400, detail=f"Error validating SQL query: {str(e)}")
         try:
             model_cursor.execute(query)
-            count_changes = model_cursor.rowcount()
-            if is_running and count_changes > 0:
-                raise HTTPException(
-                    status_code=400, detail="Cannot execute modifying query while a task using the model is running"
-                )
             if len(desc) == 0:
+                count_changes = model_cursor.rowcount()
+                if is_running and count_changes > 0:
+                    raise HTTPException(
+                        status_code=400, detail="Cannot execute modifying query while a task using the model is running"
+                    )
                 return {"type": "changes", "changes": count_changes, "columns": None, "rows": None}
             columns = [description[0] for description in desc]
             rows = model_cursor.fetchmany(5000)

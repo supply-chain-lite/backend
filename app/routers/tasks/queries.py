@@ -85,3 +85,13 @@ update_task_log = """UPDATE S_TaskLogs SET LogText = ?, LastUpdated = datetime('
 update_model_lock = """UPDATE S_Models
                         SET JSONData = json_set(COALESCE(JSONData, '{}'), '$.IsLocked', ?)
                         WHERE ModelId = ?;"""
+
+
+get_task_details = """select S_TaskRecords.TaskName, S_TaskRecords.Status, S_TaskRecords.SubmittedBy,
+                        S_TaskRecords.SubmittedAt, S_TaskRecords.LastUpdated,
+                        S_TaskRecords.TaskUID, S_TaskRecords.TaskURL
+                        from S_TaskRecords
+                        where S_TaskRecords.taskid = ?
+                        and S_TaskRecords.modelid = ?"""
+
+get_task_log = """SELECT LogText FROM S_TaskLogs WHERE TaskId = ?;"""

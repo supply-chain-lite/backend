@@ -52,3 +52,18 @@ class runningTasksResponse(BaseModel):
 
 class taskStatusRequest(BaseModel):
     task_id: int
+
+
+class taskDetailsRequest(TaskBaseModel):
+    task_id: int
+    model_name: str
+    project_name: str
+
+
+class taskDetailsResponse(BaseModel):
+    task_name: str
+    submitted_by: str
+    status: str
+    start_time: str
+    end_time: str
+    log: str

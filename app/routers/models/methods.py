@@ -467,6 +467,7 @@ def get_user_notifications(cursor, user_email: str):
             {
                 "notification_id": notification_id,
                 "from_user_email": from_user_email,
+                "task_id": params_dict.get("task_id"),
                 "title": title,
                 "message": message,
                 "notification_type": notification_type,
