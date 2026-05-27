@@ -65,5 +65,5 @@ class taskDetailsResponse(BaseModel):
     submitted_by: str
     status: str
     start_time: str
-    end_time: str
+    end_time: str | None
     log: str
