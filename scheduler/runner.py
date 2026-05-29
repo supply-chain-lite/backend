@@ -42,31 +42,40 @@ def get_next_run(cron_expr: str, base_time: datetime | None = None) -> datetime:
     return cron.get_next(datetime)
 
 
-def should_run_now(cron_expr: str, last_run: datetime | None, tolerance_seconds: int = 60) -> bool:
+def is_job_due(
+    next_run_at: datetime | None, cron_expr: str, last_run: datetime | None, tolerance_seconds: int = 60
+) -> bool:
     """
-    Determine if a job should run now based on its cron expression.
+    Determine if a job should run now based on its stored NextRunAt time.
+
+    Uses the NextRunAt value from the database as the primary trigger so that
+    jobs whose scheduled time passed while the scheduler was offline are
+    executed immediately on restart. Falls back to the cron expression only
+    when NextRunAt is not set (e.g. a brand-new job).
 
     Args:
-        cron_expr: Cron expression string
+        next_run_at: Stored next-run time from the database (None if not set)
+        cron_expr: Cron expression string (used as fallback)
         last_run: Last execution time (None if never run)
-        tolerance_seconds: Window of time to consider "now"
+        tolerance_seconds: Window of time to consider "now" (fallback only)
 
     Returns:
         True if the job should run
     """
     now = datetime.now(timezone.utc)
 
+    if next_run_at is not None:
+        # Primary path: run if we've reached or passed the stored next-run time
+        return now >= next_run_at
+
+    # Fallback for jobs that don't have a NextRunAt yet
     if last_run is None:
-        # Never run before, check if we're within the next scheduled window
         cron = croniter(cron_expr, now)
         prev_scheduled = cron.get_prev(datetime)
-        # Run if scheduled time was within the last minute
         return (now - prev_scheduled).total_seconds() <= tolerance_seconds
 
     cron = croniter(cron_expr, last_run)
     next_scheduled = cron.get_next(datetime)
-
-    # Check if we've passed the next scheduled time
     return now >= next_scheduled
 
 
@@ -239,12 +248,14 @@ async def run_job(job) -> None:
         max_retries,
         _,
         last_run_at,
+        next_run_at_str,
     ) = job
 
     try:
         last_run = parse_last_run_at(last_run_at, job_name)
+        next_run_at = parse_last_run_at(next_run_at_str, job_name)  # same format
 
-        if not should_run_now(cron_expr, last_run):
+        if not is_job_due(next_run_at, cron_expr, last_run):
             return
 
         now = datetime.now(timezone.utc)

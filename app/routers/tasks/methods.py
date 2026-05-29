@@ -13,7 +13,7 @@ from fastapi import BackgroundTasks, HTTPException
 from app.config import (
     BROKER_URL,
     CELERY_LOG_FOLDER,
-    MODELS_FOLDER,
+    CELERY_MODELS_FOLDER,
     S3_ACCESS_KEY,
     S3_BUCKET_NAME,
     S3_SECRET_KEY,
@@ -195,9 +195,9 @@ def _copy_db_and_upload_to_broker(model_path: str):
         finally:
             os.remove(tmp_path)
     else:
-        shutil.copy(tmp_path, MODELS_FOLDER)
+        shutil.copy(tmp_path, CELERY_MODELS_FOLDER)
         os.remove(tmp_path)
-        return os.path.join(MODELS_FOLDER, os.path.basename(tmp_path))
+        return os.path.join(CELERY_MODELS_FOLDER, os.path.basename(tmp_path))
 
 
 def get_running_tasks(cursor, user_email: str, background_tasks: BackgroundTasks):

@@ -7,14 +7,44 @@ be wrapped with ``asyncio.to_thread`` so the event loop stays responsive.
 """
 
 import asyncio
+import importlib.util
 import json
+import sys
+import types
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from app.connection import master_connection
 from app.logging_config import get_logger
 from app.routers.tasks.methods import update_task_status
 
 logger = get_logger(__name__)
+
+
+def _load_cleanup_tasks_module():
+    cleanup_dir = Path(__file__).with_name("tasks")
+    package_name = "scheduler_task_handlers"
+    module_name = f"{package_name}.clean_up"
+
+    if package_name not in sys.modules:
+        package = types.ModuleType(package_name)
+        package.__path__ = [str(cleanup_dir)]
+        sys.modules[package_name] = package
+
+    if module_name in sys.modules:
+        return sys.modules[module_name]
+
+    spec = importlib.util.spec_from_file_location(module_name, cleanup_dir / "clean_up.py")
+    if spec is None or spec.loader is None:
+        raise ImportError("Unable to load scheduler cleanup task module")
+
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+cleanup_tasks = _load_cleanup_tasks_module()
 
 
 async def cleanup_logs(params: dict) -> dict:
@@ -93,6 +123,8 @@ async def celery_task_update(params: dict) -> dict:
 # Registry mapping task types to their async handler functions
 TASK_REGISTRY: dict[str, callable] = {
     "cleanup_logs": cleanup_logs,
+    "cleanup_temp_files": cleanup_tasks.main,
+    "vacuum_user_models": cleanup_tasks.vacuum_user_models,
     "db_stats_report": db_stats_report,
     "celery_task_update": celery_task_update,
 }

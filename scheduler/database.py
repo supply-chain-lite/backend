@@ -2,10 +2,10 @@
 Scheduler database schema definitions.
 
 This module defines the tables for the scheduler system:
-- S_ScheduledJobs: Job definitions with cron expressions and task categories
-- S_JobExecutions: Execution history and logs
-- S_Flows: Flow definitions (sequences of tasks)
-- S_FlowSteps: Individual steps within a flow
+- SJ_ScheduledJobs: Job definitions with cron expressions and task categories
+- SJ_JobExecutions: Execution history and logs
+- SJ_Flows: Flow definitions (sequences of tasks)
+- SJ_FlowSteps: Individual steps within a flow
 """
 
 from app.connection import master_connection
@@ -14,7 +14,7 @@ from app.logging_config import get_logger
 logger = get_logger(__name__)
 
 # Task categories: 'task' for individual tasks, 'flow' for task sequences
-create_scheduled_jobs_table = """CREATE TABLE IF NOT EXISTS S_ScheduledJobs (
+create_scheduled_jobs_table = """CREATE TABLE IF NOT EXISTS SJ_ScheduledJobs (
     JobId INTEGER PRIMARY KEY AUTOINCREMENT,
     JobName TEXT NOT NULL UNIQUE,
     JobDescription TEXT,
@@ -32,7 +32,7 @@ create_scheduled_jobs_table = """CREATE TABLE IF NOT EXISTS S_ScheduledJobs (
     JSONData TEXT,
     CreatedAt TEXT NOT NULL DEFAULT (datetime('now')),
     UpdatedAt TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (FlowId) REFERENCES S_Flows(FlowId),
+    FOREIGN KEY (FlowId) REFERENCES SJ_Flows(FlowId),
     CHECK (TaskCategory IN ('Task', 'Flow')),
     CHECK (
         (TaskCategory = 'Task' AND TaskType IS NOT NULL AND FlowId IS NULL) OR
@@ -41,7 +41,7 @@ create_scheduled_jobs_table = """CREATE TABLE IF NOT EXISTS S_ScheduledJobs (
 )"""
 
 # Flows table: defines reusable sequences of tasks
-create_flows_table = """CREATE TABLE IF NOT EXISTS S_Flows (
+create_flows_table = """CREATE TABLE IF NOT EXISTS SJ_Flows (
     FlowId INTEGER PRIMARY KEY AUTOINCREMENT,
     FlowName TEXT NOT NULL UNIQUE,
     FlowDescription TEXT,
@@ -52,7 +52,7 @@ create_flows_table = """CREATE TABLE IF NOT EXISTS S_Flows (
 )"""
 
 # Flow steps: individual tasks within a flow, executed in order
-create_flow_steps_table = """CREATE TABLE IF NOT EXISTS S_FlowSteps (
+create_flow_steps_table = """CREATE TABLE IF NOT EXISTS SJ_FlowSteps (
     StepId INTEGER PRIMARY KEY AUTOINCREMENT,
     FlowId INTEGER NOT NULL,
     StepOrder INTEGER NOT NULL,
@@ -64,11 +64,11 @@ create_flow_steps_table = """CREATE TABLE IF NOT EXISTS S_FlowSteps (
     ContinueOnError INTEGER DEFAULT 0,
     CreatedAt TEXT NOT NULL DEFAULT (datetime('now')),
     JSONData TEXT,
-    FOREIGN KEY (FlowId) REFERENCES S_Flows(FlowId),
+    FOREIGN KEY (FlowId) REFERENCES SJ_Flows(FlowId),
     UNIQUE (FlowId, StepOrder)
 )"""
 
-create_job_executions_table = """CREATE TABLE IF NOT EXISTS S_JobExecutions (
+create_job_executions_table = """CREATE TABLE IF NOT EXISTS SJ_JobExecutions (
     ExecutionId INTEGER PRIMARY KEY AUTOINCREMENT,
     JobId INTEGER NOT NULL,
     JobName TEXT NOT NULL,
@@ -80,29 +80,44 @@ create_job_executions_table = """CREATE TABLE IF NOT EXISTS S_JobExecutions (
     ErrorMessage TEXT,
     ResultData TEXT,
     JSONData TEXT,
-    FOREIGN KEY (JobId) REFERENCES S_ScheduledJobs(JobId)
+    FOREIGN KEY (JobId) REFERENCES SJ_ScheduledJobs(JobId)
 )"""
 
-insert_scheduled_job = """INSERT INTO S_ScheduledJobs
+insert_scheduled_job = """INSERT INTO SJ_ScheduledJobs
     (JobName, JobDescription, TaskCategory, TaskType, TaskParams, FlowId, CronExpression, IsEnabled,
-    MaxRetries, TimeoutSeconds)
-    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    MaxRetries, TimeoutSeconds, LastRunAt, NextRunAt)
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now', '15 seconds')
     WHERE NOT EXISTS (
-        SELECT 1 FROM S_ScheduledJobs WHERE JobName = ?
+        SELECT 1 FROM SJ_ScheduledJobs WHERE JobName = ?
     )"""
 
-insert_flow = """INSERT INTO S_Flows (FlowName, FlowDescription, StopOnError)
+insert_flow = """INSERT INTO SJ_Flows (FlowName, FlowDescription, StopOnError)
     SELECT ?, ?, ?
     WHERE NOT EXISTS (
-        SELECT 1 FROM S_Flows WHERE FlowName = ?
+        SELECT 1 FROM SJ_Flows WHERE FlowName = ?
     )"""
 
-insert_flow_step = """INSERT INTO S_FlowSteps
+insert_flow_step = """INSERT INTO SJ_FlowSteps
     (FlowId, StepOrder, StepName, TaskType, TaskParams, MaxRetries, TimeoutSeconds, ContinueOnError)
     SELECT ?, ?, ?, ?, ?, ?, ?, ?
     WHERE NOT EXISTS (
-        SELECT 1 FROM S_FlowSteps WHERE FlowId = ? AND StepOrder = ?
+        SELECT 1 FROM SJ_FlowSteps WHERE FlowId = ? AND StepOrder = ?
     )"""
+
+update_existing_scheduled_job = """UPDATE SJ_ScheduledJobs
+    SET JobDescription = ?,
+        TaskType = ?,
+        TaskParams = ?,
+        CronExpression = ?,
+        IsEnabled = ?,
+        MaxRetries = ?,
+        TimeoutSeconds = ?,
+        NextRunAt = CASE
+            WHEN CronExpression <> ? OR TaskType <> ? THEN datetime('now', '15 seconds')
+            ELSE NextRunAt
+        END,
+        UpdatedAt = datetime('now')
+    WHERE JobName = ?"""
 
 
 def init_scheduler_db() -> None:
@@ -142,7 +157,7 @@ def init_scheduler_db() -> None:
                 "Generate weekly database statistics report",
                 "Task",
                 "db_stats_report",
-                '{"include_tables": ["S_Users", "S_Projects", "S_Models", "S_TaskRecords"]}',
+                '{"include_tables": ["SJ_Users", "SJ_Projects", "SJ_Models", "SJ_TaskRecords"]}',
                 None,
                 "0 6 * * 1",
                 1,
@@ -170,6 +185,39 @@ def init_scheduler_db() -> None:
             ),
         )
 
+        # Job: Cleanup temp files and vacuum databases (runs every hour)
+        cursor.execute(
+            insert_scheduled_job,
+            (
+                "cleanup_temp_files",
+                "Temporary files cleanup and database vacuum job running every hour",
+                "Task",
+                "cleanup_temp_files",
+                "{}",
+                None,
+                "0 * * * *",
+                1,
+                3,
+                300,
+                "cleanup_temp_files",
+            ),
+        )
+        cursor.execute(
+            update_existing_scheduled_job,
+            (
+                "Temporary files cleanup and database vacuum job running every hour",
+                "cleanup_temp_files",
+                "{}",
+                "0 * * * *",
+                1,
+                3,
+                300,
+                "0 * * * *",
+                "cleanup_temp_files",
+                "cleanup_temp_files",
+            ),
+        )
+
         # Sample Flow: Daily maintenance (cleanup logs + generate stats)
         cursor.execute(
             insert_flow,
@@ -182,7 +230,7 @@ def init_scheduler_db() -> None:
         )
 
         # Get the flow ID for inserting steps
-        cursor.execute("SELECT FlowId FROM S_Flows WHERE FlowName = 'daily_maintenance'")
+        cursor.execute("SELECT FlowId FROM SJ_Flows WHERE FlowName = 'daily_maintenance'")
         flow_result = cursor.fetchall()
         if flow_result:
             flow_id = flow_result[0][0]
