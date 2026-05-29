@@ -48,25 +48,25 @@ CELERY_TEMP_FOLDER = ROOT_DATA_FOLDER / "task_temp"
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
 if not os.path.exists(DATA_FOLDER):
-    os.makedirs(DATA_FOLDER)
+    os.makedirs(DATA_FOLDER, exist_ok=True)
 
 if not os.path.exists(STATIC_FOLDER):
-    os.makedirs(STATIC_FOLDER)
+    os.makedirs(STATIC_FOLDER, exist_ok=True)
 
 if not os.path.exists(BACKUP_FOLDER):
-    os.makedirs(BACKUP_FOLDER)
+    os.makedirs(BACKUP_FOLDER, exist_ok=True)
 
 if not os.path.exists(TEMP_FOLDER):
-    os.makedirs(TEMP_FOLDER)
+    os.makedirs(TEMP_FOLDER, exist_ok=True)
 
 if not os.path.exists(LOG_FOLDER):
-    os.makedirs(LOG_FOLDER)
+    os.makedirs(LOG_FOLDER, exist_ok=True)
 
 if not os.path.exists(CELERY_MODELS_FOLDER):
-    os.makedirs(CELERY_MODELS_FOLDER)
+    os.makedirs(CELERY_MODELS_FOLDER, exist_ok=True)
 
 if not os.path.exists(CELERY_LOG_FOLDER):
-    os.makedirs(CELERY_LOG_FOLDER)
+    os.makedirs(CELERY_LOG_FOLDER, exist_ok=True)
 
 if not os.path.exists(CELERY_TEMP_FOLDER):
-    os.makedirs(CELERY_TEMP_FOLDER)
+    os.makedirs(CELERY_TEMP_FOLDER, exist_ok=True)

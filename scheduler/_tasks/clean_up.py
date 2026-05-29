@@ -22,6 +22,9 @@ def _cleanup_folder(folder_path, retention_seconds):
     now = time.time()
     deleted_count = 0
 
+    if not os.path.isdir(folder_path):
+        return deleted_count
+
     for filename in os.listdir(folder_path):
         file_path = os.path.join(folder_path, filename)
         if not os.path.isfile(file_path):
@@ -73,10 +76,13 @@ def _parse_last_vacuum_date(last_vacuum_date):
     if not last_vacuum_date:
         return None
 
-    parsed_date = datetime.fromisoformat(last_vacuum_date)
-    if parsed_date.tzinfo is None:
-        return parsed_date.replace(tzinfo=timezone.utc)
-    return parsed_date.astimezone(timezone.utc)
+    try:
+        parsed_date = datetime.fromisoformat(last_vacuum_date)
+        if parsed_date.tzinfo is None:
+            return parsed_date.replace(tzinfo=timezone.utc)
+        return parsed_date.astimezone(timezone.utc)
+    except ValueError:
+        return None
 
 
 async def vacuum_user_models(params: dict | None = None) -> dict:
@@ -104,6 +110,9 @@ async def vacuum_user_models(params: dict | None = None) -> dict:
 
         if last_vacuum_date:
             vacuum_date = _parse_last_vacuum_date(last_vacuum_date)
+            if not vacuum_date:
+                skipped_count += 1
+                continue  # Skip if last vacuum date is invalid
             vacuum_age = (datetime.now(timezone.utc) - vacuum_date).total_seconds()
             if vacuum_age < VACUUM_INTERVAL_SECONDS:
                 skipped_count += 1
