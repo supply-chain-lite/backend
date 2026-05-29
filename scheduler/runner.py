@@ -92,7 +92,7 @@ def parse_last_run_at(last_run_at: str | None, job_name: str) -> datetime | None
 
 
 async def execute_single_task(
-    task_type: str, task_params: str, max_retries: int, task_name: str
+    task_name: str, task_params: str, max_retries: int
 ) -> tuple[bool, dict | None, str | None]:
     retry_count = 0
     last_error = None
@@ -101,7 +101,7 @@ async def execute_single_task(
         try:
             params = json.loads(task_params) if task_params else {}
             logger.info("Executing task '%s' (attempt %d/%d)", task_name, retry_count + 1, max_retries + 1)
-            result = await run_task(task_type, params)
+            result = await run_task(task_name, params)
             return True, result, None
         except Exception as e:
             last_error = str(e)
@@ -113,7 +113,9 @@ async def execute_single_task(
     return False, None, last_error
 
 
-async def execute_task_job(job_id: int, job_name: str, task_type: str, task_params: str, max_retries: int) -> bool:
+async def execute_task_job(
+    schedule_id: int, task_id: int, task_name: str, task_params: str, max_retries: int
+) -> bool:
     """
     Execute a single task job.
 
@@ -121,13 +123,13 @@ async def execute_task_job(job_id: int, job_name: str, task_type: str, task_para
         True if successful, False otherwise
     """
     started_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    execution_id = await db_methods.log_job_execution(job_id, job_name, "running", started_at)
+    execution_id = await db_methods.log_job_execution(schedule_id, task_id, task_name, "running", started_at)
 
     if execution_id == -1:
-        logger.warning("Job '%s' is already running, skipping execution", job_name)
+        logger.warning("Schedule %d ('%s') is already running, skipping execution", schedule_id, task_name)
         return False
 
-    success, result, error = await execute_single_task(task_type, task_params, max_retries, job_name)
+    success, result, error = await execute_single_task(task_name, task_params, max_retries)
 
     completed_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     duration = (
@@ -135,7 +137,7 @@ async def execute_task_job(job_id: int, job_name: str, task_type: str, task_para
     ).total_seconds()
 
     await db_methods.update_job_execution(
-        job_id,
+        schedule_id,
         execution_id=execution_id,
         status="success" if success else "failed",
         completed_at=completed_at,
@@ -145,20 +147,21 @@ async def execute_task_job(job_id: int, job_name: str, task_type: str, task_para
     )
 
     if success:
-        logger.info("Job '%s' completed successfully in %.2fs", job_name, duration)
+        logger.info("Schedule %d ('%s') completed successfully in %.2fs", schedule_id, task_name, duration)
     else:
-        logger.error("Job '%s' failed after retries: %s", job_name, error)
+        logger.error("Schedule %d ('%s') failed after retries: %s", schedule_id, task_name, error)
 
     return True
 
 
-async def run_job(job) -> None:
-    """Execute a single job. Exceptions are logged, not propagated."""
+async def run_job(job, is_startup: bool = False) -> None:
+    """Execute a single scheduled job. Exceptions are logged, not propagated."""
     (
-        job_id,
-        job_name,
-        task_type,
+        schedule_id,
+        task_id,
+        task_name,
         task_params,
+        schedule_type,
         cron_expr,
         max_retries,
         _,
@@ -167,23 +170,41 @@ async def run_job(job) -> None:
     ) = job
 
     try:
-        last_run = parse_last_run_at(last_run_at, job_name)
-        next_run_at = parse_last_run_at(next_run_at_str, job_name)  # same format
-
-        if not is_job_due(next_run_at, cron_expr, last_run):
+        # Skip non-startup schedules during startup phase and vice versa
+        if schedule_type == "run_at_startup" and not is_startup:
             return
+        if schedule_type != "run_at_startup" and is_startup:
+            return
+
+        last_run = parse_last_run_at(last_run_at, task_name)
+
+        if schedule_type == "run_once":
+            # Only run if never executed before
+            if last_run is not None:
+                return
+        elif schedule_type == "cron":
+            next_run_at = parse_last_run_at(next_run_at_str, task_name)
+            if not is_job_due(next_run_at, cron_expr, last_run):
+                return
 
         now = datetime.now(timezone.utc)
         now_str = now.strftime("%Y-%m-%d %H:%M:%S")
-        next_run = get_next_run(cron_expr, now)
-        next_run_str = next_run.strftime("%Y-%m-%d %H:%M:%S")
 
-        job_status = await execute_task_job(job_id, job_name, task_type, task_params, max_retries)
+        job_status = await execute_task_job(schedule_id, task_id, task_name, task_params, max_retries)
 
         if job_status:
-            await db_methods.update_job_run_times(job_id, now_str, next_run_str)
+            if schedule_type == "cron":
+                next_run_str = get_next_run(cron_expr, now).strftime("%Y-%m-%d %H:%M:%S")
+                await db_methods.update_schedule_run_times(schedule_id, now_str, next_run_str)
+            else:
+                # run_once / run_at_startup: update LastRunAt, no NextRunAt
+                await db_methods.update_schedule_run_times(schedule_id, now_str, None)
+
+            if schedule_type == "run_once":
+                await db_methods.disable_schedule(schedule_id)
+                logger.info("Schedule %d ('%s') auto-disabled after run_once", schedule_id, task_name)
     except Exception as e:
-        logger.exception("Error executing job '%s': %s", job_name, e)
+        logger.exception("Error executing schedule %d ('%s'): %s", schedule_id, task_name, e)
 
 
 async def run_scheduler(poll_interval: int = 60):
@@ -205,6 +226,17 @@ async def run_scheduler(poll_interval: int = 60):
 
     logger.info("Scheduler starting...")
     init_scheduler_db()
+
+    # Run startup schedules (run_at_startup) before entering the main loop
+    try:
+        startup_jobs = await db_methods.get_enabled_jobs()
+        startup_count = sum(1 for j in startup_jobs if j[4] == "run_at_startup")
+        if startup_count:
+            logger.info("Running %d startup schedule(s)", startup_count)
+            await asyncio.gather(*(run_job(job, is_startup=True) for job in startup_jobs))
+    except Exception as e:
+        logger.exception("Error running startup schedules: %s", e)
+
     logger.info("Scheduler initialized, entering main loop (poll interval: %ds)", poll_interval)
 
     while not _shutdown_requested:

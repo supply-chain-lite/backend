@@ -14,7 +14,7 @@ logger = get_logger(__name__)
 
 class sql_connection:
     def __init__(self, db_id, db_path):
-        self.connection, self.cursor = get_cursor(db_path)
+        self.connection, self.cursor = get_cursor(db_id, db_path)
         self.db_id = db_id
 
     def __enter__(self):
@@ -57,8 +57,10 @@ def authorizer(action, arg1, arg2, dbname, source):
     return apsw.SQLITE_OK
 
 
-def get_cursor(db_path):
+def get_cursor(db_id, db_path):
     thread_id = threading.get_ident()
+    if db_id == "master":
+        thread_id = f"master-{thread_id}"
     with _pool_lock:
         if db_path in connection_pool and thread_id in connection_pool[db_path]:
             connection = connection_pool[db_path][thread_id]

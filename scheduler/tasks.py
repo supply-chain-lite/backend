@@ -25,29 +25,29 @@ async def celery_task_update(params: dict) -> dict:
     return {"status": "completed"}
 
 
-# Registry mapping task types to their async handler functions
+# Registry mapping task names to their async handler functions
 TASK_REGISTRY: dict[str, callable] = {
     "cleanup_temp_files": cleanup_main,
     "celery_task_update": celery_task_update,
 }
 
 
-async def run_task(task_type: str, params: dict) -> dict:
+async def run_task(task_name: str, params: dict) -> dict:
     """
-    Execute a task by its type.
+    Execute a task by its name.
 
     Args:
-        task_type: The registered task type name
+        task_name: The registered task name
         params: Parameters to pass to the task
 
     Returns:
         Task result dictionary
 
     Raises:
-        ValueError: If task_type is not registered
+        ValueError: If task_name is not registered
     """
-    if task_type not in TASK_REGISTRY:
-        raise ValueError(f"Unknown task type: {task_type}")
+    if task_name not in TASK_REGISTRY:
+        raise ValueError(f"Unknown task: {task_name}")
 
-    handler = TASK_REGISTRY[task_type]
+    handler = TASK_REGISTRY[task_name]
     return await handler(params)
