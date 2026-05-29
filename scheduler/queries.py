@@ -1,12 +1,6 @@
-get_jobs = """ SELECT JobId, JobName, TaskCategory, TaskType, TaskParams, FlowId, CronExpression,
+get_jobs = """ SELECT JobId, JobName, TaskType, TaskParams, CronExpression,
                 MaxRetries, TimeoutSeconds, LastRunAt, NextRunAt
                 FROM SJ_ScheduledJobs WHERE IsEnabled = 1"""
-
-get_flow_steps = """SELECT StepId, StepName, TaskType, TaskParams, MaxRetries, TimeoutSeconds, ContinueOnError
-                      FROM SJ_FlowSteps WHERE FlowId = ? ORDER BY StepOrder"""
-
-get_flow_info = """SELECT FlowId, FlowName, FlowDescription, StopOnError
-                    FROM SJ_Flows WHERE FlowId = ?"""
 
 update_job_run_time = """UPDATE SJ_ScheduledJobs SET LastRunAt = ?, NextRunAt = ?,
                          UpdatedAt = datetime('now') WHERE JobId = ?"""

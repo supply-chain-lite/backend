@@ -8,8 +8,7 @@ import apsw
 from app.config import CELERY_LOG_FOLDER, CELERY_MODELS_FOLDER, CELERY_TEMP_FOLDER, TEMP_FOLDER, master_db
 from app.connection import master_connection
 from app.logging_config import get_logger
-
-from .queries import get_model_id_and_paths, update_vacuum_date
+from scheduler._tasks.queries import get_model_id_and_paths, update_vacuum_date
 
 logger = get_logger(__name__)
 
