@@ -12,6 +12,8 @@ from app.connection import master_connection
 from app.logging_config import get_logger
 from app.routers.tasks.methods import update_task_status
 from scheduler._tasks.clean_up import main as cleanup_main
+from scheduler._tasks.cancel_long_running_tasks import main as cancel_long_running_main
+from scheduler._tasks.revoke_tasks import main as revoke_tasks_main
 
 logger = get_logger(__name__)
 
@@ -29,6 +31,8 @@ async def celery_task_update(params: dict) -> dict:
 TASK_REGISTRY: dict[str, callable] = {
     "cleanup_temp_files": cleanup_main,
     "celery_task_update": celery_task_update,
+    "revoke_stale_tasks": revoke_tasks_main,
+    "cancel_long_running_tasks": cancel_long_running_main,
 }
 
 
