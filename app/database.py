@@ -57,7 +57,7 @@ create_user_error_table = """CREATE TABLE IF NOT EXISTS S_UserErrors (
                                     CreatedAt TEXT NOT NULL DEFAULT (datetime('now'))
                                 )"""
 
-create_task_history_table = """CREATE TABLE IF NOT EXISTS S_TaskRecords (
+create_task_history_table = """CREATE TABLE IF NOT EXISTS ST_TaskRecords (
                                         TaskId          INTEGER PRIMARY KEY AUTOINCREMENT,
                                         TaskUID         TEXT NOT NULL,
                                         ClientTaskId    INTEGER NOT NULL,
@@ -73,7 +73,7 @@ create_task_history_table = """CREATE TABLE IF NOT EXISTS S_TaskRecords (
                                         LastUpdated     TEXT NOT NULL DEFAULT (datetime('now'))
                                     )"""
 
-create_task_logs_table = """CREATE TABLE IF NOT EXISTS S_TaskLogs (
+create_task_logs_table = """CREATE TABLE IF NOT EXISTS ST_TaskLogs (
                                         TaskId      INTEGER NOT NULL,
                                         LogText     TEXT NOT NULL,
                                         LastUpdated   TEXT NOT NULL DEFAULT (datetime('now'))
@@ -162,7 +162,7 @@ create_query_history_table = """CREATE TABLE IF NOT EXISTS S_SQLHistory (
 
 
 _MIGRATIONS = [
-    ("S_TaskRecords", "TaskURL", "TEXT"),
+    ("ST_TaskRecords", "TaskURL", "TEXT"),
 ]
 
 
