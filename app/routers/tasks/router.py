@@ -60,3 +60,17 @@ def get_task_status(
     with master_connection() as cursor:
         status = run_methods.get_task_status(cursor, task_id, useremail)
     return run_schemas.MessageResponse(message=status)
+
+
+@router.post("/details", response_model=run_schemas.taskDetailsResponse)
+def get_task_details(
+    request: run_schemas.taskDetailsRequest,
+    user_data: tuple = Depends(_get_user_from_token),
+) -> run_schemas.taskDetailsResponse:
+    useremail, _display_name, _role_name = user_data
+    task_id = request.task_id
+    model_name = request.model_name
+    project_name = request.project_name
+    with master_connection() as cursor:
+        task_details = run_methods.get_task_details(cursor, task_id, useremail, model_name, project_name)
+    return run_schemas.taskDetailsResponse(**task_details)

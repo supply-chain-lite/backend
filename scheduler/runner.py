@@ -42,31 +42,40 @@ def get_next_run(cron_expr: str, base_time: datetime | None = None) -> datetime:
     return cron.get_next(datetime)
 
 
-def should_run_now(cron_expr: str, last_run: datetime | None, tolerance_seconds: int = 60) -> bool:
+def is_job_due(
+    next_run_at: datetime | None, cron_expr: str, last_run: datetime | None, tolerance_seconds: int = 60
+) -> bool:
     """
-    Determine if a job should run now based on its cron expression.
+    Determine if a job should run now based on its stored NextRunAt time.
+
+    Uses the NextRunAt value from the database as the primary trigger so that
+    jobs whose scheduled time passed while the scheduler was offline are
+    executed immediately on restart. Falls back to the cron expression only
+    when NextRunAt is not set (e.g. a brand-new job).
 
     Args:
-        cron_expr: Cron expression string
+        next_run_at: Stored next-run time from the database (None if not set)
+        cron_expr: Cron expression string (used as fallback)
         last_run: Last execution time (None if never run)
-        tolerance_seconds: Window of time to consider "now"
+        tolerance_seconds: Window of time to consider "now" (fallback only)
 
     Returns:
         True if the job should run
     """
     now = datetime.now(timezone.utc)
 
+    if next_run_at is not None:
+        # Primary path: run if we've reached or passed the stored next-run time
+        return now >= next_run_at
+
+    # Fallback for jobs that don't have a NextRunAt yet
     if last_run is None:
-        # Never run before, check if we're within the next scheduled window
         cron = croniter(cron_expr, now)
         prev_scheduled = cron.get_prev(datetime)
-        # Run if scheduled time was within the last minute
         return (now - prev_scheduled).total_seconds() <= tolerance_seconds
 
     cron = croniter(cron_expr, last_run)
     next_scheduled = cron.get_next(datetime)
-
-    # Check if we've passed the next scheduled time
     return now >= next_scheduled
 
 
@@ -102,89 +111,6 @@ async def execute_single_task(
                 await asyncio.sleep(2**retry_count)  # Non-blocking exponential backoff
 
     return False, None, last_error
-
-
-async def execute_flow(job_id: int, job_name: str, flow_id: int, max_retries: int) -> bool:
-    started_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-
-    flow_info = await db_methods.get_flow_info(flow_id)
-    if not flow_info:
-        logger.error("Flow %d not found for job '%s'", flow_id, job_name)
-        return False
-
-    _, flow_name, _, stop_on_error = flow_info
-    steps = await db_methods.get_flow_steps(flow_id)
-
-    if not steps:
-        logger.warning("Flow '%s' has no steps", flow_name)
-        return True
-
-    execution_id = await db_methods.log_job_execution(
-        job_id=job_id,
-        job_name=job_name,
-        status="running",
-        started_at=started_at,
-    )
-
-    if execution_id == -1:
-        logger.warning("Job '%s' is already running, skipping flow execution", job_name)
-        return False
-
-    logger.info("Starting flow '%s' with %d steps", flow_name, len(steps))
-
-    step_results = []
-    flow_success = True
-
-    for step in steps:
-        step_id, step_name, task_type, task_params, step_retries, _step_timeout, continue_on_error = step
-        success, result, error = await execute_single_task(task_type, task_params, step_retries, step_name)
-
-        step_results.append(
-            {
-                "step_id": step_id,
-                "step_name": step_name,
-                "success": success,
-                "result": result,
-                "error": error,
-            }
-        )
-
-        if not success:
-            flow_success = False
-            if stop_on_error and not continue_on_error:
-                logger.error("Flow '%s' stopped at step '%s' due to error: %s", flow_name, step_name, error)
-                break
-            else:
-                logger.warning("Flow '%s' step '%s' failed but continuing: %s", flow_name, step_name, error)
-
-    completed_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    duration = (
-        datetime.strptime(completed_at, "%Y-%m-%d %H:%M:%S") - datetime.strptime(started_at, "%Y-%m-%d %H:%M:%S")
-    ).total_seconds()
-
-    # Determine overall status
-    completed_steps = len(step_results)
-    failed_steps = sum(1 for r in step_results if not r["success"])
-
-    if flow_success:
-        status = "success"
-    elif completed_steps < len(steps):
-        status = "partial"  # Stopped before completing all steps
-    else:
-        status = "failed"
-
-    await db_methods.update_job_execution(
-        job_id,
-        execution_id=execution_id,
-        status=status,
-        completed_at=completed_at,
-        duration=duration,
-        error_message=f"{failed_steps} step(s) failed" if failed_steps else None,
-        result_data=json.dumps({"steps": step_results}),
-    )
-
-    logger.info("Flow '%s' completed with status '%s' in %.2fs", flow_name, status, duration)
-    return True
 
 
 async def execute_task_job(job_id: int, job_name: str, task_type: str, task_params: str, max_retries: int) -> bool:
@@ -227,24 +153,24 @@ async def execute_task_job(job_id: int, job_name: str, task_type: str, task_para
 
 
 async def run_job(job) -> None:
-    """Execute a single job (task or flow). Exceptions are logged, not propagated."""
+    """Execute a single job. Exceptions are logged, not propagated."""
     (
         job_id,
         job_name,
-        task_category,
         task_type,
         task_params,
-        flow_id,
         cron_expr,
         max_retries,
         _,
         last_run_at,
+        next_run_at_str,
     ) = job
 
     try:
         last_run = parse_last_run_at(last_run_at, job_name)
+        next_run_at = parse_last_run_at(next_run_at_str, job_name)  # same format
 
-        if not should_run_now(cron_expr, last_run):
+        if not is_job_due(next_run_at, cron_expr, last_run):
             return
 
         now = datetime.now(timezone.utc)
@@ -252,10 +178,7 @@ async def run_job(job) -> None:
         next_run = get_next_run(cron_expr, now)
         next_run_str = next_run.strftime("%Y-%m-%d %H:%M:%S")
 
-        if task_category == "Flow":
-            job_status = await execute_flow(job_id, job_name, flow_id, max_retries)
-        else:
-            job_status = await execute_task_job(job_id, job_name, task_type, task_params, max_retries)
+        job_status = await execute_task_job(job_id, job_name, task_type, task_params, max_retries)
 
         if job_status:
             await db_methods.update_job_run_times(job_id, now_str, next_run_str)

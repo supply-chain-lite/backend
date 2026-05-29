@@ -6,32 +6,11 @@ from . import queries as db_queries
 
 
 async def get_enabled_jobs() -> list:
-    """Fetch all enabled scheduled jobs (both tasks and flows)."""
+    """Fetch all enabled scheduled jobs."""
 
     def _query():
         with master_connection() as conn:
             return conn.execute(db_queries.get_jobs).fetchall()
-
-    return await asyncio.to_thread(_query)
-
-
-async def get_flow_steps(flow_id: int) -> list:
-    """Fetch all steps for a flow, ordered by StepOrder."""
-
-    def _query():
-        with master_connection() as conn:
-            return conn.execute(db_queries.get_flow_steps, (flow_id,)).fetchall()
-
-    return await asyncio.to_thread(_query)
-
-
-async def get_flow_info(flow_id: int) -> tuple | None:
-    """Fetch flow metadata."""
-
-    def _query():
-        with master_connection() as conn:
-            all_rows = conn.execute(db_queries.get_flow_info, (flow_id,)).fetchall()
-        return all_rows[0] if all_rows else None
 
     return await asyncio.to_thread(_query)
 

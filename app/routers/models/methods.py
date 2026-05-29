@@ -3,7 +3,6 @@ import os
 import shutil
 import sqlite3
 import tempfile
-import time
 import uuid
 
 import apsw
@@ -467,6 +466,7 @@ def get_user_notifications(cursor, user_email: str):
             {
                 "notification_id": notification_id,
                 "from_user_email": from_user_email,
+                "task_id": params_dict.get("task_id"),
                 "title": title,
                 "message": message,
                 "notification_type": notification_type,
@@ -697,19 +697,6 @@ def get_table_groups(cursor, user_email: str, model_name: str, project_name: str
     return table_groups
 
 
-def _clean_up_temp_files():
-    """
-    Remove all temporary files in the TEMP_FOLDER that are older than a certain threshold to prevent accumulation of unused files.
-    """
-    now = time.time()
-    for filename in os.listdir(TEMP_FOLDER):
-        file_path = os.path.join(TEMP_FOLDER, filename)
-        if os.path.isfile(file_path):
-            file_age = now - os.path.getmtime(file_path)
-            if file_age > 3600:  # 1 hour
-                os.remove(file_path)
-
-
 def vacuum_model(cursor, user_email: str, model_name: str, project_name: str):
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
@@ -727,7 +714,6 @@ def vacuum_model(cursor, user_email: str, model_name: str, project_name: str):
     connection.execute("VACUUM")
     connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
     connection.close()
-    _clean_up_temp_files()
 
 
 def get_model_info(cursor, user_email: str, model_name: str, project_name: str):
