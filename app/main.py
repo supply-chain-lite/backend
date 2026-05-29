@@ -95,7 +95,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     try:
         with master_connection() as cursor:
             cursor.execute(
-                """INSERT INTO S_RequestErrors (RequestId, Method, UrlPath, ErrorType, ErrorDetail, ErrorCode) 
+                """INSERT INTO S_RequestErrors (RequestId, Method, UrlPath, ErrorType, ErrorDetail, ErrorCode)
                 VALUES (?, ?, ?, ?, ?, ?)""",
                 (request_id, request.method, request.url.path, type(exc).__name__, str(exc), 500),
             )

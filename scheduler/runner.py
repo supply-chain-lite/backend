@@ -113,9 +113,7 @@ async def execute_single_task(
     return False, None, last_error
 
 
-async def execute_task_job(
-    schedule_id: int, task_id: int, task_name: str, task_params: str, max_retries: int
-) -> bool:
+async def execute_task_job(schedule_id: int, task_id: int, task_name: str, task_params: str, max_retries: int) -> bool:
     """
     Execute a single task job.
 

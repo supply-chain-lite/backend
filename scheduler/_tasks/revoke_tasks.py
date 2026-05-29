@@ -1,11 +1,10 @@
 import asyncio
 
-from celery import Celery
-
 from app.connection import master_connection
 from app.logging_config import get_logger
 from app.routers.tasks.methods import update_task_output_and_logs
 from app.routers.tasks.queries import update_task_status
+from celery import Celery
 from scheduler._tasks.queries import get_pending_tasks_older_than, update_task_log
 
 logger = get_logger(__name__)
@@ -40,9 +39,7 @@ async def main(params: dict | None = None) -> dict:
     del params
 
     with master_connection() as cursor:
-        pending_tasks = cursor.execute(
-            get_pending_tasks_older_than, (PENDING_TIMEOUT_SECONDS,)
-        ).fetchall()
+        pending_tasks = cursor.execute(get_pending_tasks_older_than, (PENDING_TIMEOUT_SECONDS,)).fetchall()
 
     if not pending_tasks:
         return {"revoked_count": 0, "checked_count": 0}
