@@ -1,11 +1,12 @@
 import asyncio
+import json
 
 from celery import Celery
 
 from app.connection import master_connection
 from app.logging_config import get_logger
 from app.routers.tasks.methods import update_task_output_and_logs
-from app.routers.tasks.queries import update_task_status
+from app.routers.tasks.queries import insert_task_notifications, update_task_status
 from scheduler._tasks.queries import get_long_running_started_tasks, update_task_log
 
 logger = get_logger(__name__)
@@ -29,14 +30,39 @@ def _cancel_and_update(task_id, task_uid, task_url, model_id, max_run_seconds):
                 cursor.execute(update_task_status, ("REVOKED", task_id, "RUNNING"))
                 result = cursor.fetchall()
             if result:
+                task_name, model_name, project_name, submitted_by, execution_time = result[0]
                 logger.info(
                     f"Cancelled long-running task {task_id} (uid={task_uid}, max_run_seconds={max_run_seconds})"
                 )
-            update_task_output_and_logs(cursor, task_id)
-            task_log_message = (
-                f"Task was automatically cancelled after exceeding max run time of {max_run_seconds} seconds."
-            )
-            cursor.execute(update_task_log, (task_log_message, task_id))
+                update_task_output_and_logs(cursor, task_id)
+                task_log_message = (
+                    f"Task was automatically cancelled after exceeding max run time of {max_run_seconds} seconds."
+                )
+                cursor.execute(update_task_log, (task_log_message, task_id))
+                notification_params = {
+                    "model_name": model_name,
+                    "project_name": project_name,
+                    "task_name": task_name,
+                    "run_status": "REVOKED",
+                    "run_time_minutes": execution_time,
+                    "task_id": task_id,
+                    "LEVEL": "WARNING",
+                }
+                notification_title = f"Task Cancelled: {task_name}"
+                notification_message = (
+                    f"Your task '{task_name}' for model '{model_name}' in project '{project_name}'"
+                    f" was cancelled because it exceeded the maximum run time of {max_run_seconds} seconds."
+                )
+                insert_task_tuple = (
+                    "System",
+                    submitted_by,
+                    notification_title,
+                    notification_message,
+                    "task_update",
+                    json.dumps(notification_params),
+                )
+                cursor.execute(insert_task_notifications, insert_task_tuple)
+                cursor.intermediate_commit()
     except Exception as e:
         logger.error(f"Failed to update status for cancelled task {task_id}: {e}")
 
