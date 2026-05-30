@@ -29,6 +29,9 @@ dev = [
     "ruff",
 ]
 
+[tool.ruff.lint.isort]
+known-first-party = ["app", "scheduler"]
+
 [project.scripts]
 dev = "uvicorn app.main:app --reload"
 
