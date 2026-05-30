@@ -51,15 +51,23 @@ async def log_job_execution(
 
     def _query():
         with master_connection() as conn:
-            count_updated_rows = conn.execute(
-                db_queries.update_schedule_running_status, (1, schedule_id, 0)
-            ).fetchone()
+            count_updated_rows = conn.execute(db_queries.update_schedule_running_status, (1, schedule_id, 0)).fetchone()
             if not count_updated_rows:
                 return -1
             execution_id = conn.execute(
                 db_queries.insert_job_execution,
-                (schedule_id, task_id, task_name, status, started_at, completed_at,
-                 duration, retry_count, error_message, result_data),
+                (
+                    schedule_id,
+                    task_id,
+                    task_name,
+                    status,
+                    started_at,
+                    completed_at,
+                    duration,
+                    retry_count,
+                    error_message,
+                    result_data,
+                ),
             ).fetchone()
             if not execution_id:
                 raise Exception("Failed to log job execution")
@@ -81,9 +89,7 @@ async def update_job_execution(
 
     def _query():
         with master_connection() as conn:
-            count_updated_rows = conn.execute(
-                db_queries.update_schedule_running_status, (0, schedule_id, 1)
-            ).fetchone()
+            count_updated_rows = conn.execute(db_queries.update_schedule_running_status, (0, schedule_id, 1)).fetchone()
             if not count_updated_rows:
                 raise Exception("Failed to update schedule status - schedule is not running or does not exist")
             conn.execute(

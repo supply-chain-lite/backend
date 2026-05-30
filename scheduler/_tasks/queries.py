@@ -14,7 +14,8 @@ get_pending_tasks_older_than = """SELECT TaskId, TaskUID, TaskURL, ModelId
 
 
 update_task_log = """UPDATE ST_TaskLogs
-                        SET LogText = LogText || char(10) || ?
+                        SET LogText =  COALESCE(LogText, '') || char(10) || ?,
+                         LastUpdated = datetime('now')
                         WHERE TaskId = ?"""
 
 get_long_running_started_tasks = """SELECT TaskId, TaskUID, TaskURL, ModelId,

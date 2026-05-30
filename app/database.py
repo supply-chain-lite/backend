@@ -46,17 +46,6 @@ create_projects_table = """CREATE TABLE IF NOT EXISTS S_Projects (
                                     UNIQUE (UserEmail, ProjectName)
                                 )"""
 
-create_user_error_table = """CREATE TABLE IF NOT EXISTS S_UserErrors (
-                                    MethodName TEXT NOT NULL,
-                                    UserEmail TEXT,
-                                    RequestBody TEXT,
-                                    ErrorType TEXT,
-                                    ErrorCode INTEGER NOT NULL,
-                                    ErrorDetail TEXT,
-                                    JsonData TEXT,
-                                    CreatedAt TEXT NOT NULL DEFAULT (datetime('now'))
-                                )"""
-
 create_task_history_table = """CREATE TABLE IF NOT EXISTS ST_TaskRecords (
                                         TaskId          INTEGER PRIMARY KEY AUTOINCREMENT,
                                         TaskUID         TEXT NOT NULL,
@@ -160,6 +149,18 @@ create_query_history_table = """CREATE TABLE IF NOT EXISTS S_SQLHistory (
                                     CreatedAt TEXT NOT NULL DEFAULT (datetime('now'))
                                 )"""
 
+create_request_errors_table = """CREATE TABLE IF NOT EXISTS S_RequestErrors (
+                                    ErrorId INTEGER PRIMARY KEY AUTOINCREMENT,
+                                    RequestId TEXT NOT NULL,
+                                    Method TEXT NOT NULL,
+                                    UrlPath TEXT NOT NULL,
+                                    ErrorType TEXT NOT NULL,
+                                    ErrorDetail TEXT,
+                                    ErrorCode INTEGER NOT NULL DEFAULT 500,
+                                    JsonData TEXT,
+                                    CreatedAt TEXT NOT NULL DEFAULT (datetime('now'))
+                                )"""
+
 
 _MIGRATIONS = [
     ("ST_TaskRecords", "TaskURL", "TEXT"),
@@ -199,7 +200,6 @@ def init_db() -> None:
         cursor.execute(insert_user_role, (1, "Admin", "Administrator with full access", "Admin"))
         cursor.execute(insert_user_role, (2, "User", "Regular user with limited access", "User"))
         cursor.execute(create_projects_table)
-        cursor.execute(create_user_error_table)
         cursor.execute(create_user_models_table)
         cursor.execute(create_models_table)
         cursor.execute(create_models_backup_table)
@@ -226,4 +226,5 @@ def init_db() -> None:
         cursor.execute(create_query_history_table)
         cursor.execute(create_task_history_table)
         cursor.execute(create_task_logs_table)
+        cursor.execute(create_request_errors_table)
     logger.info("Database schema initialization finished")

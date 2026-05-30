@@ -1,11 +1,10 @@
 import asyncio
 
-from celery import Celery
-
 from app.connection import master_connection
 from app.logging_config import get_logger
 from app.routers.tasks.methods import update_task_output_and_logs
 from app.routers.tasks.queries import update_task_status
+from celery import Celery
 from scheduler._tasks.queries import get_long_running_started_tasks, update_task_log
 
 logger = get_logger(__name__)
@@ -30,13 +29,11 @@ def _cancel_and_update(task_id, task_uid, task_url, model_id, max_run_seconds):
                 result = cursor.fetchall()
             if result:
                 logger.info(
-                    f"Cancelled long-running task {task_id} (uid={task_uid}, "
-                    f"max_run_seconds={max_run_seconds})"
+                    f"Cancelled long-running task {task_id} (uid={task_uid}, max_run_seconds={max_run_seconds})"
                 )
             update_task_output_and_logs(cursor, task_id)
             task_log_message = (
-                f"Task was automatically cancelled after exceeding "
-                f"max run time of {max_run_seconds} seconds."
+                f"Task was automatically cancelled after exceeding max run time of {max_run_seconds} seconds."
             )
             cursor.execute(update_task_log, (task_log_message, task_id))
     except Exception as e:
@@ -54,12 +51,8 @@ async def main(params: dict | None = None) -> dict:
 
     cancelled_count = 0
     for task_id, task_uid, task_url, model_id, max_run_seconds in long_running_tasks:
-        await asyncio.to_thread(
-            _cancel_and_update, task_id, task_uid, task_url, model_id, max_run_seconds
-        )
+        await asyncio.to_thread(_cancel_and_update, task_id, task_uid, task_url, model_id, max_run_seconds)
         cancelled_count += 1
 
-    logger.info(
-        f"Cancelled {cancelled_count}/{len(long_running_tasks)} long-running tasks"
-    )
+    logger.info(f"Cancelled {cancelled_count}/{len(long_running_tasks)} long-running tasks")
     return {"cancelled_count": cancelled_count, "checked_count": len(long_running_tasks)}
