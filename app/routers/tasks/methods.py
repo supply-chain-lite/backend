@@ -8,6 +8,7 @@ import apsw
 import boto3
 import redis
 from botocore.exceptions import BotoCoreError, ClientError
+from celery import Celery
 from fastapi import BackgroundTasks, HTTPException
 
 from app.config import (
@@ -25,7 +26,6 @@ from app.connection import master_connection, sql_connection
 from app.logging_config import get_logger
 from app.routers.models.methods import get_model_id_and_path
 from app.routers.models.queries import get_access_level
-from celery import Celery
 
 from . import queries as run_queries
 
