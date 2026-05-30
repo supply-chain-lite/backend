@@ -1,10 +1,11 @@
 import asyncio
 
+from celery import Celery
+
 from app.connection import master_connection
 from app.logging_config import get_logger
 from app.routers.tasks.methods import update_task_output_and_logs
 from app.routers.tasks.queries import update_task_status
-from celery import Celery
 from scheduler._tasks.queries import get_long_running_started_tasks, update_task_log
 
 logger = get_logger(__name__)
