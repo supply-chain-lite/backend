@@ -55,6 +55,16 @@ The API will be available at `http://127.0.0.1:8000`. Interactive docs at `http:
 
 Logs are written to the console and, by default, to `./data/logs/app.log` with log rotation enabled.
 
+### Celery Worker
+
+Run the worker with the shared app module:
+
+```bash
+uv run celery -A app.celery_app worker --loglevel=INFO
+```
+
+Each task execution writes its logs to `CELERY_LOG_FOLDER/<task_uid>.log`.
+
 ### Linting & Formatting
 
 ```bash

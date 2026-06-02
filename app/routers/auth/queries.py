@@ -20,9 +20,12 @@ update_user_password = """UPDATE S_Users SET PasswordHash = ?, UpdatedAt = DATET
                             TokenVersion = TokenVersion + 1,
                             PasswordSalt = ? WHERE UserEmail = ?"""
 
-get_user_password = """SELECT PasswordHash, PasswordSalt, IsActive, FailedAttempts, TokenVersion,
-                    CASE WHEN IFNULL(LockedUntil, DATETIME('now')) > DATETIME('now') THEN 1 ELSE 0 END AS Locked
-                    FROM S_Users WHERE UserEmail = ?"""
+get_user_password = """SELECT S_Users.PasswordHash, S_Users.PasswordSalt, S_Users.IsActive,
+                    S_Users.FailedAttempts, S_Users.TokenVersion,
+                    CASE WHEN IFNULL(S_Users.LockedUntil, DATETIME('now')) > DATETIME('now') THEN 1 ELSE 0 END AS Locked,
+                        S_UserRoles.RoleName
+                    FROM S_Users, S_UserRoles
+                    WHERE S_Users.RoleId = S_UserRoles.RoleId AND S_Users.UserEmail = ?"""
 
 lock_user_account = """UPDATE S_Users SET LockedUntil = datetime(DATETIME('now'), ?),
                        TokenVersion = ?, UpdatedAt = DATETIME('now'),
@@ -30,6 +33,20 @@ lock_user_account = """UPDATE S_Users SET LockedUntil = datetime(DATETIME('now')
 
 
 get_user_details = """SELECT S_UserRoles.RoleName, DisplayName, TokenVersion, IsActive,
-                        CASE WHEN IFNULL(LockedUntil, DATETIME('now')) > DATETIME('now') THEN 1 ELSE 0 END AS Locked
+                        CASE WHEN IFNULL(S_Users.LockedUntil, DATETIME('now')) > DATETIME('now') THEN 1 ELSE 0 END AS Locked
                          FROM S_Users, S_UserRoles
-                        WHERE S_Users.RoleId = S_UserRoles.RoleId AND UserEmail = ? """
+                        WHERE S_Users.RoleId = S_UserRoles.RoleId AND S_Users.UserEmail = ? """
+
+
+get_home_page_url = """select ifnull(json_extract(ifnull(S_UserRoles.JsonData,
+                        '{}'), '$.homePage'), 'home-page.html') as home_url
+                    from S_UserRoles
+                    where roleName = ?"""
+
+check_if_user_can_access_url = """select COUNT(*)
+        from S_UserRoles,
+        json_each(ifnull(json_extract(ifnull(S_UserRoles.JsonData, '{}'), '$.modules'), '[]')) as module_list,
+        S_Modules
+        WHERE S_UserRoles.RoleName = ?
+        AND   S_Modules.ModuleName = module_list.value
+        AND   INSTR(?, S_Modules.ModuleHomePage) BETWEEN 1 AND 2"""

@@ -12,6 +12,10 @@ class ActivateRequest(BaseModel):
     activation_code: str
 
 
+class GetCurrentUserRequest(BaseModel):
+    page_url: str | None = None
+
+
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
@@ -36,6 +40,11 @@ class UserDetailsResponse(BaseModel):
     role_name: str
     display_name: str
     email: EmailStr
+    redirect_url: str | None = None
+
+
+class RedirectUrlResponse(BaseModel):
+    redirect_url: str
 
 
 class MessageResponse(BaseModel):
