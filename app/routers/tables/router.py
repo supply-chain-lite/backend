@@ -84,8 +84,9 @@ def get_distinct_column_values(
     Returns:
         table_schemas.DistinctColumnValuesResponse: Response containing the list of distinct values for the requested column.
     """
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         values = table_methods.get_distinct_column_values(
             cursor,
             useremail,
@@ -112,8 +113,9 @@ def get_row_count(
     Returns:
         RowCountResponse: contains `row_count`, the number of rows matching the provided model_name, project_name, table_name, and any filters.
     """
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         row_count = table_methods.get_row_count(
             cursor,
             useremail,
@@ -138,8 +140,9 @@ def get_all_table_headers(
     Returns:
         TableAllHeadersResponse: Contains the list of all column headers for the requested model, project, and table.
     """
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         headers = table_methods.get_table_columns_all(
             cursor, useremail, request.model_name, request.project_name, request.table_name
         )
@@ -370,8 +373,9 @@ def get_summary_stats(
     Returns:
         getSummaryStatsResponse: Mapping from each column name to its computed summary statistics (for example: `count`, `mean`, `min`, `max`) for rows matching the provided filters.
     """
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         summary_stats = table_methods.get_summary_stats(
             cursor,
             useremail,
@@ -428,8 +432,9 @@ def export_tables_to_excel(
     Returns:
         FileResponse: HTTP response containing the generated Excel file for download.
     """
-    user_email, _display_name, _role_name = user_data
+    user_email, _display_name, role_name = user_data
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         return table_methods.export_tables_to_excel(
             cursor,
             user_email,
@@ -503,12 +508,13 @@ def check_excel_sheet(
     Returns:
         table_schemas.checkExcelSheetResponse: Response indicating the types of the specified sheets.
     """
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     model_name = request.model_name
     project_name = request.project_name
     sheet_names = request.sheet_names
 
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         sheet_types = table_methods.check_excel_sheets_exist(cursor, useremail, model_name, project_name, sheet_names)
 
     return table_schemas.checkExcelSheetResponse(sheet_types=sheet_types)
