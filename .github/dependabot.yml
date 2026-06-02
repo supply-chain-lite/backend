@@ -20,7 +20,6 @@ updates:
     open-pull-requests-limit: 5
     ignore:
       - dependency-name: "burnett01/rsync-deployments"
-        update-types: ["version-update:semver-major"]
     groups:
       github-actions:
         patterns:
