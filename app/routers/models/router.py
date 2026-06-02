@@ -4,19 +4,21 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import FileResponse
 
 from app.connection import master_connection
-from app.routers.auth.methods import _get_user_from_token
+from app.routers.auth.methods import _get_user_from_token, check_module_access
 
 from . import methods as model_methods
 from . import schemas as model_schemas
 
 router = APIRouter()
+this_api = "/api/models"
 
 
 @router.post("/list", response_model=model_schemas.ModelListResponse)
 def get_user_models_by_project(user_data: tuple = Depends(_get_user_from_token)) -> model_schemas.ModelListResponse:
     """Return all models grouped by project that are visible to the authenticated user."""
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         project_models = model_methods.get_user_models_by_project(cursor, useremail)
     return model_schemas.ModelListResponse(project_models=project_models)
 
@@ -35,12 +37,13 @@ def add_new_model(
     request: model_schemas.createModelRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> model_schemas.MessageResponse:
     """Create a new model in a project, optionally seeded with sample data."""
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     model_template = request.model_template
     model_name = request.model_name
     project_name = request.project_name
     with_sample_data = request.with_sample_data
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         model_methods.add_new_model(cursor, model_name, project_name, useremail, model_template, with_sample_data)
     return model_schemas.MessageResponse(message="Model created successfully")
 
@@ -50,7 +53,7 @@ def save_as_model(
     request: model_schemas.saveAsModelRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> model_schemas.MessageResponse:
     """Save an existing model as a new model copy for the authenticated user."""
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     model_name = request.model_name
     project_name = request.project_name
     new_model_name = request.new_model_name
@@ -58,6 +61,7 @@ def save_as_model(
     new_user_email = useremail
 
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         model_methods.save_as_model(
             cursor, useremail, model_name, project_name, new_model_name, new_project_name, new_user_email
         )
@@ -69,12 +73,13 @@ def rename_model(
     request: model_schemas.renameModelRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> model_schemas.MessageResponse:
     """Rename a model owned by or shared with the authenticated user."""
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     model_name = request.model_name
     project_name = request.project_name
     new_model_name = request.new_model_name
 
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         model_methods.rename_model(cursor, useremail, model_name, project_name, new_model_name)
     return model_schemas.MessageResponse(message="Model renamed successfully")
 
@@ -84,11 +89,12 @@ def delete_model(
     request: model_schemas.modelRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> model_schemas.MessageResponse:
     """Delete a model from the specified project."""
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     model_name = request.model_name
     project_name = request.project_name
 
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         model_methods.delete_model(cursor, useremail, model_name, project_name)
     return model_schemas.MessageResponse(message="Model deleted successfully")
 
@@ -98,12 +104,13 @@ def move_model(
     request: model_schemas.moveModelRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> model_schemas.MessageResponse:
     """Move a model from one project to another for the authenticated user."""
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     model_name = request.model_name
     project_name = request.project_name
     new_project_name = request.new_project_name
 
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         model_methods.move_model_to_project(cursor, useremail, model_name, project_name, new_project_name)
     return model_schemas.MessageResponse(message="Model moved successfully to the new project")
 
@@ -113,10 +120,11 @@ def add_existing_model(
     request: model_schemas.addExistingModelRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> model_schemas.MessageResponse:
     """Attach existing models from other projects into the target project."""
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     new_project_name = request.project_name
     model_project_pairs = request.model_project_pairs
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         for model_name, old_project_name in model_project_pairs:
             model_methods.move_model_to_project(cursor, useremail, model_name, old_project_name, new_project_name)
     return model_schemas.MessageResponse(message="Existing model added successfully to the project")
@@ -125,10 +133,11 @@ def add_existing_model(
 @router.post("/download", response_class=FileResponse)
 def download_model(request: model_schemas.modelRequest, user_data: tuple = Depends(_get_user_from_token)):
     """Download a model artifact file for the authenticated user."""
-    useremail, _, _ = user_data
+    useremail, _display_name, role_name = user_data
     model_name = request.model_name
     project_name = request.project_name
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         return model_methods.download_model(cursor, useremail, model_name, project_name)
 
 
@@ -140,8 +149,9 @@ def upload_model(
     upload_file: UploadFile = File(...),
 ) -> model_schemas.MessageResponse:
     """Upload a model artifact and register it under the specified project and model name."""
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         model_methods.upload_model(cursor, useremail, project_name, model_name, upload_file)
     return model_schemas.MessageResponse(message="Model uploaded successfully")
 
@@ -151,12 +161,13 @@ def backup_model(
     request: model_schemas.backupModelRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> model_schemas.MessageResponse:
     """Create a backup snapshot for a model with an optional comment."""
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     model_name = request.model_name
     project_name = request.project_name
     backup_comment = request.backup_comment
 
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         model_methods.create_model_backup(cursor, useremail, model_name, project_name, backup_comment)
     return model_schemas.MessageResponse(message="Model backup created successfully")
 
@@ -166,11 +177,12 @@ def get_model_backups(
     request: model_schemas.modelRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> model_schemas.getBackupsResponse:
     """Return all backup snapshots available for the requested model."""
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     model_name = request.model_name
     project_name = request.project_name
 
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         backups = model_methods.get_model_backups(cursor, useremail, model_name, project_name)
 
     return model_schemas.getBackupsResponse(model_backups=backups)
@@ -181,12 +193,13 @@ def restore_model(
     request: model_schemas.restoreModelRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> model_schemas.MessageResponse:
     """Restore a model to the state captured in a selected backup snapshot."""
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     model_name = request.model_name
     project_name = request.project_name
     backup_id = request.backup_id
 
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         model_methods.restore_model_from_backup(cursor, useremail, model_name, project_name, backup_id)
 
     return model_schemas.MessageResponse(message="Model restored successfully from backup")
@@ -207,13 +220,14 @@ def share_model(
     Returns:
         MessageResponse: A response containing a confirmation message that the model was shared.
     """
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     model_name = request.model_name
     project_name = request.project_name
     target_user_email = request.target_user_email.lower()
     access_level = request.access_level.value
 
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         model_methods.share_model(cursor, useremail, target_user_email, model_name, project_name, access_level)
     return model_schemas.MessageResponse(message="Model shared successfully with the target user")
 
@@ -255,7 +269,7 @@ def accept_model_share(
     Returns:
         MessageResponse: Confirmation message that the share request response was recorded.
     """
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     notification_id = request.notification_id
     accept = request.accept
     model_name = request.model_name
@@ -263,6 +277,7 @@ def accept_model_share(
     create_new_copy = request.create_new_copy
 
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         model_methods.accept_model_share(
             cursor, notification_id, accept, model_name, project_name, create_new_copy, useremail
         )
@@ -298,11 +313,12 @@ def vacuum_model(
     request: model_schemas.modelRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> model_schemas.MessageResponse:
     """Perform a vacuum operation on the model's database to optimize it."""
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     model_name = request.model_name
     project_name = request.project_name
 
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         model_methods.vacuum_model(cursor, useremail, model_name, project_name)
 
     return model_schemas.MessageResponse(message="Model vacuumed successfully")
@@ -337,12 +353,13 @@ def update_model_access(
     request: model_schemas.updateAccessLevelRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> model_schemas.MessageResponse:
     """Update access levels for users who have access to the model."""
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     model_name = request.model_name
     project_name = request.project_name
     access_list = request.access_list
 
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         model_methods.update_model_access_level(cursor, useremail, model_name, project_name, access_list)
 
     return model_schemas.MessageResponse(message="Model access levels updated successfully")
@@ -353,11 +370,12 @@ def get_files_list(
     request: model_schemas.filesListRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> model_schemas.filesListResponse:
     """Retrieve the list of files associated with a model."""
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     model_name = request.model_name
     project_name = request.project_name
 
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         files = model_methods.get_files_list(cursor, useremail, model_name, project_name)
 
     return model_schemas.filesListResponse(files=files)
@@ -366,12 +384,13 @@ def get_files_list(
 @router.post("/download-file", response_class=FileResponse)
 def download_file(request: model_schemas.downloadFileRequest, user_data: tuple = Depends(_get_user_from_token)):
     """Download a specific file associated with a model."""
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     file_id = request.file_id
     model_name = request.model_name
     project_name = request.project_name
 
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         file_response = model_methods.download_file(cursor, useremail, model_name, project_name, file_id)
 
     return file_response
@@ -382,12 +401,13 @@ def delete_file(
     request: model_schemas.deleteFileRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> model_schemas.MessageResponse:
     """Delete a specific file associated with a model."""
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     file_id = request.file_id
     model_name = request.model_name
     project_name = request.project_name
 
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         model_methods.delete_file(cursor, useremail, model_name, project_name, file_id)
 
     return model_schemas.MessageResponse(message="File deleted successfully")
@@ -403,7 +423,8 @@ def upload_file(
     upload_file: UploadFile = File(...),
 ) -> model_schemas.MessageResponse:
     """Upload a model artifact and register it under the specified project and model name."""
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         model_methods.upload_file(cursor, useremail, model_name, project_name, file_id, file_name, upload_file)
     return model_schemas.MessageResponse(message="Model uploaded successfully")
