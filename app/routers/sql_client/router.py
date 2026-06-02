@@ -3,20 +3,22 @@
 from fastapi import APIRouter, Depends
 
 from app.connection import master_connection
-from app.routers.auth.methods import _get_user_from_token
+from app.routers.auth.methods import _get_user_from_token, check_module_access
 
 from . import methods as sql_methods
 from . import schemas as sql_schemas
 
 router = APIRouter()
+this_api = "/api/sql-client"
 
 
 @router.post("/objects", response_model=sql_schemas.SQLObjectResponse)
 def get_sql_objects(
     request: sql_schemas.SQLObjectRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> sql_schemas.SQLObjectResponse:
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         tables, views = sql_methods.get_sql_objects(cursor, useremail, request.model_name, request.project_name)
         return sql_schemas.SQLObjectResponse(tables=tables, views=views)
 
@@ -25,8 +27,9 @@ def get_sql_objects(
 def execute_sql_query(
     request: sql_schemas.SQLQueryRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> sql_schemas.SQLQueryResponse:
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         result = sql_methods.execute_sql_query(cursor, useremail, request.model_name, request.project_name, request.sql)
         return sql_schemas.SQLQueryResponse(**result)
 
@@ -35,8 +38,9 @@ def execute_sql_query(
 def get_object_ddl(
     request: sql_schemas.SQLObjectDDLRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> sql_schemas.SQLObjectDDLResponse:
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         ddl = sql_methods.get_object_ddl(
             cursor, useremail, request.model_name, request.project_name, request.object_name
         )
@@ -47,8 +51,9 @@ def get_object_ddl(
 def get_sql_history(
     request: sql_schemas.SQLHistoryRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> sql_schemas.SQLHistoryResponse:
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         history = sql_methods.get_sql_history(cursor, useremail, request.model_name, request.project_name)
         return sql_schemas.SQLHistoryResponse(history=history)
 
@@ -57,8 +62,9 @@ def get_sql_history(
 def add_sql_history(
     request: sql_schemas.SQLHistoryAddRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> sql_schemas.SQLHistoryAddResponse:
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         sql_methods.add_sql_history(
             cursor, useremail, request.model_name, request.project_name, request.sql, request.is_error, request.status
         )

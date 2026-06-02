@@ -3,12 +3,13 @@
 from fastapi import APIRouter, Depends
 
 from app.connection import master_connection
-from app.routers.auth.methods import _get_user_from_token
+from app.routers.auth.methods import _get_user_from_token, check_module_access
 
 from . import methods as project_methods
 from . import schemas as project_schemas
 
 router = APIRouter()
+this_api = "/api/projects"
 
 
 @router.post("/current", response_model=project_schemas.CurrentProjectResponse)
@@ -25,12 +26,13 @@ def create_project(
     request: project_schemas.ProjectCreateRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> project_schemas.MessageResponse:
     """Create a new project and optionally set it as the current project."""
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     project_name = request.name
     open_after_create = request.create_and_open
     if open_after_create is None:
         open_after_create = True
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         project_methods.add_new_project(cursor, useremail, project_name, open_after_create)
         return project_schemas.MessageResponse(message="Project created successfully")
 
@@ -40,9 +42,10 @@ def open_project(
     request: project_schemas.OpenProjectRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> project_schemas.MessageResponse:
     """Set the specified project as the current project for the authenticated user."""
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     project_name = request.project_name
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         project_methods.open_project(cursor, useremail, project_name)
         return project_schemas.MessageResponse(message="Project opened successfully")
 
@@ -52,9 +55,10 @@ def delete_project(
     request: project_schemas.OpenProjectRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> project_schemas.MessageResponse:
     """Delete the specified project for the authenticated user."""
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     project_name = request.project_name
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         project_methods.delete_project(cursor, useremail, project_name)
         return project_schemas.MessageResponse(message="Project deleted successfully")
 
@@ -64,10 +68,11 @@ def rename_project(
     request: project_schemas.RenameProjectRequest, user_data: tuple = Depends(_get_user_from_token)
 ) -> project_schemas.MessageResponse:
     """Rename an existing project from the old name to the new name."""
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     old_project_name = request.old_project_name
     new_project_name = request.new_project_name
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         project_methods.rename_project(cursor, useremail, old_project_name, new_project_name)
         return project_schemas.MessageResponse(message="Project renamed successfully")
 

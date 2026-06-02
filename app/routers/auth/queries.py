@@ -50,3 +50,11 @@ check_if_user_can_access_url = """select COUNT(*)
         WHERE S_UserRoles.RoleName = ?
         AND   S_Modules.ModuleName = module_list.value
         AND   INSTR(?, S_Modules.ModuleHomePage) BETWEEN 1 AND 2"""
+
+check_module_access = """SELECT COUNT(*)
+        FROM S_UserRoles,
+        json_each(ifnull(json_extract(ifnull(S_UserRoles.JsonData, '{}'), '$.modules'), '[]')) as module_list,
+        S_Modules
+        WHERE S_UserRoles.RoleName = ?
+        AND   S_Modules.ModuleName = module_list.value
+        AND   S_Modules.ModulePath = ?"""

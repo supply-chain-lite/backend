@@ -278,3 +278,10 @@ def get_home_page_url(cursor, role_name: str) -> str:
 def check_if_user_can_access_page(cursor, role_name: str, page_url: str) -> bool:
     row = cursor.execute(queries.check_if_user_can_access_url, (role_name, page_url)).fetchone()
     return row[0] > 0
+
+
+def check_module_access(cursor, role_name: str, module_path: str):
+    """Verify the user's role has access to the given API module path. Raises 403 if not."""
+    row = cursor.execute(queries.check_module_access, (role_name, module_path)).fetchone()
+    if not row or row[0] == 0:
+        raise HTTPException(status_code=403, detail="You do not have permission to access this module")

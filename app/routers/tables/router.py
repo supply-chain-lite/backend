@@ -5,12 +5,13 @@ import json
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from app.connection import master_connection
-from app.routers.auth.methods import _get_user_from_token
+from app.routers.auth.methods import _get_user_from_token, check_module_access
 
 from . import methods as table_methods
 from . import schemas as table_schemas
 
 router = APIRouter()
+this_api = "/api/tables"
 
 
 @router.post("/headers", response_model=table_schemas.TableHeaderResponse)
@@ -23,8 +24,9 @@ def get_table_headers(
     Returns:
         table_schemas.TableHeaderResponse: Response object containing the table's column headers.
     """
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         headers = table_methods.get_table_headers(
             cursor, useremail, request.model_name, request.project_name, request.table_name
         )
@@ -51,8 +53,9 @@ def get_table_data(
     Returns:
         TableDataResponse: Object whose `data` field contains the rows matching the provided identifiers and filters.
     """
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         data = table_methods.get_table_data(
             cursor,
             useremail,
@@ -156,8 +159,9 @@ def set_columns_order(
     Returns:
         table_schemas.MessageResponse: Response containing a confirmation message.
     """
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         table_methods.set_columns_order(
             cursor, useremail, request.model_name, request.project_name, request.table_name, request.column_names
         )
@@ -177,8 +181,9 @@ def add_column(
     Returns:
         MessageResponse: Confirmation message "Column added successfully."
     """
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         table_methods.add_new_column(
             cursor,
             useremail,
@@ -211,8 +216,9 @@ def set_column_formatting(
     Returns:
         MessageResponse: Confirmation message indicating the column formatting was set successfully.
     """
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         table_methods.set_column_formatting(
             cursor,
             useremail,
@@ -264,8 +270,9 @@ def update_row(
     Returns:
         MessageResponse: Confirmation message `"Row updated successfully."`
     """
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         table_methods.update_row(
             cursor,
             useremail,
@@ -296,8 +303,9 @@ def update_rows(
     Returns:
         updateRowValuesResponse: Object with `rows_updated` set to the number of rows that were updated.
     """
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         row_count = table_methods.update_rows(
             cursor,
             useremail,
@@ -331,8 +339,9 @@ def delete_rows(
     Returns:
         rows_deleted (int): Number of rows that were deleted.
     """
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         rows_deleted = table_methods.delete_rows(
             cursor,
             useremail,
@@ -391,8 +400,9 @@ def add_row(
     Returns:
         MessageResponse: A message confirming the row was added, e.g. "Row added successfully."
     """
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         table_methods.add_row(
             cursor,
             useremail,
@@ -470,8 +480,9 @@ def upload_excel_file(
         raise HTTPException(
             status_code=400, detail="Invalid file type. Please upload an Excel file with .xlsx or .xls extension."
         )
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         request_resp = table_methods.upload_excel(
             cursor, useremail, model_name, project_name, sheet_action, upload_file
         )

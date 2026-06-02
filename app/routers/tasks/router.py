@@ -3,12 +3,13 @@
 from fastapi import APIRouter, BackgroundTasks, Depends
 
 from app.connection import master_connection
-from app.routers.auth.methods import _get_user_from_token
+from app.routers.auth.methods import _get_user_from_token, check_module_access
 
 from . import methods as run_methods
 from . import schemas as run_schemas
 
 router = APIRouter()
+this_api = "/api/tasks"
 
 
 @router.post("/list", response_model=run_schemas.ListTasksResponse)
@@ -29,12 +30,13 @@ def run_model_task(
     request: run_schemas.runTaskRequest,
     user_data: tuple = Depends(_get_user_from_token),
 ) -> run_schemas.MessageResponse:
-    useremail, _display_name, _role_name = user_data
+    useremail, _display_name, role_name = user_data
     model_name = request.model_name
     project_name = request.project_name
     task_id = request.task_id
     task_param_values = request.task_params
     with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
         run_methods.run_model_task(cursor, useremail, model_name, project_name, task_id, task_param_values)
     return run_schemas.MessageResponse(message="Task executed successfully")
 
