@@ -13,7 +13,7 @@ class ActivateRequest(BaseModel):
 
 
 class GetCurrentUserRequest(BaseModel):
-    page_url: str | None
+    page_url: str | None = None
 
 
 class ForgotPasswordRequest(BaseModel):
