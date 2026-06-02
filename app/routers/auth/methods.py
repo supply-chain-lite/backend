@@ -179,7 +179,7 @@ def login_user(cursor, useremail: str, password: str):
     row = cursor.execute(queries.get_user_password, (useremail,)).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Invalid credentials")
-    password_hash_db, salt_db, is_active, failed_attempts, token_version, is_locked = row
+    password_hash_db, salt_db, is_active, failed_attempts, token_version, is_locked, role_name = row
     if is_active == 0:
         raise HTTPException(status_code=400, detail="User account is not active")
     if is_locked:
@@ -199,7 +199,7 @@ def login_user(cursor, useremail: str, password: str):
         raise HTTPException(status_code=400, detail="Invalid credentials")
     cursor.execute(queries.lock_user_account, (lock_minutes, token_version + 1, 0, useremail))
     access_token = _generate_token(token_version + 1, useremail)
-    return access_token
+    return access_token, role_name
 
 
 def _get_user_from_token(request: Request, response: Response):
@@ -248,7 +248,7 @@ def change_password(cursor, useremail: str, current_password: str, new_password:
     row = cursor.execute(queries.get_user_password, (useremail,)).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="User not found")
-    password_hash_db, salt_db, is_active, _, _, is_locked = row
+    password_hash_db, salt_db, is_active, _, _, is_locked, _ = row
     if is_active == 0:
         raise HTTPException(status_code=400, detail="User account is not active")
     if is_locked:
@@ -266,3 +266,15 @@ def change_password(cursor, useremail: str, current_password: str, new_password:
         (new_password_hash, new_salt, useremail),
     )
     cursor.intermediate_commit()
+
+
+def get_home_page_url(cursor, role_name: str) -> str:
+    row = cursor.execute(queries.get_home_page_url, (role_name,)).fetchone()
+    if row and row[0]:
+        return row[0]
+    return "home-page.html"
+
+
+def check_if_user_can_access_page(cursor, role_name: str, page_url: str) -> bool:
+    row = cursor.execute(queries.check_if_user_can_access_url, (role_name, page_url)).fetchone()
+    return row[0] > 0

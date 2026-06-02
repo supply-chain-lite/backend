@@ -80,8 +80,8 @@ def reset_password(request: auth_schemas.ResetPasswordRequest) -> auth_schemas.M
         return auth_schemas.MessageResponse(message="Password reset successfully")
 
 
-@router.post("/login", response_model=auth_schemas.MessageResponse)
-def login(request: auth_schemas.LoginRequest, response: Response) -> auth_schemas.MessageResponse:
+@router.post("/login", response_model=auth_schemas.RedirectUrlResponse)
+def login(request: auth_schemas.LoginRequest, response: Response) -> auth_schemas.RedirectUrlResponse:
     """Authenticate a user and set an access-token cookie."""
     email = request.email.strip().lower()
     password = request.password
@@ -90,9 +90,10 @@ def login(request: auth_schemas.LoginRequest, response: Response) -> auth_schema
     if not password:
         raise HTTPException(status_code=400, detail="password is required")
     with master_connection() as cursor:
-        access_token = auth_methods.login_user(cursor, email, password)
+        access_token, role_name = auth_methods.login_user(cursor, email, password)
+        home_url = auth_methods.get_home_page_url(cursor, role_name)
     response.set_cookie(key="access_token", value=access_token, httponly=True, secure=True, samesite="Lax")
-    return auth_schemas.MessageResponse(message="Login successful")
+    return auth_schemas.RedirectUrlResponse(redirect_url=home_url)
 
 
 @router.post("/logout", response_model=auth_schemas.MessageResponse)
@@ -103,10 +104,23 @@ def logout(response: Response) -> auth_schemas.MessageResponse:
 
 
 @router.post("/me", response_model=auth_schemas.UserDetailsResponse)
-def get_current_user(user_data: tuple = Depends(auth_methods._get_user_from_token)) -> auth_schemas.UserDetailsResponse:
+def get_current_user(
+    request: auth_schemas.GetCurrentUserRequest, user_data: tuple = Depends(auth_methods._get_user_from_token)
+) -> auth_schemas.UserDetailsResponse:
     """Return profile and role details for the authenticated user."""
     useremail, display_name, role_name = user_data
-    return auth_schemas.UserDetailsResponse(role_name=role_name, display_name=display_name, email=useremail)
+    page_url = request.page_url
+    redirect_url = None
+    with master_connection() as cursor:
+        if not page_url:
+            redirect_url = None
+        else:
+            check_url = auth_methods.check_if_user_can_access_page(cursor, role_name, page_url)
+            if not check_url:
+                redirect_url = auth_methods.get_home_page_url(cursor, role_name)
+    return auth_schemas.UserDetailsResponse(
+        role_name=role_name, display_name=display_name, email=useremail, redirect_url=redirect_url
+    )
 
 
 @router.post("/change-password", response_model=auth_schemas.MessageResponse)

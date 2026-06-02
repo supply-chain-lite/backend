@@ -1,3 +1,5 @@
+import json
+
 from .connection import master_connection
 from .logging_config import get_logger
 
@@ -29,8 +31,8 @@ create_user_role_table = """CREATE TABLE IF NOT EXISTS S_UserRoles (
                                     UpdatedAt TEXT NOT NULL DEFAULT (datetime('now'))
                             )"""
 
-insert_user_role = """INSERT INTO S_UserRoles (RoleID, RoleName, RoleDescription)
-                        SELECT ?, ?, ?
+insert_user_role = """INSERT INTO S_UserRoles (RoleID, RoleName, RoleDescription, JSONData)
+                        SELECT ?, ?, ?, ?
                         WHERE NOT EXISTS (
                             SELECT 1 FROM S_UserRoles WHERE RoleName = ?
                         )"""
@@ -161,6 +163,37 @@ create_request_errors_table = """CREATE TABLE IF NOT EXISTS S_RequestErrors (
                                     CreatedAt TEXT NOT NULL DEFAULT (datetime('now'))
                                 )"""
 
+create_modules_table = """CREATE TABLE IF NOT EXISTS S_Modules (
+                            ModuleId INTEGER PRIMARY KEY AUTOINCREMENT,
+                            ModuleName TEXT NOT NULL UNIQUE,
+                            ModulePath TEXT,
+                            ModuleDescription TEXT,
+                            ModuleHomePage TEXT,
+                            JsonData TEXT
+                        )"""
+
+insert_module = """INSERT INTO S_Modules (ModuleName, ModuleDescription, ModulePath, ModuleHomePage)
+                    SELECT ?, ?, ?, ?
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM S_Modules WHERE ModuleName = ?
+                    )"""
+
+module_data = [
+    ("Models", "Create and manage data models", "/api/models", "home-page.html"),
+    ("Projects", "Organize models into projects and manage access", "/api/projects", "home-page.html"),
+    ("SQLClient", "Run ad-hoc SQL queries against your data warehouse", "/api/sql-client", "sql-client.html"),
+    ("Tables", "CRUD operations for tables", "/api/tables", "table.html"),
+    ("Tasks", "Monitor and manage long-running tasks", "/api/tasks", "task-details.html"),
+]
+
+admin_role = {"modules": [module[0] for module in module_data], "homePage": "home-page.html"}
+user_role = {"modules": [module[0] for module in module_data], "homePage": "home-page.html"}
+
+user_roles = [
+    (1, "Admin", "Administrator with full access", json.dumps(admin_role)),
+    (2, "User", "Regular user with limited access", json.dumps(user_role)),
+    (3, "PowerUser", "Power user with extended access", json.dumps(user_role)),
+]
 
 _MIGRATIONS = [
     ("ST_TaskRecords", "TaskURL", "TEXT"),
@@ -197,8 +230,6 @@ def init_db() -> None:
     with master_connection() as cursor:
         cursor.execute(create_user_table)
         cursor.execute(create_user_role_table)
-        cursor.execute(insert_user_role, (1, "Admin", "Administrator with full access", "Admin"))
-        cursor.execute(insert_user_role, (2, "User", "Regular user with limited access", "User"))
         cursor.execute(create_projects_table)
         cursor.execute(create_user_models_table)
         cursor.execute(create_models_table)
@@ -227,4 +258,9 @@ def init_db() -> None:
         cursor.execute(create_task_history_table)
         cursor.execute(create_task_logs_table)
         cursor.execute(create_request_errors_table)
+        cursor.execute(create_modules_table)
+        for module_name, module_desc, module_path, module_home in module_data:
+            cursor.execute(insert_module, (module_name, module_desc, module_path, module_home, module_name))
+        for role_id, role_name, role_desc, json_data in user_roles:
+            cursor.execute(insert_user_role, (role_id, role_name, role_desc, json_data, role_name))
     logger.info("Database schema initialization finished")
