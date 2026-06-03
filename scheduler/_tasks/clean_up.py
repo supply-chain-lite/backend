@@ -8,7 +8,7 @@ import apsw
 from app.config import CELERY_LOG_FOLDER, CELERY_MODELS_FOLDER, CELERY_TEMP_FOLDER, TEMP_FOLDER, master_db
 from app.connection import master_connection
 from app.logging_config import get_logger
-from scheduler._tasks.queries import get_model_id_and_paths, update_vacuum_date
+from scheduler._tasks import queries as cleanup_queries
 
 logger = get_logger(__name__)
 
@@ -16,6 +16,9 @@ TEMP_FILE_RETENTION_SECONDS = 3600  # 1 hour
 CELERY_LOG_RETENTION_SECONDS = 7 * 24 * 3600  # 7 days
 CELERY_MODEL_RETENTION_SECONDS = 30 * 24 * 3600  # 30 days
 VACUUM_INTERVAL_SECONDS = 7 * 24 * 3600  # 7 days
+EXECUTION_LOG_RETENTION_DAYS = 30
+SQL_HISTORY_MAX_RECORDS_PER_USER = 100
+TASK_HISTORY_MAX_RECORDS_PER_USER = 30
 
 
 def _cleanup_folder(folder_path, retention_seconds):
@@ -50,10 +53,12 @@ async def main(params: dict | None = None) -> dict:
 
     master_vacuumed = await asyncio.to_thread(_query, master_db)
     user_models_vacuum = await vacuum_user_models({})
+    db_cleanup_results = await asyncio.to_thread(db_cleanup)
     return {
         "deleted_counts": deleted_counts,
         "master_vacuumed": bool(master_vacuumed),
         "user_models_vacuum": user_models_vacuum,
+        "db_cleanup": db_cleanup_results,
     }
 
 
@@ -89,7 +94,7 @@ async def vacuum_user_models(params: dict | None = None) -> dict:
     del params
 
     with master_connection() as cursor:
-        cursor.execute(get_model_id_and_paths)
+        cursor.execute(cleanup_queries.get_model_id_and_paths)
         models = cursor.fetchall()
 
     checked_count = 0
@@ -131,7 +136,7 @@ async def vacuum_user_models(params: dict | None = None) -> dict:
 
             with master_connection() as cursor:
                 cursor.execute(
-                    update_vacuum_date,
+                    cleanup_queries.update_vacuum_date,
                     (datetime.now(timezone.utc).isoformat(), model_id),
                 )
             vacuumed_count += 1
@@ -141,4 +146,34 @@ async def vacuum_user_models(params: dict | None = None) -> dict:
         "skipped_count": skipped_count,
         "vacuumed_count": vacuumed_count,
         "failed_count": failed_count,
+    }
+
+
+def db_cleanup():
+    with master_connection() as cursor:
+        rows = cursor.execute(cleanup_queries.delete_duplicate_queries).fetchall()
+        duplicate_deleted = len(rows)
+        logger.info(f"Deleted {len(rows)} duplicate query history records")
+        rows = cursor.execute(cleanup_queries.delete_execution_logs, (EXECUTION_LOG_RETENTION_DAYS,)).fetchall()
+        execution_logs_deleted = len(rows)
+        logger.info(f"Deleted {len(rows)} old job execution logs")
+        rows = cursor.execute(cleanup_queries.delete_sql_history, (SQL_HISTORY_MAX_RECORDS_PER_USER,)).fetchall()
+        sql_history_deleted = len(rows)
+        logger.info(
+            f"Deleted {len(rows)} old SQL history records, keeping the most recent {SQL_HISTORY_MAX_RECORDS_PER_USER} per user"
+        )
+        rows = cursor.execute(
+            cleanup_queries.delete_task_history,
+            (TASK_HISTORY_MAX_RECORDS_PER_USER, CELERY_LOG_RETENTION_SECONDS / 86400),
+        ).fetchall()
+        task_history_deleted = len(rows)
+        logger.info(
+            f"Deleted {len(rows)} old task history records, keeping the most recent {TASK_HISTORY_MAX_RECORDS_PER_USER} per user"
+        )
+        cursor.execute(cleanup_queries.delete_task_logs)
+    return {
+        "duplicate_queries_deleted": duplicate_deleted,
+        "execution_logs_deleted": execution_logs_deleted,
+        "sql_history_deleted": sql_history_deleted,
+        "task_history_deleted": task_history_deleted,
     }

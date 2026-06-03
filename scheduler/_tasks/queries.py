@@ -24,3 +24,56 @@ get_long_running_started_tasks = """SELECT TaskId, TaskUID, TaskURL, ModelId,
         WHERE Status IN ('STARTED', 'RUNNING') COLLATE NOCASE
         AND (unixepoch(datetime('now')) - unixepoch(SubmittedAt)) >
             ifnull(json_extract(ifnull(JSONData, '{}'), '$.max_run_seconds'), 86400)"""
+
+delete_duplicate_queries = """DELETE FROM S_SQLHistory
+                                WHERE HistoryId not in
+                                (
+                                SELECT Max(HistoryId)
+                                FROM S_SQLHistory
+                                GROUP BY SQLQuery, IsErrored, UserEmail, ModelId
+                                ) RETURNING 1;"""
+
+delete_execution_logs = """DELETE FROM SJ_JobExecutions
+                        WHERE JulianDay(Datetime('now')) -  JulianDay(CompletedAt) > ?
+                        RETURNING 1;"""
+
+delete_sql_history = """DELETE FROM S_SQLHistory
+                        WHERE HistoryId in
+                        (
+                        SELECT HistoryId
+                        FROM
+                        (
+                        SELECT
+                                HistoryId,
+                                ROW_NUMBER() OVER (
+                                        PARTITION BY UserEmail
+                                        ORDER BY HistoryId DESC
+                                ) AS rn
+                                FROM S_SQLHistory
+                        ) WHERE rn > ?
+                        )
+                        RETURNING 1;"""
+
+
+delete_task_history = """DELETE FROM ST_TaskRecords
+                        WHERE TaskId in
+                        (
+                        SELECT TaskId
+                        FROM
+                        (
+                        SELECT
+                                TaskId,
+                                ROW_NUMBER() OVER (
+                                        PARTITION BY SubmittedBy
+                                        ORDER BY TaskId DESC
+                                ) AS rn
+                                FROM ST_TaskRecords
+                        ) WHERE rn > ?
+                        )
+                        AND JulianDay(Datetime('now')) -  JulianDay(SubmittedAt) > ?
+                        RETURNING 1;"""
+
+
+delete_task_logs = """DELETE FROM ST_TaskLogs
+                        WHERE TaskId NOT IN (SELECT TaskId FROM ST_TaskRecords)
+                        RETURNING 1;"""
