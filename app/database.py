@@ -184,10 +184,11 @@ module_data = [
     ("SQLClient", "Run ad-hoc SQL queries against your data warehouse", "/api/sql-client", "sql-client.html"),
     ("Tables", "CRUD operations for tables", "/api/tables", "table.html"),
     ("Tasks", "Monitor and manage long-running tasks", "/api/tasks", "task-details.html"),
+    ("Scheduler", "Schedule recurring tasks and manage schedules", "/api/schedules", "scheduler.html"),
 ]
 
 admin_role = {"modules": [module[0] for module in module_data], "homePage": "home-page.html"}
-user_role = {"modules": [module[0] for module in module_data], "homePage": "home-page.html"}
+user_role = {"modules": [module[0] for module in module_data if module[0] != "Scheduler"], "homePage": "home-page.html"}
 
 user_roles = [
     (1, "Admin", "Administrator with full access", json.dumps(admin_role)),
