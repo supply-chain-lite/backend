@@ -3,7 +3,7 @@ import traceback as traceback_module
 
 from celery import Celery
 from celery.app.task import Task
-from celery.exceptions import Ignore
+from celery.exceptions import Ignore, Reject, Retry
 from celery.signals import setup_logging, task_failure, task_postrun, worker_ready
 
 from app.config import BROKER_URL
@@ -11,6 +11,7 @@ from app.logging_config import configure_logging, get_logger
 
 from . import methods as celery_methods
 from .database import init_celery_db
+from .task_logging import capture_task_logs
 
 logger = get_logger(__name__)
 
@@ -33,8 +34,21 @@ class TrackedTask(Task):
         worker_name = self.request.hostname or "unknown"
         self.update_state(task_id=task_id, state="STARTED")
         celery_methods.record_task_started(task_id, process_id, worker_name)
-        logger.info("Task starting | id=%s | name=%s | args=%s | kwargs=%s", task_id, task_name, args, kwargs)
-        return super().__call__(*args, **kwargs)
+
+        # Capture everything the task writes to stdout/stderr (and logging) into
+        # CELERY_LOG_FOLDER/<task_id>.log for the duration of this execution.
+        with capture_task_logs(task_id):
+            logger.info("Task starting | id=%s | name=%s | args=%s | kwargs=%s", task_id, task_name, args, kwargs)
+            try:
+                return super().__call__(*args, **kwargs)
+            except (Retry, Ignore, Reject):
+                # Celery control-flow signals, not real failures.
+                raise
+            except Exception:
+                # sys.stderr is tee'd into the per-task log file here, so this records
+                # the full traceback in <task_id>.log (Celery only logs it after __call__).
+                traceback_module.print_exc()
+                raise
 
 
 app = Celery(
@@ -52,6 +66,9 @@ app.conf.update(
     accept_content=["json"],
     timezone="UTC",
     enable_utc=True,
+    # We capture stdout/stderr per task ourselves (see TrackedTask / task_logging),
+    # so disable Celery's global stdout->logging redirection to avoid double output.
+    worker_redirect_stdouts=False,
 )
 
 
@@ -75,6 +92,8 @@ def on_task_postrun(task_id=None, task=None, args=None, kwargs=None, retval=None
         task.update_state(task_id=task_id, state=state)
     if state == "SUCCESS":
         celery_methods.record_task_success(task_id, retval)
+    elif state == "REVOKED":
+        celery_methods.record_task_cancelled(task_id)
     logger.info("Task finished | id=%s | name=%s | state=%s | result=%s", task_id, task_name, state, retval)
 
 

@@ -54,12 +54,21 @@ def record_task_success(task_id: str, result=None):
             (_now(), _serialise(result), task_id),
         )
 
-
-def record_task_failure(task_id: str, error=None, traceback_str=None):
-    """Mark the task as FAILURE."""
+def record_task_cancelled(task_id: str):
+    """Mark the task as CANCELLED."""
     with master_connection() as conn:
         conn.execute(
-            """UPDATE SC_TaskWorker SET Status = 'FAILURE', TimeCompleted = ?,
+            """UPDATE SC_TaskWorker SET Status = 'CANCELLED', TimeCompleted = ?
+                WHERE TaskId = ?""",
+            (_now(), task_id),
+        )
+
+
+def record_task_failure(task_id: str, error=None, traceback_str=None):
+    """Mark the task as FAILED."""
+    with master_connection() as conn:
+        conn.execute(
+            """UPDATE SC_TaskWorker SET Status = 'FAILED', TimeCompleted = ?,
                 Error = ?, Traceback = ? WHERE TaskId = ?""",
             (_now(), str(error), traceback_str, task_id),
         )

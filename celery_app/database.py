@@ -33,6 +33,17 @@ create_task_worker_table = """CREATE TABLE IF NOT EXISTS SC_TaskWorker (
             )"""
 
 
+create_task_resolutions_table = """CREATE TABLE IF NOT EXISTS SC_TaskResolution (
+                                        TemplateName TEXT NOT NULL,
+                                        TaskName     TEXT NOT NULL,
+                                        CeleryTaskName TEXT NOT NULL,
+                                        CommandLineParameters TEXT,
+                                        WorkingDirectory TEXT,
+                                        ProgramPath      TEXT,
+                                        ExecutionFilePath TEXT,
+                                        JSONData TEXT
+                                    )"""
+
 def init_celery_db() -> None:
     """
     Initialize Celery database tables.
@@ -40,5 +51,5 @@ def init_celery_db() -> None:
     logger.info("Initializing Celery database schema")
     with master_connection() as cursor:
         cursor.execute(create_task_worker_table)
-
+        cursor.execute(create_task_resolutions_table)
     logger.info("Celery database schema initialized")
