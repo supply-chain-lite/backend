@@ -44,6 +44,7 @@ def run_command(**kwargs) -> dict:
     print("This is stdout output from run_command")
     return {"output": f"Executed command: {command}"}
 
+
 @app.task(name="celery_app.health_check")
 def health_check() -> dict:
     """Return a simple payload to confirm the worker is alive."""

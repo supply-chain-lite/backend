@@ -26,8 +26,8 @@ class TrackedTask(Task):
         task_name = self.name
         status = celery_methods.record_task_received(task_id, task_name, args, kwargs)
         self.update_state(task_id=task_id, state=status)
-        if status == "CANCELLED":
-            logger.info("Task cancelled | id=%s | name=%s", task_id, task_name)
+        if status != "RECEIVED":
+            logger.info("Task execution skipped | id=%s | name=%s | status=%s", task_id, task_name, status)
             raise Ignore()
 
         process_id = os.getpid()
@@ -88,12 +88,14 @@ def configure_celery_logging(**_kwargs) -> None:
 def on_task_postrun(task_id=None, task=None, args=None, kwargs=None, retval=None, state=None, **_extra) -> None:
     """Post-run hook: fires right after a task finishes (success or failure)."""
     task_name = getattr(task, "name", task)
+    # Outcome persistence lives in SC_TaskWorker (record_task_*). Don't call
+    # task.update_state here: with no meta it overwrites the result metadata
+    # Celery already stored in the result backend for this task.
     if task is not None and state is not None:
-        task.update_state(task_id=task_id, state=state)
-    if state == "SUCCESS":
-        celery_methods.record_task_success(task_id, retval)
-    elif state == "REVOKED":
-        celery_methods.record_task_cancelled(task_id)
+        if state == "SUCCESS":
+            celery_methods.record_task_success(task_id, retval)
+        elif state == "REVOKED":
+            celery_methods.record_task_cancelled(task_id)
     logger.info("Task finished | id=%s | name=%s | state=%s | result=%s", task_id, task_name, state, retval)
 
 

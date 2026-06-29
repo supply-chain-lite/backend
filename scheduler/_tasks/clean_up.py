@@ -170,10 +170,13 @@ def db_cleanup():
         logger.info(
             f"Deleted {len(rows)} old task history records, keeping the most recent {TASK_HISTORY_MAX_RECORDS_PER_USER} per user"
         )
-        cursor.execute(cleanup_queries.delete_task_logs)
+        rows = cursor.execute(cleanup_queries.delete_task_logs).fetchall()
+        task_logs_deleted = len(rows)
+        logger.info(f"Deleted {len(rows)} old task logs")
     return {
         "duplicate_queries_deleted": duplicate_deleted,
         "execution_logs_deleted": execution_logs_deleted,
         "sql_history_deleted": sql_history_deleted,
         "task_history_deleted": task_history_deleted,
+        "task_logs_deleted": task_logs_deleted,
     }

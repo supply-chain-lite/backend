@@ -44,6 +44,7 @@ create_task_resolutions_table = """CREATE TABLE IF NOT EXISTS SC_TaskResolution 
                                         JSONData TEXT
                                     )"""
 
+
 def init_celery_db() -> None:
     """
     Initialize Celery database tables.
