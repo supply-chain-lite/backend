@@ -98,7 +98,7 @@ The following are considered out of scope for this security policy:
 - Vulnerabilities in third-party dependencies (report those upstream).
 - Issues that require physical access to the server.
 - Social engineering attacks against maintainers or users.
-- Denial-of-service attacks that require massive infrastructure resources.
+- Extreme, infrastructure-scale denial-of-service attacks that require massive external resources; application-layer resource-exhaustion vulnerabilities remain in scope.
 
 ---
 
