@@ -140,8 +140,17 @@ def run_model_task(cursor, user_email: str, model_name: str, project_name: str, 
         json.dumps(kwarg_data),
     )
     try:
-        celery_task_id = cursor.execute(run_queries.insert_task_record, row_tuple).fetchone()[0]
+        row = cursor.execute(run_queries.insert_task_record, row_tuple).fetchone()
+        if not row:
+            raise RuntimeError("INSERT INTO ST_TaskRecords returned no row")
+        celery_task_id = row[0]
     except Exception as e:
+        # The Celery task is already queued; revoke it before releasing the lock
+        # so it cannot run without a corresponding ST_TaskRecords row.
+        try:
+            celery_app.control.revoke(task_uid, terminate=True)
+        except Exception:
+            pass  # best-effort – revocation failure must not hide the original error
         cursor.execute(run_queries.update_model_lock, (0, model_id))
         cursor.intermediate_commit()
         raise HTTPException(status_code=500, detail=f"Failed to insert task record: {str(e)}")

@@ -53,8 +53,8 @@ def _send_email(to_email: str, subject: str, body: str):
             server.starttls()
             server.login(SMTP_USER, SMTP_PWD)
             server.sendmail(SMTP_USER, to_email, msg.as_string())
-    except Exception as e:
-        logger.exception("Failed to send email to %s: %s", to_email, str(e))
+    except Exception:
+        logger.exception("Failed to send email to %s: %s", to_email)
 
 
 def _get_model_templates(cursor):
