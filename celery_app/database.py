@@ -38,6 +38,7 @@ create_task_resolutions_table = """CREATE TABLE IF NOT EXISTS SC_TaskResolution 
                                         TaskName     TEXT NOT NULL,
                                         CeleryTaskName TEXT NOT NULL,
                                         CommandLineParameters TEXT,
+                                        FixedParameters TEXT,
                                         WorkingDirectory TEXT,
                                         ProgramPath      TEXT,
                                         ExecutionFilePath TEXT,
@@ -53,4 +54,10 @@ def init_celery_db() -> None:
     with master_connection() as cursor:
         cursor.execute(create_task_worker_table)
         cursor.execute(create_task_resolutions_table)
+
+        # Support existing databases that were created before the added column.
+        cursor.execute("PRAGMA table_info(SC_TaskResolution)")
+        columns = {row[1] for row in cursor.fetchall()}
+        if "FixedParameters" not in columns:
+            cursor.execute("ALTER TABLE SC_TaskResolution ADD COLUMN FixedParameters TEXT")
     logger.info("Celery database schema initialized")

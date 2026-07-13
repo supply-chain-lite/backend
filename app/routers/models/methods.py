@@ -664,7 +664,7 @@ def _get_table_groups(cursor):
         dict: Mapping where keys are group_name (str) and values are lists of tuples (table_name (str), table_display_name (str)). If a row's display name is None, the display name is replaced with the table_name.
     """
     try:
-        rows = cursor.execute(model_queries.get_table_groups).fetchall()
+        rows = cursor.execute(model_queries.get_table_groups, silent=True).fetchall()
     except Exception:
         rows = cursor.execute(model_queries.get_table_group_from_sqlite_master).fetchall()
     table_groups = {}

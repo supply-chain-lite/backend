@@ -23,7 +23,8 @@ def record_task_received(task_id: str, task_name: str, args=None, kwargs=None):
         existing = conn.execute(query, (task_id,)).fetchone()
         if existing and existing[0] == "CANCELLED":
             return "CANCELLED"
-        cursor = conn.execute(
+        conn.intermediate_commit()
+        conn.execute(
             """
             INSERT OR IGNORE INTO SC_TaskWorker (TaskId, TaskName, Args,
             Kwargs, Status, TimeReceived)
@@ -31,7 +32,7 @@ def record_task_received(task_id: str, task_name: str, args=None, kwargs=None):
             """,
             (task_id, task_name, _serialise(args), _serialise(kwargs), _now()),
         )
-        if cursor.rowcount == 1:
+        if conn.rowcount() == 1:
             return "RECEIVED"
 
         # Another worker already claimed this task_id; do not treat as received.
