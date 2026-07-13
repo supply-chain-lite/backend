@@ -10,6 +10,11 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
     raise Exception("SECRET_KEY is not set in environment variables.")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 600))
+
+# Password hashing pepper — kept separate from SECRET_KEY so JWT key rotation
+# does not invalidate existing password hashes. Set this once and never change it.
+# For existing deployments, set PASSWORD_PEPPER to the previous SECRET_KEY value.
+PASSWORD_PEPPER = os.getenv("PASSWORD_PEPPER", "")
 MAX_ATTEMPTS = int(os.getenv("MAX_ATTEMPTS", "5"))
 LOCK_TIME_MINUTES = int(os.getenv("LOCK_TIME_MINUTES", "1"))
 SMTP_URL = os.getenv("SMTP_URL")

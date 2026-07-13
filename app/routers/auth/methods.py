@@ -15,6 +15,7 @@ from app.config import (
     BASE_URL,
     LOCK_TIME_MINUTES,
     MAX_ATTEMPTS,
+    PASSWORD_PEPPER,
     SECRET_KEY,
     SMTP_PORT,
     SMTP_PWD,
@@ -30,12 +31,14 @@ logger = get_logger(__name__)
 
 
 def _hash_password(password: str, salt: bytes) -> str:
-    # Include app secret in the KDF input to harden derived hashes.
-    secret = SECRET_KEY.encode("utf-8")
+    # Include a dedicated pepper in the KDF input to harden derived hashes.
+    # Uses PASSWORD_PEPPER (not SECRET_KEY) so JWT key rotation never
+    # invalidates existing password hashes.
+    pepper = PASSWORD_PEPPER.encode("utf-8")
     return hashlib.pbkdf2_hmac(
         "sha256",
         password.encode("utf-8"),
-        salt + secret,
+        salt + pepper,
         120_000,
     ).hex()
 
@@ -50,8 +53,8 @@ def _send_email(to_email: str, subject: str, body: str):
             server.starttls()
             server.login(SMTP_USER, SMTP_PWD)
             server.sendmail(SMTP_USER, to_email, msg.as_string())
-    except Exception as e:
-        logger.error("Failed to send email to %s: %s", to_email, str(e))
+    except Exception:
+        logger.exception("Failed to send email to %s: %s", to_email)
 
 
 def _get_model_templates(cursor):
