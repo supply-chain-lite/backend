@@ -37,12 +37,12 @@ def run_model_task(
     task_param_values = request.task_params
     with master_connection() as cursor:
         check_module_access(cursor, role_name, this_api)
-        task_id, task_name, model_name, project_name = \
-            run_methods.run_model_task(cursor, useremail, model_name, project_name, task_id, task_param_values)
-    return run_schemas.runningTaskInfo(task_id=task_id, 
-                                       task_name=task_name,
-                                       model_name=model_name,
-                                       project_name=project_name)
+        task_id, task_name, model_name, project_name = run_methods.run_model_task(
+            cursor, useremail, model_name, project_name, task_id, task_param_values
+        )
+    return run_schemas.runningTaskInfo(
+        task_id=task_id, task_name=task_name, model_name=model_name, project_name=project_name
+    )
 
 
 @router.post("/running", response_model=run_schemas.runningTasksResponse)

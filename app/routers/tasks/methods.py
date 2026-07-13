@@ -109,7 +109,7 @@ def run_model_task(cursor, user_email: str, model_name: str, project_name: str, 
     celery_app = Celery("tasks", broker=this_broker_url, backend=this_broker_url)
     kwarg_data = {"file_url": file_url, "task_name": task_name}
     try:
-        result = celery_app.send_task('celery_app.run_command', kwargs=kwarg_data)
+        result = celery_app.send_task("celery_app.run_command", kwargs=kwarg_data)
     except Exception as e:
         cursor.execute(run_queries.update_model_lock, (0, model_id))
         cursor.intermediate_commit()
