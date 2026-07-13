@@ -102,13 +102,14 @@ class this_cursor:
         self.cursor.execute(count_query)
         return self.cursor.fetchone()[0]
 
-    def execute(self, query, args=tuple()):
+    def execute(self, query, args=tuple(), silent=False):
         if ";" in query.strip().rstrip(";"):
             raise ValueError("; is not allowed in query to prevent SQL injection.")
         try:
             self.cursor.execute(query, args)
         except Exception:
-            logger.exception("Query execution failed: %s", query)
+            if not silent:
+                logger.exception("Query execution failed: %s", query)
             raise
         return self.cursor
 

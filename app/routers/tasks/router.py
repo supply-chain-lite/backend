@@ -25,11 +25,11 @@ def list_model_tasks(
     return run_schemas.ListTasksResponse(tasks=tasks)
 
 
-@router.post("/run", response_model=run_schemas.MessageResponse)
+@router.post("/run", response_model=run_schemas.runningTaskInfo)
 def run_model_task(
     request: run_schemas.runTaskRequest,
     user_data: tuple = Depends(_get_user_from_token),
-) -> run_schemas.MessageResponse:
+) -> run_schemas.runningTaskInfo:
     useremail, _display_name, role_name = user_data
     model_name = request.model_name
     project_name = request.project_name
@@ -37,8 +37,12 @@ def run_model_task(
     task_param_values = request.task_params
     with master_connection() as cursor:
         check_module_access(cursor, role_name, this_api)
-        run_methods.run_model_task(cursor, useremail, model_name, project_name, task_id, task_param_values)
-    return run_schemas.MessageResponse(message="Task executed successfully")
+        task_id, task_name, model_name, project_name = run_methods.run_model_task(
+            cursor, useremail, model_name, project_name, task_id, task_param_values
+        )
+    return run_schemas.runningTaskInfo(
+        task_id=task_id, task_name=task_name, model_name=model_name, project_name=project_name
+    )
 
 
 @router.post("/running", response_model=run_schemas.runningTasksResponse)

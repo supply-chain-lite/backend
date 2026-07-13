@@ -60,7 +60,7 @@ Logs are written to the console and, by default, to `./data/logs/app.log` with l
 Run the worker from the project root:
 
 ```bash
-uv run celery -A celery_app worker --loglevel=INFO
+uv run celery -A celery_app worker --loglevel=info --pool=solo
 ```
 
 On Windows, add `--pool=solo` for local development. Worker activity is logged to the console and `LOG_FOLDER/celery.log` via the shared logging config. Sample tasks live in `celery_app/tasks.py`, and the pre-run / post-run hooks are registered in `celery_app/celery.py`.

@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
+from app.config import ACCESS_TOKEN_EXPIRE_MINUTES
 from app.connection import master_connection
 
 from . import methods as auth_methods
@@ -92,7 +93,14 @@ def login(request: auth_schemas.LoginRequest, response: Response) -> auth_schema
     with master_connection() as cursor:
         access_token, role_name = auth_methods.login_user(cursor, email, password)
         home_url = auth_methods.get_home_page_url(cursor, role_name)
-    response.set_cookie(key="access_token", value=access_token, httponly=True, secure=True, samesite="Lax")
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=True,
+        samesite="Lax",
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
     return auth_schemas.RedirectUrlResponse(redirect_url=home_url)
 
 

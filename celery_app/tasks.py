@@ -40,6 +40,7 @@ def slow_task(seconds: int = 2) -> str:
 def run_command(**kwargs) -> dict:
     """Run a shell command and return its output."""
     command = kwargs.get("command")
+    # time.sleep(15)
     logger.info("run_command executing: %s", command)
     print("This is stdout output from run_command")
     return {"output": f"Executed command: {command}"}

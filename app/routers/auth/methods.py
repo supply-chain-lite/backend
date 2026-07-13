@@ -51,7 +51,7 @@ def _send_email(to_email: str, subject: str, body: str):
             server.login(SMTP_USER, SMTP_PWD)
             server.sendmail(SMTP_USER, to_email, msg.as_string())
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Failed to send email: " + str(e))
+        logger.error("Failed to send email to %s: %s", to_email, str(e))
 
 
 def _get_model_templates(cursor):

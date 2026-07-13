@@ -38,7 +38,7 @@ def list_model_tasks(cursor, user_email: str, model_name: str, project_name: str
         raise HTTPException(status_code=404, detail="Model not found")
     with sql_connection(model_id, model_path) as model_cursor:
         try:
-            all_rows = model_cursor.execute(run_queries.list_task_query).fetchall()
+            all_rows = model_cursor.execute(run_queries.list_task_query, silent=True).fetchall()
         except Exception:
             all_rows = []
         tasks = []
@@ -107,9 +107,9 @@ def run_model_task(cursor, user_email: str, model_name: str, project_name: str, 
         raise HTTPException(status_code=500, detail=f"Failed to prepare model for execution: {str(e)}")
 
     celery_app = Celery("tasks", broker=this_broker_url, backend=this_broker_url)
-    kwarg_data = {"file_url": file_url}
+    kwarg_data = {"file_url": file_url, "task_name": task_name}
     try:
-        result = celery_app.send_task(task_name, kwargs=kwarg_data)
+        result = celery_app.send_task("celery_app.run_command", kwargs=kwarg_data)
     except Exception as e:
         cursor.execute(run_queries.update_model_lock, (0, model_id))
         cursor.intermediate_commit()
@@ -142,6 +142,7 @@ def run_model_task(cursor, user_email: str, model_name: str, project_name: str, 
         cursor.execute(run_queries.update_model_lock, (0, model_id))
         cursor.intermediate_commit()
         raise HTTPException(status_code=500, detail=f"Failed to insert task record: {str(e)}")
+    return task_id, task_display_name, model_name, project_name
 
 
 def update_task_param_values(model_cursor, task_id: int, new_param_values: list):
