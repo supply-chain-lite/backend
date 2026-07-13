@@ -20,7 +20,8 @@ get_task_name = "SELECT TaskName FROM S_TaskMaster WHERE TaskId = ?"
 
 insert_task_record = """INSERT INTO ST_TaskRecords (ModelId, TaskUID, ClientTaskId, TaskName, ModelName, ProjectName,
                         SubmittedBy, Status, TaskURL, JSONData)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        RETURNING TaskId"""
 
 update_task_params = "UPDATE S_TaskMaster  SET TaskParameters = ? WHERE TaskId = ?"
 

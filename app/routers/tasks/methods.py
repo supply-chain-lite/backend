@@ -124,6 +124,9 @@ def run_model_task(cursor, user_email: str, model_name: str, project_name: str, 
         raise HTTPException(status_code=500, detail="Failed to enqueue task for execution: Task is in FAILURE state")
     task_uid = result.id
     task_status = result.state
+    if task_status == "SUCCESS":
+        task_status = "STARTED"  # Celery may return SUCCESS immediately, but the task is actually STARTED
+
     row_tuple = (
         model_id,
         task_uid,
@@ -137,12 +140,12 @@ def run_model_task(cursor, user_email: str, model_name: str, project_name: str, 
         json.dumps(kwarg_data),
     )
     try:
-        cursor.execute(run_queries.insert_task_record, row_tuple)
+        celery_task_id = cursor.execute(run_queries.insert_task_record, row_tuple).fetchone()[0]
     except Exception as e:
         cursor.execute(run_queries.update_model_lock, (0, model_id))
         cursor.intermediate_commit()
         raise HTTPException(status_code=500, detail=f"Failed to insert task record: {str(e)}")
-    return task_id, task_display_name, model_name, project_name
+    return celery_task_id, task_display_name, model_name, project_name
 
 
 def update_task_param_values(model_cursor, task_id: int, new_param_values: list):
