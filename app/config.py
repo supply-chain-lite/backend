@@ -51,6 +51,7 @@ CELERY_MODELS_FOLDER = ROOT_DATA_FOLDER / "task_models"
 CELERY_LOG_FOLDER = ROOT_DATA_FOLDER / "task_logs"
 CELERY_TEMP_FOLDER = ROOT_DATA_FOLDER / "task_temp"
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+TASK_PROCESS_TIMEOUT_MINUTES = int(os.getenv("TASK_PROCESS_TIMEOUT_MINUTES", 120))
 
 if not os.path.exists(DATA_FOLDER):
     os.makedirs(DATA_FOLDER, exist_ok=True)

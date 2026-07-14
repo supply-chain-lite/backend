@@ -11,6 +11,7 @@ import sys
 import threading
 import time
 
+from app.config import TASK_PROCESS_TIMEOUT_MINUTES
 from app.logging_config import get_logger
 from celery_app.celery import app
 from celery_app.methods import get_task_program_path_and_details
@@ -52,8 +53,6 @@ def run_command(**kwargs) -> dict:
     template_name = kwargs.get("template_name", None)
     if template_name is None:
         raise ValueError("template_name is required in kwargs")
-    for key, value in kwargs.items():
-        logger.info("run_command received kwarg: %s=%s", key, value)
 
     task_details = get_task_program_path_and_details(template_name, task_name)
 
@@ -119,7 +118,7 @@ def _run_task_command(task_details: dict, filtered_kwargs: dict = None) -> dict:
     command = _build_command(task_details, filtered_kwargs)
     working_directory = task_details.get("working_directory") or None
 
-    logger.info("Running command: %s (cwd=%s)", command, working_directory)
+    # logger.info("Running command: %s (cwd=%s)", command, working_directory)
 
     process = subprocess.Popen(
         command,
@@ -136,9 +135,23 @@ def _run_task_command(task_details: dict, filtered_kwargs: dict = None) -> dict:
     stdout_thread.start()
     stderr_thread.start()
 
-    return_code = process.wait()
-    stdout_thread.join()
-    stderr_thread.join()
+    logger.info("Started child process with PID %s", process.pid)
+
+    timeout_seconds = TASK_PROCESS_TIMEOUT_MINUTES * 60
+    try:
+        return_code = process.wait(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+        logger.error(
+            "Command timed out after %s minutes and was killed: %s",
+            TASK_PROCESS_TIMEOUT_MINUTES,
+            command,
+        )
+        raise
+    finally:
+        stdout_thread.join()
+        stderr_thread.join()
 
     logger.info("Command finished with return code %s", return_code)
 
