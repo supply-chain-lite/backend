@@ -25,7 +25,7 @@ from app.config import (
 from app.connection import master_connection, sql_connection
 from app.logging_config import get_logger
 from app.routers.models.methods import get_model_id_and_path
-from app.routers.models.queries import get_access_level
+from app.routers.models.queries import get_access_level, get_template_name
 
 from . import queries as run_queries
 
@@ -81,6 +81,8 @@ def run_model_task(cursor, user_email: str, model_name: str, project_name: str, 
             "Please wait for one of your running tasks to finish before starting a new one.",
         )
 
+    template_name = cursor.execute(get_template_name, (model_id,)).fetchone()[0]
+
     with sql_connection(model_id, model_path) as model_cursor:
         task_name, task_display_name = update_task_param_values(model_cursor, task_id, task_param_values)
         if not task_name:
@@ -107,7 +109,7 @@ def run_model_task(cursor, user_email: str, model_name: str, project_name: str, 
         raise HTTPException(status_code=500, detail=f"Failed to prepare model for execution: {str(e)}")
 
     celery_app = Celery("tasks", broker=this_broker_url, backend=this_broker_url)
-    kwarg_data = {"file_url": file_url, "task_name": task_name}
+    kwarg_data = {"db": file_url, "task_name": task_name, "template_name": template_name}
     try:
         result = celery_app.send_task("celery_app.run_command", kwargs=kwarg_data)
     except Exception as e:
@@ -118,14 +120,10 @@ def run_model_task(cursor, user_email: str, model_name: str, project_name: str, 
         cursor.execute(run_queries.update_model_lock, (0, model_id))
         cursor.intermediate_commit()
         raise HTTPException(status_code=500, detail="Failed to enqueue task for execution: No task ID returned")
-    if result.state == "FAILURE":
-        cursor.execute(run_queries.update_model_lock, (0, model_id))
-        cursor.intermediate_commit()
-        raise HTTPException(status_code=500, detail="Failed to enqueue task for execution: Task is in FAILURE state")
     task_uid = result.id
     task_status = result.state
-    if task_status == "SUCCESS":
-        task_status = "STARTED"  # Celery may return SUCCESS immediately, but the task is actually STARTED
+    if task_status not in ("RUNNING", "STARTED", "PENDING"):
+        task_status = "STARTED"  # Celery may return SUCCESS/FAILURE immediately, but the task is actually STARTED
 
     row_tuple = (
         model_id,

@@ -67,7 +67,7 @@ update_task_status = """UPDATE ST_TaskRecords SET Status = ?,
                         (unixepoch(datetime('now')) - unixepoch(SubmittedAt))/60 as ExecutionMinutes"""
 
 get_task_file = """select Status,
-                            ifnull(json_extract(ifnull(ST_TaskRecords.JsonData, '{}'), '$.file_url'), '') as output_model_path,
+                            ifnull(json_extract(ifnull(ST_TaskRecords.JsonData, '{}'), '$.db'), '') as output_model_path,
                             S_Models.ModelId,
                             S_Models.ModelPath
                             from ST_TaskRecords, S_Models
