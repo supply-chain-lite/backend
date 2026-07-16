@@ -101,4 +101,6 @@ get_task_details = """select ST_TaskRecords.TaskName, ST_TaskRecords.Status, ST_
 get_task_log = """SELECT LogText FROM ST_TaskLogs WHERE TaskId = ?;"""
 
 get_task_status_and_child_pid = """SELECT json_extract(JSONData, '$.ChildProcessId')
-                                    FROM SC_TaskWorker WHERE TaskUID = ?"""
+                                    FROM ST_TaskRecords WHERE TaskUID = ?"""
+
+delete_task_record = """DELETE FROM ST_TaskRecords WHERE TaskId = ?"""

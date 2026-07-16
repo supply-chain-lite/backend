@@ -4,6 +4,7 @@ import shutil
 import tempfile
 import time
 from contextlib import nullcontext
+from uuid import uuid4
 
 import apsw
 import boto3
@@ -113,21 +114,11 @@ def run_model_task(
 
     celery_app = Celery("tasks", broker=this_broker_url, backend=this_broker_url)
     kwarg_data = {"db": file_url, "task_name": task_name, "template_name": template_name}
-    try:
-        result = celery_app.send_task("celery_app.run_command", kwargs=kwarg_data)
-    except Exception as e:
-        cursor.execute(run_queries.update_model_lock, (0, model_id))
-        cursor.intermediate_commit()
-        raise HTTPException(status_code=500, detail=f"Failed to enqueue task for execution: {str(e)}")
-    if not result or not result.id:
-        cursor.execute(run_queries.update_model_lock, (0, model_id))
-        cursor.intermediate_commit()
-        raise HTTPException(status_code=500, detail="Failed to enqueue task for execution: No task ID returned")
-    task_uid = result.id
-    task_status = result.state
-    if task_status not in ("RUNNING", "STARTED", "PENDING"):
-        task_status = "STARTED"  # Celery may return SUCCESS/FAILURE immediately, but the task is actually STARTED
 
+    # Generate the task UID up front so the ST_TaskRecords row is created and
+    # committed *before* the task is enqueued. This guarantees the worker can
+    # find (and atomically claim) the row the moment it picks up the task.
+    task_uid = str(uuid4())
     row_tuple = (
         model_id,
         task_uid,
@@ -136,7 +127,7 @@ def run_model_task(
         model_name,
         project_name,
         user_email,
-        task_status,
+        "PENDING",
         this_broker_url,
         json.dumps(kwarg_data),
     )
@@ -146,15 +137,25 @@ def run_model_task(
             raise RuntimeError("INSERT INTO ST_TaskRecords returned no row")
         task_id = row[0]
     except Exception as e:
-        # The Celery task is already queued; revoke it before releasing the lock
-        # so it cannot run without a corresponding ST_TaskRecords row.
-        try:
-            celery_app.control.revoke(task_uid, terminate=True)
-        except Exception:
-            pass  # best-effort – revocation failure must not hide the original error
         cursor.execute(run_queries.update_model_lock, (0, model_id))
         cursor.intermediate_commit()
         raise HTTPException(status_code=500, detail=f"Failed to insert task record: {str(e)}")
+
+    # Commit the task record (and the model lock) so the worker sees the row
+    # before the task is enqueued and can be picked up.
+    cursor.intermediate_commit()
+
+    try:
+        result = celery_app.send_task("celery_app.run_command", kwargs=kwarg_data, task_id=task_uid)
+        if not result or not result.id:
+            raise RuntimeError("No task ID returned")
+    except Exception as e:
+        # Enqueue failed: remove the pending record and release the lock so the
+        # model is not left locked with an orphaned PENDING task.
+        cursor.execute(run_queries.delete_task_record, (task_id,))
+        cursor.execute(run_queries.update_model_lock, (0, model_id))
+        cursor.intermediate_commit()
+        raise HTTPException(status_code=500, detail=f"Failed to enqueue task for execution: {str(e)}")
     return task_id, task_display_name, model_name, project_name
 
 
