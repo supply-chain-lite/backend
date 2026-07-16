@@ -18,3 +18,8 @@ task_failure_query = """UPDATE SC_TaskWorker SET Status = 'FAILED', TimeComplete
 get_program_details = """ SELECT WorkingDirectory, ProgramPath, ExecutionFilePath,
             ifnull(CommandLineParameters, '[]'), ifnull(FixedParameters, '{}')
             FROM SC_TaskResolution WHERE TemplateName = ? AND TaskName = ? """
+
+
+update_child_process_id = """UPDATE SC_TaskWorker
+                        SET JSONData = json_set(COALESCE(JSONData, '{}'), '$.ChildProcessId', ?)
+                        WHERE TaskId = ?;"""

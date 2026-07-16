@@ -80,3 +80,15 @@ def get_task_details(
     with master_connection() as cursor:
         task_details = run_methods.get_task_details(cursor, task_id, useremail, model_name, project_name)
     return run_schemas.taskDetailsResponse(**task_details)
+
+
+@router.post("/cancel", response_model=run_schemas.MessageResponse)
+def cancel_task(
+    request: run_schemas.taskStatusRequest,
+    user_data: tuple = Depends(_get_user_from_token),
+) -> run_schemas.MessageResponse:
+    useremail, _display_name, _role_name = user_data
+    task_id = request.task_id
+    with master_connection() as cursor:
+        status = run_methods.cancel_task(cursor, task_id, useremail)
+    return run_schemas.MessageResponse(message=status)
