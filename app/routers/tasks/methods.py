@@ -375,7 +375,7 @@ def update_task_output_and_logs(this_cursor, task_id: int):
                 cursor.intermediate_commit()
 
 
-def update_task_log(cursor, task_id):
+def update_task_log(cursor, task_id, forced_cancel=False):
     this_rows = cursor.execute(run_queries.get_task_uid, (task_id,)).fetchall()
     if len(this_rows) == 0:
         logger.error(f"Task with ID {task_id} not found for log update")
@@ -388,6 +388,8 @@ def update_task_log(cursor, task_id):
     else:
         logs = "No logs found for this task."
     cursor.intermediate_commit()
+    if forced_cancel:
+        logs += "\n\nTask was forcibly canceled by user."
     this_row = cursor.execute(run_queries.update_task_log, (logs, task_id)).fetchone()
     if not this_row:
         cursor.execute(run_queries.insert_task_log, (logs, task_id))
@@ -440,10 +442,10 @@ def cancel_task(cursor, task_id: int, user_email: str):
         )
     celery_app = Celery("tasks", broker=task_url, backend=task_url)
     try:
-        celery_app.control.revoke(task_uid)
+        celery_app.control.revoke(task_uid, terminate=True)
         pid = cursor.execute(run_queries.get_task_status_and_child_pid, (task_uid,)).fetchone()
         cursor.intermediate_commit()
-        print(f"Attempting to kill child process for task {task_uid}, PID: {pid}")
+        logger.info(f"Attempting to kill child process for task {task_uid}, PID: {pid}")
         if pid and pid[0]:
             try:
                 os.kill(pid[0], 9)  # Force kill the child process
@@ -451,5 +453,35 @@ def cancel_task(cursor, task_id: int, user_email: str):
                 logger.error(f"Failed to kill child process {pid[0]} for task {task_uid}: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to cancel the task: {str(e)}")
-    new_status = _update_task_status(cursor, task_id, task_uid, task_url, task_status)
-    return new_status
+
+    # Persist the terminal status immediately using the guarded update (WHERE status = task_status)
+    # rather than re-polling AsyncResult.state via _update_task_status, which may not yet reflect
+    # the revocation and would overwrite the cancellation with a stale broker state.
+    terminal_status = "REVOKED"
+    cursor.intermediate_commit()
+    update_task_log(cursor, task_id, forced_cancel=True)  # Update logs to reflect cancellation
+    cursor.execute(run_queries.update_task_status, (terminal_status, task_id, task_status))
+    result = cursor.fetchall()
+    if result:
+        task_name, model_name, project_name, submitted_by, execution_time = result[0]
+        notification_params = {
+            "model_name": model_name,
+            "project_name": project_name,
+            "task_name": task_name,
+            "run_status": terminal_status,
+            "run_time_minutes": execution_time,
+            "task_id": task_id,
+        }
+        cursor.execute(
+            run_queries.insert_task_notifications,
+            (
+                "System",
+                submitted_by,
+                f"Task {task_name} revoked",
+                f"Your task {task_name} has been revoked after {execution_time} minutes.",
+                "task_update",
+                json.dumps(notification_params),
+            ),
+        )
+        cursor.intermediate_commit()
+    return terminal_status
