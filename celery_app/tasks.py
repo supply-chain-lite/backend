@@ -1,49 +1,30 @@
 """
-Sample Celery tasks.
+Celery task definitions for running supply chain task programs.
 
-These are intentionally simple and exist to verify that the worker, broker,
-and the pre-run / post-run hooks are wired up correctly.
+Provides the ``run_command`` task, which resolves a task's program path and
+parameters from the template registry, spawns it as a subprocess, streams
+stdout/stderr to the application logger, and enforces a configurable timeout.
 """
 
 import os
 import subprocess
-import sys
 import threading
-import time
+
+from celery import current_task
 
 from app.config import TASK_PROCESS_TIMEOUT_MINUTES
 from app.logging_config import get_logger
 from celery_app.celery import app
-from celery_app.methods import get_task_program_path_and_details
+from celery_app.methods import get_task_program_path_and_details, update_child_process_id
 
 logger = get_logger(__name__)
-
-
-@app.task(name="celery_app.add")
-def add(x: float, y: float) -> float:
-    """Return the sum of two numbers."""
-    logger.info("add(%s, %s)", x, y)
-    return x + y
-
-
-@app.task(name="celery_app.multiply")
-def multiply(x: float, y: float) -> float:
-    """Return the product of two numbers."""
-    logger.info("multiply(%s, %s)", x, y)
-    return x * y
-
-
-@app.task(name="celery_app.slow_task")
-def slow_task(seconds: int = 2) -> str:
-    """Sleep for a few seconds to simulate a long-running task."""
-    logger.info("slow_task sleeping for %ss", seconds)
-    time.sleep(seconds)
-    return f"slept {seconds}s"
 
 
 @app.task(name="celery_app.run_command")
 def run_command(**kwargs) -> dict:
     """Run a shell command and return its output."""
+    task_uid = current_task.request.id
+    logger.info("Running task with uid: %s", task_uid)
     task_name = kwargs.get("task_name", None)
     if task_name is None:
         raise ValueError("task_name is required in kwargs")
@@ -60,7 +41,7 @@ def run_command(**kwargs) -> dict:
     command_line_params = task_details.get("command_line_parameters", [])
     filtered_kwargs = {key: value for key, value in kwargs.items() if key in command_line_params}
 
-    return _run_task_command(task_details, filtered_kwargs)
+    return _run_task_command(task_details, filtered_kwargs, task_uid)
 
 
 def _stream_to_logger(pipe, log) -> None:
@@ -105,12 +86,13 @@ def _build_command(task_details: dict, filtered_kwargs: dict = None) -> list:
     return command
 
 
-def _run_task_command(task_details: dict, filtered_kwargs: dict = None) -> dict:
+def _run_task_command(task_details: dict, filtered_kwargs: dict = None, task_uid: str = None) -> dict:
     """Run the command described by task_details, redirecting stdout/stderr to the logger.
 
     Args:
         task_details: Task configuration from get_task_program_path_and_details
         filtered_kwargs: Optional kwargs filtered to only include command_line_parameters
+        task_uid: The unique identifier of the current task
     """
     if filtered_kwargs is None:
         filtered_kwargs = {}
@@ -136,6 +118,7 @@ def _run_task_command(task_details: dict, filtered_kwargs: dict = None) -> dict:
     stderr_thread.start()
 
     logger.info("Started child process with PID %s", process.pid)
+    update_child_process_id(task_uid, process.pid)
 
     timeout_seconds = TASK_PROCESS_TIMEOUT_MINUTES * 60
     try:
@@ -156,33 +139,3 @@ def _run_task_command(task_details: dict, filtered_kwargs: dict = None) -> dict:
     logger.info("Command finished with return code %s", return_code)
 
     return {"return_code": return_code, "command": command}
-
-
-@app.task(name="celery_app.health_check")
-def health_check() -> dict:
-    """Return a simple payload to confirm the worker is alive."""
-    return {"status": "ok"}
-
-
-@app.task(name="celery_app.verify_log_capture")
-def verify_log_capture() -> dict:
-    """Emit stdout, stderr, and logging output to verify per-task log capture.
-
-    Run this task through a worker, then inspect ``CELERY_LOG_FOLDER/<task_uid>.log``.
-    The file should contain the stdout line, the stderr line, and the INFO/WARNING/
-    ERROR log lines emitted below.
-    """
-    stdout_marker = "STDOUT: hello from stdout"
-    stderr_marker = "STDERR: hello from stderr"
-
-    print(stdout_marker)
-    print(stderr_marker, file=sys.stderr)
-    logger.info("LOGGING: info-level message")
-    logger.warning("LOGGING: warning-level message")
-    logger.error("LOGGING: error-level message")
-
-    return {
-        "stdout": stdout_marker,
-        "stderr": stderr_marker,
-        "logging": ["info", "warning", "error"],
-    }

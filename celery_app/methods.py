@@ -98,3 +98,9 @@ def get_task_program_path_and_details(template_name: str, task_name: str):
             "command_line_parameters": command_line_parameters,
             "fixed_parameters": fixed_parameters,
         }
+
+
+def update_child_process_id(child_process_id: int, task_id: str):
+    """Update the child process ID in the database for the given task."""
+    with master_connection() as conn:
+        conn.execute(task_queries.update_child_process_id, (child_process_id, task_id))
