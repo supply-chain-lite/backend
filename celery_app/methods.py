@@ -19,24 +19,33 @@ def _serialise(obj):
 
 
 def record_task_received(task_uid: str, task_name: str, args=None, kwargs=None):
-    """Insert a new row when the task is first received by a worker."""
+    """Claim the app-created ST_TaskRecords row for execution.
+
+    The API inserts the task row (with TimeReceived NULL) before enqueuing, so a
+    worker claims it by atomically setting TimeReceived. Returns "RECEIVED" when
+    this worker won the claim and should run the task; any other value means the
+    task must be skipped: "MISSING" (no app-side row), "CANCELLED" (already
+    revoked/cancelled), or "DUPLICATE" (another worker already claimed it).
+
+    ``task_name`` and ``args`` are accepted for signature compatibility with the
+    Celery hook but are not persisted; task submission uses kwargs only.
+    """
     with master_connection() as conn:
-        query = "SELECT Status FROM SC_TaskWorker WHERE TaskUID = ?"
+        query = "SELECT Status FROM ST_TaskRecords WHERE TaskUID = ?"
         existing = conn.execute(query, (task_uid,)).fetchone()
-        if existing and existing[0] == "CANCELLED":
+        if existing is None:
+            # No app-side record: refuse to run an untracked task.
+            return "MISSING"
+        if existing[0] and existing[0].upper() in ("REVOKED", "CANCELLED"):
             return "CANCELLED"
         conn.intermediate_commit()
         conn.execute(
             task_queries.task_received_query,
-            (task_uid, task_name, _serialise(args), _serialise(kwargs), _now()),
+            (_now(), _serialise(kwargs), task_uid),
         )
         if conn.rowcount() == 1:
             return "RECEIVED"
-
-        # Another worker already claimed this task_uid; do not treat as received.
-        current = conn.execute(query, (task_uid,)).fetchone()
-        if current and current[0]:
-            return current[0]
+    # TimeReceived was already set: another worker claimed this task_uid.
     return "DUPLICATE"
 
 

@@ -1,37 +1,17 @@
 """
 Celery database schema definitions.
 
-This module defines the tables for the Celery system:
-- SC_TaskWorker: Task definitions (what to run)
-- SJ_ScheduledJobs: Schedules for tasks (when to run)
-- SJ_JobExecutions: Execution history and logs
+This module defines the Celery task-resolution table:
+- SC_TaskResolution: Task definitions (how to run each task)
+
+Per-task lifecycle and telemetry are recorded on the app's ST_TaskRecords table
+(see app.database); the worker updates that row rather than a separate table.
 """
 
 from app.connection import master_connection
 from app.logging_config import get_logger
 
 logger = get_logger(__name__)
-
-create_task_worker_table = """CREATE TABLE IF NOT EXISTS SC_TaskWorker (
-                TaskId          INTEGER PRIMARY KEY AUTOINCREMENT,
-                TaskUID         TEXT UNIQUE NOT NULL,
-                WorkerName      TEXT,
-                ProcessId       INTEGER,
-                TaskName        TEXT NOT NULL,
-                Args            TEXT,           -- JSON-serialised positional args
-                Kwargs          TEXT,           -- JSON-serialised keyword args
-                Status          TEXT NOT NULL DEFAULT 'PENDING',
-                TimeReceived    TEXT,
-                TimeStarted     TEXT,
-                TimeCompleted   TEXT,
-                Result          TEXT,
-                Error           TEXT,
-                Traceback       TEXT,
-                JSONData        TEXT,           -- Optional JSON-serialised
-                EntryDatetime   TEXT DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(TaskUID)
-            )"""
-
 
 create_task_resolutions_table = """CREATE TABLE IF NOT EXISTS SC_TaskResolution (
                                         TemplateName TEXT NOT NULL,
@@ -52,7 +32,6 @@ def init_celery_db() -> None:
     """
     logger.info("Initializing Celery database schema")
     with master_connection() as cursor:
-        cursor.execute(create_task_worker_table)
         cursor.execute(create_task_resolutions_table)
 
         # Support existing databases that were created before the added column.

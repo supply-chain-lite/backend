@@ -89,7 +89,7 @@ def on_task_postrun(task_id=None, task=None, args=None, kwargs=None, retval=None
     """Post-run hook: fires right after a task finishes (success or failure)."""
     task_uid = task_id  # Celery signal passes the UUID as task_id
     task_name = getattr(task, "name", task)
-    # Outcome persistence lives in SC_TaskWorker (record_task_*). Don't call
+    # Outcome persistence lives in ST_TaskRecords (record_task_*). Don't call
     # task.update_state here: with no meta it overwrites the result metadata
     # Celery already stored in the result backend for this task.
     if task is not None and state is not None:
