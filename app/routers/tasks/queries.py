@@ -18,7 +18,7 @@ get_broker_url = "SELECT ParamValue FROM S_ModelParams WHERE ParamName = 'BROKER
 
 get_task_name = "SELECT TaskName FROM S_TaskMaster WHERE TaskId = ?"
 
-insert_task_record = """INSERT INTO ST_TaskRecords (ModelId, TaskUID, ClientTaskId, TaskName, ModelName, ProjectName,
+insert_task_record = """INSERT INTO ST_TaskRecords (ModelId, TaskUID, TaskCode, TaskName, ModelName, ProjectName,
                         SubmittedBy, Status, TaskURL, JSONData)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         RETURNING TaskId"""

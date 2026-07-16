@@ -51,7 +51,7 @@ create_projects_table = """CREATE TABLE IF NOT EXISTS S_Projects (
 create_task_history_table = """CREATE TABLE IF NOT EXISTS ST_TaskRecords (
                                         TaskId          INTEGER PRIMARY KEY AUTOINCREMENT,
                                         TaskUID         TEXT NOT NULL,
-                                        ClientTaskId    INTEGER NOT NULL,
+                                        TaskCode        INTEGER NOT NULL,
                                         TaskName        TEXT NOT NULL,
                                         ProjectName     TEXT NOT NULL,
                                         ModelName       TEXT NOT NULL,

@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import tempfile
+import time
 from contextlib import nullcontext
 
 import apsw
@@ -42,10 +43,10 @@ def list_model_tasks(cursor, user_email: str, model_name: str, project_name: str
         except Exception:
             all_rows = []
         tasks = []
-        for task_id, task_name, task_params_json in all_rows:
+        for task_code, task_name, task_params_json in all_rows:
             tasks.append(
                 {
-                    "task_id": task_id,
+                    "task_code": task_code,
                     "task_name": task_name,
                     "task_params": json.loads(task_params_json) if task_params_json else [],
                 }
@@ -53,7 +54,9 @@ def list_model_tasks(cursor, user_email: str, model_name: str, project_name: str
         return tasks
 
 
-def run_model_task(cursor, user_email: str, model_name: str, project_name: str, task_id: int, task_param_values: list):
+def run_model_task(
+    cursor, user_email: str, model_name: str, project_name: str, task_code: int, task_param_values: list
+):
     model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
@@ -84,7 +87,7 @@ def run_model_task(cursor, user_email: str, model_name: str, project_name: str, 
     template_name = cursor.execute(get_template_name, (model_id,)).fetchone()[0]
 
     with sql_connection(model_id, model_path) as model_cursor:
-        task_name, task_display_name = update_task_param_values(model_cursor, task_id, task_param_values)
+        task_name, task_display_name = update_task_param_values(model_cursor, task_code, task_param_values)
         if not task_name:
             raise HTTPException(status_code=404, detail=f"Task: {task_display_name} not found")
         this_broker_url = model_cursor.execute(run_queries.get_broker_url).fetchone()
@@ -128,7 +131,7 @@ def run_model_task(cursor, user_email: str, model_name: str, project_name: str, 
     row_tuple = (
         model_id,
         task_uid,
-        task_id,
+        task_code,
         task_display_name,
         model_name,
         project_name,
@@ -155,8 +158,8 @@ def run_model_task(cursor, user_email: str, model_name: str, project_name: str, 
     return task_id, task_display_name, model_name, project_name
 
 
-def update_task_param_values(model_cursor, task_id: int, new_param_values: list):
-    task_row = model_cursor.execute(run_queries.get_task_params, (task_id,)).fetchone()
+def update_task_param_values(model_cursor, task_code: int, new_param_values: list):
+    task_row = model_cursor.execute(run_queries.get_task_params, (task_code,)).fetchone()
     if not task_row:
         raise HTTPException(status_code=404, detail="Task not found")
     task_name, task_display_name, task_params_json = task_row
@@ -170,7 +173,7 @@ def update_task_param_values(model_cursor, task_id: int, new_param_values: list)
             if this_dict["ParameterName"] == new_param.ParameterName:
                 this_dict["ParameterValue"] = new_param.ParameterValue
                 break
-    model_cursor.execute(run_queries.update_task_params, (json.dumps(task_params, indent=4), task_id))
+    model_cursor.execute(run_queries.update_task_params, (json.dumps(task_params, indent=4), task_code))
     return task_name, task_display_name
 
 
@@ -376,6 +379,8 @@ def update_task_output_and_logs(this_cursor, task_id: int):
 
 
 def update_task_log(cursor, task_id, forced_cancel=False):
+    if forced_cancel:
+        time.sleep(2)  # Give Celery a moment to write the cancellation log
     this_rows = cursor.execute(run_queries.get_task_uid, (task_id,)).fetchall()
     if len(this_rows) == 0:
         logger.error(f"Task with ID {task_id} not found for log update")
@@ -442,7 +447,7 @@ def cancel_task(cursor, task_id: int, user_email: str):
         )
     celery_app = Celery("tasks", broker=task_url, backend=task_url)
     try:
-        celery_app.control.revoke(task_uid, terminate=True)
+        celery_app.control.revoke(task_uid)
         pid = cursor.execute(run_queries.get_task_status_and_child_pid, (task_uid,)).fetchone()
         cursor.intermediate_commit()
         logger.info(f"Attempting to kill child process for task {task_uid}, PID: {pid}")
