@@ -452,7 +452,8 @@ def cancel_task(cursor, task_id: int, user_email: str):
             except Exception as e:
                 logger.error(f"Failed to kill child process {pid[0]} for task {task_uid}: {str(e)}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to cancel the task: {str(e)}")
+        logger.error(f"Failed to cancel the task {task_uid}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to cancel the task")
 
     # Persist the terminal status immediately using the guarded update (WHERE status = task_status)
     # rather than re-polling AsyncResult.state via _update_task_status, which may not yet reflect
