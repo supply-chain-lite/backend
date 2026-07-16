@@ -118,7 +118,7 @@ def _run_task_command(task_details: dict, filtered_kwargs: dict = None, task_uid
     stderr_thread.start()
 
     logger.info("Started child process with PID %s", process.pid)
-    update_child_process_id(task_uid, process.pid)
+    update_child_process_id(process.pid, task_uid)
 
     timeout_seconds = TASK_PROCESS_TIMEOUT_MINUTES * 60
     try:

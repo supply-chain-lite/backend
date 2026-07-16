@@ -78,6 +78,9 @@ get_task_file = """select Status,
 get_task_uid = """select TaskUID from ST_TaskRecords WHERE TaskId = ?;"""
 
 
+get_task_uid_and_status = """select TaskUID, Status, TaskURL from ST_TaskRecords
+                              WHERE TaskId = ? AND SubmittedBy = ?;"""
+
 insert_task_log = """INSERT INTO ST_TaskLogs (LogText, TaskId) VALUES (?, ?)"""
 
 update_task_log = """UPDATE ST_TaskLogs SET LogText = ?, LastUpdated = datetime('now') WHERE TaskId = ?
@@ -96,3 +99,6 @@ get_task_details = """select ST_TaskRecords.TaskName, ST_TaskRecords.Status, ST_
                         and ST_TaskRecords.modelid = ?"""
 
 get_task_log = """SELECT LogText FROM ST_TaskLogs WHERE TaskId = ?;"""
+
+get_task_status_and_child_pid = """SELECT json_extract(JSONData, '$.ChildProcessId')
+                                    FROM SC_TaskWorker WHERE TaskId = ?"""

@@ -427,3 +427,29 @@ def get_task_details(cursor, task_id: int, user_email: str, model_name: str, pro
         "status": current_status,
         "log": log,
     }
+
+
+def cancel_task(cursor, task_id: int, user_email: str):
+    task_row = cursor.execute(run_queries.get_task_uid_and_status, (task_id, user_email)).fetchone()
+    if not task_row:
+        raise HTTPException(status_code=404, detail="Task not found")
+    task_uid, task_status, task_url = task_row
+    if task_status not in ("RUNNING", "STARTED", "PENDING"):
+        raise HTTPException(
+            status_code=400, detail=f"Task is not running and cannot be canceled. Current status: {task_status}"
+        )
+    celery_app = Celery("tasks", broker=task_url, backend=task_url)
+    try:
+        celery_app.control.revoke(task_uid)
+        pid = cursor.execute(run_queries.get_task_status_and_child_pid, (task_uid,)).fetchone()
+        cursor.intermediate_commit()
+        print(f"Attempting to kill child process for task {task_uid}, PID: {pid}")
+        if pid and pid[0]:
+            try:
+                os.kill(pid[0], 9)  # Force kill the child process
+            except Exception as e:
+                logger.error(f"Failed to kill child process {pid[0]} for task {task_uid}: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to cancel the task: {str(e)}")
+    new_status = _update_task_status(cursor, task_id, task_uid, task_url, task_status)
+    return new_status
