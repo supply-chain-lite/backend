@@ -4,6 +4,8 @@
 task_received_query = """UPDATE ST_TaskRecords SET TimeReceived = ?, Kwargs = ?
             WHERE TaskUID = ? AND TimeReceived IS NULL"""
 
+get_task_status = """SELECT Status FROM ST_TaskRecords WHERE TaskUID = ?"""
+
 task_started_query = """UPDATE ST_TaskRecords SET
                         TimeStarted = ?, ProcessId = ?, WorkerName = ?
                         WHERE TaskUID = ?"""

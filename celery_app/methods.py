@@ -18,7 +18,7 @@ def _serialise(obj):
         return str(obj)
 
 
-def record_task_received(task_uid: str, task_name: str, args=None, kwargs=None):
+def record_task_received(task_uid: str, kwargs=None):
     """Claim the app-created ST_TaskRecords row for execution.
 
     The API inserts the task row (with TimeReceived NULL) before enqueuing, so a
@@ -26,19 +26,14 @@ def record_task_received(task_uid: str, task_name: str, args=None, kwargs=None):
     this worker won the claim and should run the task; any other value means the
     task must be skipped: "MISSING" (no app-side row), "CANCELLED" (already
     revoked/cancelled), or "DUPLICATE" (another worker already claimed it).
-
-    ``task_name`` and ``args`` are accepted for signature compatibility with the
-    Celery hook but are not persisted; task submission uses kwargs only.
     """
     with master_connection() as conn:
-        query = "SELECT Status FROM ST_TaskRecords WHERE TaskUID = ?"
-        existing = conn.execute(query, (task_uid,)).fetchone()
+        existing = conn.execute(task_queries.get_task_status, (task_uid,)).fetchone()
         if existing is None:
             # No app-side record: refuse to run an untracked task.
             return "MISSING"
         if existing[0] and existing[0].upper() in ("REVOKED", "CANCELLED"):
             return "CANCELLED"
-        conn.intermediate_commit()
         conn.execute(
             task_queries.task_received_query,
             (_now(), _serialise(kwargs), task_uid),
