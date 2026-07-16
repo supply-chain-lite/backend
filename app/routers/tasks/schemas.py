@@ -18,7 +18,7 @@ class TaskParams(BaseModel):
 
 
 class TaskDetails(BaseModel):
-    task_id: int
+    task_code: int
     task_name: str
     task_params: list[TaskParams]
 
@@ -33,7 +33,7 @@ class TaskParamValues(BaseModel):
 
 
 class runTaskRequest(TaskBaseModel):
-    task_id: int
+    task_code: int
     task_params: list[TaskParamValues]
 
 

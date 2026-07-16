@@ -22,23 +22,23 @@ class TrackedTask(Task):
     abstract = True
 
     def __call__(self, *args, **kwargs):
-        task_id = self.request.id
+        task_uid = self.request.id
         task_name = self.name
-        status = celery_methods.record_task_received(task_id, task_name, args, kwargs)
-        self.update_state(task_id=task_id, state=status)
+        status = celery_methods.record_task_received(task_uid, task_name, args, kwargs)
+        self.update_state(task_id=task_uid, state=status)
         if status != "RECEIVED":
-            logger.info("Task execution skipped | id=%s | name=%s | status=%s", task_id, task_name, status)
+            logger.info("Task execution skipped | uid=%s | name=%s | status=%s", task_uid, task_name, status)
             raise Ignore()
 
         process_id = os.getpid()
         worker_name = self.request.hostname or "unknown"
-        self.update_state(task_id=task_id, state="STARTED")
-        celery_methods.record_task_started(task_id, process_id, worker_name)
+        self.update_state(task_id=task_uid, state="STARTED")
+        celery_methods.record_task_started(task_uid, process_id, worker_name)
 
         # Capture everything the task writes to stdout/stderr (and logging) into
-        # CELERY_LOG_FOLDER/<task_id>.log for the duration of this execution.
-        with capture_task_logs(task_id):
-            logger.info("Task starting | id=%s | name=%s | args=%s | kwargs=%s", task_id, task_name, args, kwargs)
+        # CELERY_LOG_FOLDER/<task_uid>.log for the duration of this execution.
+        with capture_task_logs(task_uid):
+            logger.info("Task starting | uid=%s | name=%s | args=%s | kwargs=%s", task_uid, task_name, args, kwargs)
             try:
                 return super().__call__(*args, **kwargs)
             except (Retry, Ignore, Reject):
@@ -46,7 +46,7 @@ class TrackedTask(Task):
                 raise
             except Exception:
                 # sys.stderr is tee'd into the per-task log file here, so this records
-                # the full traceback in <task_id>.log (Celery only logs it after __call__).
+                # the full traceback in <task_uid>.log (Celery only logs it after __call__).
                 traceback_module.print_exc()
                 raise
 
@@ -87,26 +87,28 @@ def configure_celery_logging(**_kwargs) -> None:
 @task_postrun.connect
 def on_task_postrun(task_id=None, task=None, args=None, kwargs=None, retval=None, state=None, **_extra) -> None:
     """Post-run hook: fires right after a task finishes (success or failure)."""
+    task_uid = task_id  # Celery signal passes the UUID as task_id
     task_name = getattr(task, "name", task)
     # Outcome persistence lives in SC_TaskWorker (record_task_*). Don't call
     # task.update_state here: with no meta it overwrites the result metadata
     # Celery already stored in the result backend for this task.
     if task is not None and state is not None:
         if state == "SUCCESS":
-            celery_methods.record_task_success(task_id, retval)
+            celery_methods.record_task_success(task_uid, retval)
         elif state == "REVOKED":
-            celery_methods.record_task_cancelled(task_id)
-    logger.info("Task finished | id=%s | name=%s | state=%s | result=%s", task_id, task_name, state, retval)
+            celery_methods.record_task_cancelled(task_uid)
+    logger.info("Task finished | uid=%s | name=%s | state=%s | result=%s", task_uid, task_name, state, retval)
 
 
 @task_failure.connect
 def on_task_failure(task_id=None, exception=None, traceback=None, task=None, args=None, kwargs=None, **_extra) -> None:
     """Failure hook: fires when a task raises an exception."""
+    task_uid = task_id  # Celery signal passes the UUID as task_id
     task_name = getattr(task, "name", task)
     traceback_str = (
         "".join(traceback_module.format_exception(type(exception), exception, traceback)) if traceback else ""
     )
-    celery_methods.record_task_failure(task_id, exception, traceback_str)
+    celery_methods.record_task_failure(task_uid, exception, traceback_str)
     logger.error(
-        "Task failed | id=%s | name=%s | exception=%s | traceback=%s", task_id, task_name, exception, traceback_str
+        "Task failed | uid=%s | name=%s | exception=%s | traceback=%s", task_uid, task_name, exception, traceback_str
     )

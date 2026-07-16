@@ -80,25 +80,25 @@ class _StreamTee:
 
 
 @contextmanager
-def capture_task_logs(task_id):
+def capture_task_logs(task_uid):
     """Capture all ``stdout``/``stderr`` and logging output for the duration of a task.
 
     Everything emitted inside the ``with`` block is written to
-    ``CELERY_LOG_FOLDER/<task_id>.log`` in addition to the worker console and the
+    ``CELERY_LOG_FOLDER/<task_uid>.log`` in addition to the worker console and the
     shared ``celery.log``. If the log file cannot be opened, task execution
     continues without per-task capture.
     """
-    if not task_id:
-        # Without a task id we cannot name the file; run without capturing.
+    if not task_uid:
+        # Without a task UID we cannot name the file; run without capturing.
         yield
         return
 
     try:
-        log_path = Path(CELERY_LOG_FOLDER) / f"{task_id}.log"
+        log_path = Path(CELERY_LOG_FOLDER) / f"{task_uid}.log"
         log_path.parent.mkdir(parents=True, exist_ok=True)
         log_file = open(log_path, "a", encoding="utf-8")
     except Exception:
-        logger.warning("Could not open per-task log file for task %s", task_id, exc_info=True)
+        logger.warning("Could not open per-task log file for task %s", task_uid, exc_info=True)
         yield
         return
 
