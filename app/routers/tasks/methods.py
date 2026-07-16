@@ -141,7 +141,7 @@ def run_model_task(cursor, user_email: str, model_name: str, project_name: str, 
         row = cursor.execute(run_queries.insert_task_record, row_tuple).fetchone()
         if not row:
             raise RuntimeError("INSERT INTO ST_TaskRecords returned no row")
-        celery_task_id = row[0]
+        task_id = row[0]
     except Exception as e:
         # The Celery task is already queued; revoke it before releasing the lock
         # so it cannot run without a corresponding ST_TaskRecords row.
@@ -152,7 +152,7 @@ def run_model_task(cursor, user_email: str, model_name: str, project_name: str, 
         cursor.execute(run_queries.update_model_lock, (0, model_id))
         cursor.intermediate_commit()
         raise HTTPException(status_code=500, detail=f"Failed to insert task record: {str(e)}")
-    return celery_task_id, task_display_name, model_name, project_name
+    return task_id, task_display_name, model_name, project_name
 
 
 def update_task_param_values(model_cursor, task_id: int, new_param_values: list):
@@ -472,6 +472,7 @@ def cancel_task(cursor, task_id: int, user_email: str):
             "run_status": terminal_status,
             "run_time_minutes": execution_time,
             "task_id": task_id,
+            "LEVEL": "WARNING",
         }
         cursor.execute(
             run_queries.insert_task_notifications,

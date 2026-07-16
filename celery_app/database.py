@@ -13,8 +13,8 @@ from app.logging_config import get_logger
 logger = get_logger(__name__)
 
 create_task_worker_table = """CREATE TABLE IF NOT EXISTS SC_TaskWorker (
-                Id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                TaskId          TEXT UNIQUE NOT NULL,
+                TaskId          INTEGER PRIMARY KEY AUTOINCREMENT,
+                TaskUID         TEXT UNIQUE NOT NULL,
                 WorkerName      TEXT,
                 ProcessId       INTEGER,
                 TaskName        TEXT NOT NULL,
@@ -29,7 +29,7 @@ create_task_worker_table = """CREATE TABLE IF NOT EXISTS SC_TaskWorker (
                 Traceback       TEXT,
                 JSONData        TEXT,           -- Optional JSON-serialised
                 EntryDatetime   TEXT DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(TaskId)
+                UNIQUE(TaskUID)
             )"""
 
 

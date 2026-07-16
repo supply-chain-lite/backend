@@ -136,6 +136,9 @@ def _run_task_command(task_details: dict, filtered_kwargs: dict = None, task_uid
         stdout_thread.join()
         stderr_thread.join()
 
-    logger.info("Command finished with return code %s", return_code)
+    if return_code != 0:
+        logger.error("Command finished with non-zero return code %s: %s", return_code, command)
+    else:
+        logger.info("Command finished with return code %s", return_code)
 
     return {"return_code": return_code, "command": command}
