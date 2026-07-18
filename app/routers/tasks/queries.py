@@ -78,8 +78,17 @@ get_task_file = """select Status,
 get_task_uid = """select TaskUID from ST_TaskRecords WHERE TaskId = ?;"""
 
 
-get_task_uid_and_status = """select TaskUID, Status, TaskURL from ST_TaskRecords
+get_task_uid_and_status = """select TaskUID, Status, TaskURL , json_extract(JSONData, '$.ChildProcessId')
+                             from ST_TaskRecords
                               WHERE TaskId = ? AND SubmittedBy = ?;"""
+
+update_user_revoked_flag = """UPDATE ST_TaskRecords
+                        SET JSONData = json_set(COALESCE(JSONData, '{}'), '$.UserRevoked', 1)
+                        WHERE TaskUID = ?;"""
+
+get_user_revoked = """SELECT status, json_extract(COALESCE(JSONData, '{}'), '$.UserRevoked')
+                      FROM ST_TaskRecords WHERE TaskUID = ?"""
+
 
 insert_task_log = """INSERT INTO ST_TaskLogs (LogText, TaskId) VALUES (?, ?)"""
 
@@ -99,8 +108,5 @@ get_task_details = """select ST_TaskRecords.TaskName, ST_TaskRecords.Status, ST_
                         and ST_TaskRecords.modelid = ?"""
 
 get_task_log = """SELECT LogText FROM ST_TaskLogs WHERE TaskId = ?;"""
-
-get_task_status_and_child_pid = """SELECT json_extract(JSONData, '$.ChildProcessId')
-                                    FROM ST_TaskRecords WHERE TaskUID = ?"""
 
 delete_task_record = """DELETE FROM ST_TaskRecords WHERE TaskId = ?"""

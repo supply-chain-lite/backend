@@ -24,7 +24,7 @@ class TrackedTask(Task):
     def __call__(self, *args, **kwargs):
         task_uid = self.request.id
         task_name = self.name
-        status = celery_methods.record_task_received(task_uid, task_name, args, kwargs)
+        status = celery_methods.record_task_received(task_uid, kwargs)
         self.update_state(task_id=task_uid, state=status)
         if status != "RECEIVED":
             logger.info("Task execution skipped | uid=%s | name=%s | status=%s", task_uid, task_name, status)

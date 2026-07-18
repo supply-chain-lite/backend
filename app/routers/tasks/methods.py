@@ -262,9 +262,13 @@ def _update_task_status(cursor, task_id: int, task_uid: str, task_url: str, task
     celery_app = Celery("tasks", broker=task_url, backend=task_url)
     result = celery_app.AsyncResult(task_uid)
     new_status = result.state
-    if new_status == task_status:
-        return new_status  # No status change, no update needed
+    this_status, is_user_revoked = cursor.execute(run_queries.get_user_revoked, (task_uid,)).fetchone()
     cursor.intermediate_commit()
+    if is_user_revoked:
+        new_status = "REVOKED"
+        task_status = this_status  # Use the current status from the database for logging
+    elif new_status == task_status:
+        return new_status  # No status change, no update needed
     cursor.execute(run_queries.update_task_status, (new_status, task_id, task_status))
     result = cursor.fetchall()
     if not result:
@@ -345,7 +349,7 @@ def add_error_notification(cursor, task_id: int, task_status: str, error_message
     return new_status
 
 
-def update_task_output_and_logs(this_cursor, task_id: int):
+def update_task_output_and_logs(this_cursor, task_id: int, forced_cancel: bool = False):
     cm = master_connection() if this_cursor is None else nullcontext(this_cursor)
     with cm as cursor:
         model_id = None
@@ -354,7 +358,7 @@ def update_task_output_and_logs(this_cursor, task_id: int):
                 run_queries.get_task_file, (task_id,)
             ).fetchone()
 
-            update_task_log(cursor, task_id)
+            update_task_log(cursor, task_id, forced_cancel=forced_cancel)
             # s3 is not implemented for task output yet, so we only handle local file output for now
             if os.path.exists(output_model_path) and task_status in ("SUCCESS", "COMPLETED"):
                 backup_connection = apsw.Connection(output_model_path)
@@ -441,55 +445,26 @@ def cancel_task(cursor, task_id: int, user_email: str):
     task_row = cursor.execute(run_queries.get_task_uid_and_status, (task_id, user_email)).fetchone()
     if not task_row:
         raise HTTPException(status_code=404, detail="Task not found")
-    task_uid, task_status, task_url = task_row
+    task_uid, task_status, task_url, pid = task_row
     if task_status not in ("RUNNING", "STARTED", "PENDING"):
         raise HTTPException(
             status_code=400, detail=f"Task is not running and cannot be canceled. Current status: {task_status}"
         )
+    cursor.execute(run_queries.update_user_revoked_flag, (task_uid,))  # Set UserRevoked flag
+    cursor.intermediate_commit()
     celery_app = Celery("tasks", broker=task_url, backend=task_url)
     try:
         celery_app.control.revoke(task_uid)
-        pid = cursor.execute(run_queries.get_task_status_and_child_pid, (task_uid,)).fetchone()
-        cursor.intermediate_commit()
         logger.info(f"Attempting to kill child process for task {task_uid}, PID: {pid}")
-        if pid and pid[0]:
+        if pid:
             try:
-                os.kill(pid[0], 9)  # Force kill the child process
+                os.kill(pid, 9)  # Force kill the child process
             except Exception as e:
-                logger.error(f"Failed to kill child process {pid[0]} for task {task_uid}: {str(e)}")
+                logger.error(f"Failed to kill child process {pid} for task {task_uid}: {str(e)}")
     except Exception as e:
         logger.error(f"Failed to cancel the task {task_uid}: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to cancel the task")
 
-    # Persist the terminal status immediately using the guarded update (WHERE status = task_status)
-    # rather than re-polling AsyncResult.state via _update_task_status, which may not yet reflect
-    # the revocation and would overwrite the cancellation with a stale broker state.
-    terminal_status = "REVOKED"
-    cursor.intermediate_commit()
-    update_task_log(cursor, task_id, forced_cancel=True)  # Update logs to reflect cancellation
-    cursor.execute(run_queries.update_task_status, (terminal_status, task_id, task_status))
-    result = cursor.fetchall()
-    if result:
-        task_name, model_name, project_name, submitted_by, execution_time = result[0]
-        notification_params = {
-            "model_name": model_name,
-            "project_name": project_name,
-            "task_name": task_name,
-            "run_status": terminal_status,
-            "run_time_minutes": execution_time,
-            "task_id": task_id,
-            "LEVEL": "WARNING",
-        }
-        cursor.execute(
-            run_queries.insert_task_notifications,
-            (
-                "System",
-                submitted_by,
-                f"Task {task_name} revoked",
-                f"Your task {task_name} has been revoked after {execution_time} minutes.",
-                "task_update",
-                json.dumps(notification_params),
-            ),
-        )
-        cursor.intermediate_commit()
-    return terminal_status
+    _update_task_status(cursor, task_id, task_uid, task_url, task_status)  # Update status to reflect cancellation
+    update_task_output_and_logs(cursor, task_id, forced_cancel=True)  # Update logs and release model lock
+    return "REVOKED"
