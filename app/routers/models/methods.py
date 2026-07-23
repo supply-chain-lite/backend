@@ -641,6 +641,10 @@ def get_template_sql_file(cursor, user_email: str, template_name: str, with_data
         raise HTTPException(status_code=404, detail="Template not found")
 
     file_name = row[0]
+
+    if os.path.isabs(file_name) and os.path.isfile(file_name):
+        return file_name
+
     this_parent_dir = os.path.dirname(os.path.abspath(__file__))
     this_parent_dir = os.path.dirname(this_parent_dir)
     this_parent_dir = os.path.dirname(this_parent_dir)
