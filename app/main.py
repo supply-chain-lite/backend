@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import STATIC_FOLDER, TEMP_FOLDER
 from app.connection import master_connection
-from app.database import init_db, migrate_db
+from app.database import init_db
 from app.logging_config import configure_logging, get_logger
 from app.routers.auth.router import router as auth_router
 from app.routers.models.router import router as models_router
@@ -34,7 +34,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     configure_logging(file_name="app.log")
     logger.info("Starting Supply Chain Lite API")
     init_db()
-    migrate_db()
     folder_path = Path(TEMP_FOLDER)
     if folder_path.exists():
         for item in folder_path.iterdir():

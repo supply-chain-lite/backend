@@ -6,6 +6,7 @@ parameters from the template registry, spawns it as a subprocess, streams
 stdout/stderr to the application logger, and enforces a configurable timeout.
 """
 
+import json
 import os
 import subprocess
 import threading
@@ -41,7 +42,16 @@ def run_command(**kwargs) -> dict:
     command_line_params = task_details.get("command_line_parameters", [])
     filtered_kwargs = {key: value for key, value in kwargs.items() if key in command_line_params}
 
-    return _run_task_command(task_details, filtered_kwargs, task_uid)
+    _run_task_command(task_details, filtered_kwargs, task_uid)
+    output_data = {}
+    json_out_file = f"{db}_output_data.json"
+    if os.path.isfile(json_out_file):
+        with open(json_out_file, "r") as f:
+            try:
+                output_data = json.load(f)
+            except (json.JSONDecodeError, ValueError):
+                pass
+    return output_data
 
 
 def _stream_to_logger(pipe, log) -> None:
@@ -144,5 +154,3 @@ def _run_task_command(task_details: dict, filtered_kwargs: dict = None, task_uid
         raise Exception(f"Task errored with return code {return_code}")
     else:
         logger.info("Command finished successfully with return code %s", return_code)
-
-    return {"return_code": return_code, "command": command}

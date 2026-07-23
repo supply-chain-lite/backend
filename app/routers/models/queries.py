@@ -108,14 +108,8 @@ get_user_notifications = """ select * FROM (
                             WHERE ToUserEmail = ?
                             AND   CreatedAt > datetime('now', '-7 days')
                             AND IsAccepted = 0
-                            UNION
-                            SELECT NotificationId, FromUserEmail, Title, Message, NotificationType, NotificationParams,
-                                    IsRead, IsAccepted
-                            FROM S_UserNotifications
-                            WHERE ToUserEmail = ?
-                            AND IsAccepted = 0
                             ) ORDER BY 1 DESC
-                            -- keep notifications for 7 days or until accepted/rejected"""
+                            """
 
 
 get_model_info = """select OwnerEmail, TemplateName from S_Models

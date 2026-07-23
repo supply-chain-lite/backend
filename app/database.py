@@ -206,114 +206,6 @@ user_roles = [
     (3, "PowerUser", "Power user with extended access", json.dumps(user_role)),
 ]
 
-_MIGRATIONS = [
-    ("ST_TaskRecords", "TaskURL", "TEXT"),
-    # Worker-telemetry columns folded in from the former SC_TaskWorker table.
-    ("ST_TaskRecords", "ProcessId", "INTEGER"),
-    ("ST_TaskRecords", "WorkerName", "TEXT"),
-    ("ST_TaskRecords", "Kwargs", "TEXT"),
-    ("ST_TaskRecords", "TimeReceived", "TEXT"),
-    ("ST_TaskRecords", "TimeStarted", "TEXT"),
-    ("ST_TaskRecords", "TimeCompleted", "TEXT"),
-    ("ST_TaskRecords", "Result", "TEXT"),
-    ("ST_TaskRecords", "Error", "TEXT"),
-    ("ST_TaskRecords", "Traceback", "TEXT"),
-]
-
-# Worker-telemetry columns copied from SC_TaskWorker into ST_TaskRecords during
-# the one-time consolidation backfill. Status is intentionally excluded: the API
-# owns Status (driven by Celery AsyncResult polling).
-_WORKER_BACKFILL_COLUMNS = (
-    "ProcessId",
-    "WorkerName",
-    "TimeReceived",
-    "TimeStarted",
-    "TimeCompleted",
-    "Result",
-    "Error",
-    "Traceback",
-)
-
-
-def _table_exists(cursor, table_name: str) -> bool:
-    row = cursor.execute(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
-        (table_name,),
-    ).fetchone()
-    return row is not None
-
-
-def _consolidate_task_worker(cursor) -> None:
-    """
-    One-time consolidation of the legacy SC_TaskWorker table into ST_TaskRecords.
-
-    Backfills worker telemetry (and the JSONData.ChildProcessId key) into the
-    matching ST_TaskRecords row by TaskUID, then drops SC_TaskWorker. Idempotent:
-    once SC_TaskWorker has been dropped this is a no-op. SC_TaskResolution is left
-    untouched.
-    """
-    if not _table_exists(cursor, "SC_TaskWorker"):
-        return
-
-    logger.info("Consolidating SC_TaskWorker into ST_TaskRecords")
-    set_clause = ", ".join(f"{col} = COALESCE(ST_TaskRecords.{col}, worker.{col})" for col in _WORKER_BACKFILL_COLUMNS)
-    cursor.execute(
-        f"""UPDATE ST_TaskRecords
-            SET {set_clause}
-            FROM (SELECT * FROM SC_TaskWorker) AS worker
-            WHERE worker.TaskUID = ST_TaskRecords.TaskUID"""
-    )
-    # Preserve the worker-owned JSONData.ChildProcessId key without clobbering the
-    # app-written JSONData payload (e.g. the model db path).
-    cursor.execute(
-        """UPDATE ST_TaskRecords
-            SET JSONData = json_set(
-                COALESCE(JSONData, '{}'),
-                '$.ChildProcessId',
-                json_extract(
-                    (SELECT JSONData FROM SC_TaskWorker WHERE SC_TaskWorker.TaskUID = ST_TaskRecords.TaskUID),
-                    '$.ChildProcessId'
-                )
-            )
-            WHERE TaskUID IN (
-                SELECT TaskUID FROM SC_TaskWorker
-                WHERE json_extract(COALESCE(JSONData, '{}'), '$.ChildProcessId') IS NOT NULL
-            )"""
-    )
-    cursor.execute("DROP TABLE SC_TaskWorker")
-    logger.info("SC_TaskWorker consolidation finished")
-
-
-def migrate_db() -> None:
-    """
-    Apply schema migrations listed in _MIGRATIONS and consolidate legacy tables.
-
-    For each (table, column, col_type) tuple, adds the specified column to the table if it does not already exist. The operation is idempotent: existing columns are skipped. Then enforces TaskUID uniqueness on ST_TaskRecords (required for pre-existing databases created before the UNIQUE(TaskUID) constraint) and consolidates the legacy SC_TaskWorker table into ST_TaskRecords. Database errors from the underlying connection propagate to the caller.
-    """
-    logger.info("Running database migrations")
-    with master_connection() as cursor:
-        for table, column, col_type in _MIGRATIONS:
-            rows = cursor.execute(f"PRAGMA table_info({table})").fetchall()
-            existing_columns = {row[1] for row in rows}
-            if column not in existing_columns:
-                stmt = f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"
-                cursor.execute(stmt)
-                logger.info("Migration applied: %s.%s", table, column)
-            else:
-                logger.debug("Column %s.%s already exists, skipping", table, column)
-
-        # SQLite cannot add UNIQUE(TaskUID) to an existing table via ALTER TABLE,
-        # so enforce it with a unique index. Remove any duplicate TaskUID rows
-        # (keeping the earliest TaskId) first, otherwise the index creation fails.
-        cursor.execute(
-            """DELETE FROM ST_TaskRecords
-               WHERE TaskId NOT IN (SELECT MIN(TaskId) FROM ST_TaskRecords GROUP BY TaskUID)"""
-        )
-        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_st_taskrecords_taskuid ON ST_TaskRecords(TaskUID)")
-
-        _consolidate_task_worker(cursor)
-    logger.info("Database migrations finished")
-
 
 def init_db() -> None:
     """
@@ -337,15 +229,6 @@ def init_db() -> None:
                 "generic_model.sql",
                 "generic_model.sql",
                 "Generic Data Model",
-            ),
-        )
-        cursor.execute(
-            insert_model_template,
-            (
-                "Supply Planning",
-                "supply_planning.sql",
-                "supply_planning_with_data.sql",
-                "Supply Planning",
             ),
         )
         cursor.execute(create_user_notifications_table)

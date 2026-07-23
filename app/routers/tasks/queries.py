@@ -102,7 +102,7 @@ update_model_lock = """UPDATE S_Models
 
 get_task_details = """select ST_TaskRecords.TaskName, ST_TaskRecords.Status, ST_TaskRecords.SubmittedBy,
                         ST_TaskRecords.SubmittedAt, ST_TaskRecords.LastUpdated,
-                        ST_TaskRecords.TaskUID, ST_TaskRecords.TaskURL
+                        ST_TaskRecords.TaskUID, ST_TaskRecords.TaskURL, ST_TaskRecords.Result
                         from ST_TaskRecords
                         where ST_TaskRecords.taskid = ?
                         and ST_TaskRecords.modelid = ?"""
