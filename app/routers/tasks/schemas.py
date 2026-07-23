@@ -67,4 +67,4 @@ class taskDetailsResponse(BaseModel):
     start_time: str
     end_time: str | None
     log: str
-    output: dict | None
+    output: dict | None = None

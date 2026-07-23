@@ -49,7 +49,7 @@ def run_command(**kwargs) -> dict:
         with open(json_out_file, "r") as f:
             try:
                 output_data = json.load(f)
-            except:
+            except (json.JSONDecodeError, ValueError):
                 pass
     return output_data
 
@@ -154,4 +154,3 @@ def _run_task_command(task_details: dict, filtered_kwargs: dict = None, task_uid
         raise Exception(f"Task errored with return code {return_code}")
     else:
         logger.info("Command finished successfully with return code %s", return_code)
-
