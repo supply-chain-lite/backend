@@ -422,6 +422,7 @@ def get_task_details(cursor, task_id: int, user_email: str, model_name: str, pro
         end_time,
         task_uid,
         task_url,
+        result,
     ) = task_details
     current_status = status
     if status in ("RUNNING", "STARTED", "PENDING"):
@@ -438,6 +439,7 @@ def get_task_details(cursor, task_id: int, user_email: str, model_name: str, pro
         "end_time": end_time,
         "status": current_status,
         "log": log,
+        "output": json.loads(result) if result else None,
     }
 
 

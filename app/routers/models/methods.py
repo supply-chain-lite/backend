@@ -445,7 +445,7 @@ def accept_model_share(
 
 
 def get_user_notifications(cursor, user_email: str):
-    rows = cursor.execute(model_queries.get_user_notifications, (user_email, user_email)).fetchall()
+    rows = cursor.execute(model_queries.get_user_notifications, (user_email, )).fetchall()
     notifications = []
     for (
         notification_id,
@@ -652,7 +652,7 @@ def get_template_sql_file(cursor, user_email: str, template_name: str, with_data
 
     sql_file = os.path.join(schema_dir, file_name)
     if not os.path.isfile(sql_file):
-        raise HTTPException(status_code=404, detail="SQL file for template not found")
+        raise HTTPException(status_code=404, detail=f"SQL file '{sql_file}' for template '{template_name}' not found")
 
     return sql_file
 
