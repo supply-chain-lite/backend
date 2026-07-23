@@ -137,8 +137,12 @@ def _run_task_command(task_details: dict, filtered_kwargs: dict = None, task_uid
         stderr_thread.join()
 
     if return_code != 0:
-        logger.error("Command finished with non-zero return code %s: %s", return_code, command)
+        if return_code == 9:
+            logger.info("Command was killed (return code 9)")
+        else:
+            logger.error("Command finished with non-zero return code %s", return_code)
+        raise Exception(f"Task errored with return code {return_code}")
     else:
-        logger.info("Command finished with return code %s", return_code)
+        logger.info("Command finished successfully with return code %s", return_code)
 
     return {"return_code": return_code, "command": command}
