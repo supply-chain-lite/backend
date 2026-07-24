@@ -1,6 +1,7 @@
 import json
 import os
 import shutil
+import subprocess
 import tempfile
 import time
 from contextlib import nullcontext
@@ -22,6 +23,7 @@ from app.config import (
     S3_SECRET_KEY,
     S3_URL,
     SETUP_S3,
+    SQLITE_DIFF_TOOL,
     TEMP_FOLDER,
 )
 from app.connection import master_connection, sql_connection
@@ -114,6 +116,15 @@ def run_model_task(
 
     celery_app = Celery("tasks", broker=this_broker_url, backend=this_broker_url)
     kwarg_data = {"db": file_url, "task_name": task_name, "template_name": template_name}
+
+    reserverd_param_names = kwarg_data.keys()
+    for params in task_param_values:
+        if params.ParameterName in reserverd_param_names:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Reserved parameter name: {params.ParameterName}. ",
+            )
+        kwarg_data[params.ParameterName] = params.ParameterValue
 
     # Generate the task UID up front so the ST_TaskRecords row is created and
     # committed *before* the task is enqueued. This guarantees the worker can
@@ -423,6 +434,7 @@ def get_task_details(cursor, task_id: int, user_email: str, model_name: str, pro
         task_uid,
         task_url,
         result,
+        kwargs_json,
     ) = task_details
     current_status = status
     if status in ("RUNNING", "STARTED", "PENDING"):
@@ -432,6 +444,11 @@ def get_task_details(cursor, task_id: int, user_email: str, model_name: str, pro
         log = cursor.execute(run_queries.get_task_log, (task_id,)).fetchone()
         log = log[0] if log else "No logs found for this task."
 
+    input_params = json.loads(kwargs_json) if kwargs_json else {}
+    keys_to_remove = ["db", "task_name", "template_name"]
+    for key in keys_to_remove:
+        input_params.pop(key, None)  # Remove the key if it exists, do nothing otherwise
+
     return {
         "task_name": task_name,
         "submitted_by": submitted_by,
@@ -439,6 +456,7 @@ def get_task_details(cursor, task_id: int, user_email: str, model_name: str, pro
         "end_time": end_time,
         "status": current_status,
         "log": log,
+        "input": input_params,
         "output": json.loads(result) if result else None,
     }
 
@@ -470,3 +488,97 @@ def cancel_task(cursor, task_id: int, user_email: str):
     _update_task_status(cursor, task_id, task_uid, task_url, task_status)  # Update status to reflect cancellation
     update_task_output_and_logs(cursor, task_id, forced_cancel=True)  # Update logs and release model lock
     return "REVOKED"
+
+
+def restore_db(cursor, task_id: int, user_email: str, model_name: str, project_name: str):
+    task_row = cursor.execute(run_queries.get_task_db_and_details, (task_id,)).fetchone()
+    if not task_row:
+        raise HTTPException(status_code=404, detail="Task not found")
+    this_model_name, this_project_name, this_model_id, task_status, output_model_path = task_row
+    if task_status != "SUCCESS":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Task did not succeed and cannot be used to restore the database. Current status: {task_status}",
+        )
+    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
+    if not model_id:
+        raise HTTPException(status_code=404, detail="Model not found")
+    if model_id != this_model_id or model_name != this_model_name or project_name != this_project_name:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Task output belongs to a different model ({this_model_name} in project {this_project_name}) "
+            f"and cannot be used to restore the database for model {model_name} in project {project_name}.",
+        )
+    if not os.path.exists(output_model_path):
+        raise HTTPException(
+            status_code=500,
+            detail=f"Output model file for task {task_id} does not exist at {output_model_path}.",
+        )
+    access_level, is_running = cursor.execute(get_access_level, (model_id, user_email)).fetchone()
+    if is_running:
+        raise HTTPException(status_code=400, detail="Cannot restore while a task using the model is running")
+
+    if access_level != "owner":
+        raise HTTPException(status_code=403, detail="Only owner can restore")
+    backup_connection = apsw.Connection(output_model_path)
+    this_connection = apsw.Connection(model_path)
+
+    try:
+        with this_connection.backup("main", backup_connection, "main") as backup:
+            backup.step()  # copy entire database in one step
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to restore backup: {str(e)}")
+    finally:
+        this_connection.close()
+        backup_connection.close()
+
+    return f"Model {model_name} in project {project_name} restored successfully from task {task_id}"
+
+
+def get_diff(cursor, task_id: int, user_email: str, model_name: str, project_name: str):
+    task_row = cursor.execute(run_queries.get_task_db_and_details, (task_id,)).fetchone()
+    if not task_row:
+        raise HTTPException(status_code=404, detail="Task not found")
+    this_model_name, this_project_name, this_model_id, _task_status, task_model_path = task_row
+
+    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
+    if not model_id:
+        raise HTTPException(status_code=404, detail="Model not found")
+    if model_id != this_model_id or model_name != this_model_name or project_name != this_project_name:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Task output belongs to a different model ({this_model_name} in project {this_project_name}) "
+            f"and cannot be used to restore the database for model {model_name} in project {project_name}.",
+        )
+    if not os.path.exists(task_model_path):
+        raise HTTPException(
+            status_code=500,
+            detail=f"Model file for task {task_id} does not exist at {task_model_path}.",
+        )
+
+    print(SQLITE_DIFF_TOOL)
+    if not os.path.exists(SQLITE_DIFF_TOOL):
+        raise HTTPException(
+            status_code=500,
+            detail="SQLITE diff tool not found. Please check the configuration.",
+        )
+
+    # Use the sqlite diff tool to get the difference between the current model
+    # database and the task output database. The --summary flag produces a
+    # per-table summary of changes rather than the full set of SQL statements.
+    try:
+        result = subprocess.run(
+            [SQLITE_DIFF_TOOL, "--summary", task_model_path, model_path],
+            capture_output=True,
+            text=True,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to run SQLITE diff tool: {str(e)}")
+
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=f"SQLITE diff tool failed: {result.stderr.strip()}",
+        )
+
+    return result.stdout

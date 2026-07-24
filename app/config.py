@@ -29,6 +29,7 @@ S3_SECRET_KEY = os.getenv("S3_SECRET_KEY")
 S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
 S3_URL = os.getenv("S3_URL")
 SETUP_S3 = int(os.getenv("SETUP_S3", "0"))
+SQLITE_DIFF_TOOL = os.getenv("SQLITE_DIFF_TOOL", "sqldiff.exe")
 
 
 if not master_db:

@@ -102,10 +102,15 @@ update_model_lock = """UPDATE S_Models
 
 get_task_details = """select ST_TaskRecords.TaskName, ST_TaskRecords.Status, ST_TaskRecords.SubmittedBy,
                         ST_TaskRecords.SubmittedAt, ST_TaskRecords.LastUpdated,
-                        ST_TaskRecords.TaskUID, ST_TaskRecords.TaskURL, ST_TaskRecords.Result
+                        ST_TaskRecords.TaskUID, ST_TaskRecords.TaskURL, ST_TaskRecords.Result, ST_TaskRecords.Kwargs
                         from ST_TaskRecords
                         where ST_TaskRecords.taskid = ?
                         and ST_TaskRecords.modelid = ?"""
+
+get_task_db_and_details = """select ModelName, ProjectName, ModelId, Status,
+                            ifnull(json_extract(ifnull(JsonData, '{}'), '$.db'), '')
+                            from ST_TaskRecords
+                            WHERE TaskId = ?;"""
 
 get_task_log = """SELECT LogText FROM ST_TaskLogs WHERE TaskId = ?;"""
 
