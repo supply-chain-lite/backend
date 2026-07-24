@@ -3,6 +3,7 @@ import json
 
 from celery import Celery
 
+from app.config import TASK_PROCESS_TIMEOUT_MINUTES
 from app.connection import master_connection
 from app.logging_config import get_logger
 from app.routers.tasks.methods import update_task_output_and_logs
@@ -11,7 +12,7 @@ from scheduler._tasks.queries import get_pending_tasks_older_than, update_task_l
 
 logger = get_logger(__name__)
 
-PENDING_TIMEOUT_SECONDS = 3600  # 1 hour
+PENDING_TIMEOUT_SECONDS = TASK_PROCESS_TIMEOUT_MINUTES * 60  # Convert minutes to seconds
 
 
 def _revoke_and_update(task_id, task_uid, task_url, model_id):

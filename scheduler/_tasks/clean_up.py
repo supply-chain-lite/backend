@@ -12,13 +12,15 @@ from scheduler._tasks import queries as cleanup_queries
 
 logger = get_logger(__name__)
 
-TEMP_FILE_RETENTION_SECONDS = 3600  # 1 hour
-CELERY_LOG_RETENTION_SECONDS = 7 * 24 * 3600  # 7 days
-CELERY_MODEL_RETENTION_SECONDS = 30 * 24 * 3600  # 30 days
-VACUUM_INTERVAL_SECONDS = 7 * 24 * 3600  # 7 days
-EXECUTION_LOG_RETENTION_DAYS = 30
-SQL_HISTORY_MAX_RECORDS_PER_USER = 100
-TASK_HISTORY_MAX_RECORDS_PER_USER = 30
+# Cleanup parameters are loaded from the environment (.env via dotenv, which is
+# loaded on import of app.config). Defaults are used when the variable is unset.
+TEMP_FILE_RETENTION_MINUTES = int(os.getenv("TEMP_FILE_RETENTION_MINUTES", 60))  # 1 hour
+CELERY_LOG_RETENTION_DAYS = int(os.getenv("CELERY_LOG_RETENTION_DAYS", 7))  # 7 days
+CELERY_MODEL_RETENTION_DAYS = int(os.getenv("CELERY_MODEL_RETENTION_DAYS", 30))  # 30 days
+VACUUM_INTERVAL_DAYS = int(os.getenv("VACUUM_INTERVAL_DAYS", 7))  # 7 days
+EXECUTION_LOG_RETENTION_DAYS = int(os.getenv("EXECUTION_LOG_RETENTION_DAYS", 30))
+SQL_HISTORY_MAX_RECORDS_PER_USER = int(os.getenv("SQL_HISTORY_MAX_RECORDS_PER_USER", 100))
+TASK_HISTORY_MAX_RECORDS_PER_USER = int(os.getenv("TASK_HISTORY_MAX_RECORDS_PER_USER", 30))
 
 
 def _cleanup_folder(folder_path, retention_seconds):
@@ -45,10 +47,10 @@ async def main(params: dict | None = None) -> dict:
     del params
 
     deleted_counts = {
-        "temp_files": _cleanup_folder(TEMP_FOLDER, TEMP_FILE_RETENTION_SECONDS),
-        "celery_temp_files": _cleanup_folder(CELERY_TEMP_FOLDER, TEMP_FILE_RETENTION_SECONDS),
-        "celery_log_files": _cleanup_folder(CELERY_LOG_FOLDER, CELERY_LOG_RETENTION_SECONDS),
-        "celery_model_files": _cleanup_folder(CELERY_MODELS_FOLDER, CELERY_MODEL_RETENTION_SECONDS),
+        "temp_files": _cleanup_folder(TEMP_FOLDER, TEMP_FILE_RETENTION_MINUTES * 60),
+        "celery_temp_files": _cleanup_folder(CELERY_TEMP_FOLDER, TEMP_FILE_RETENTION_MINUTES * 60),
+        "celery_log_files": _cleanup_folder(CELERY_LOG_FOLDER, CELERY_LOG_RETENTION_DAYS * 86400),
+        "celery_model_files": _cleanup_folder(CELERY_MODELS_FOLDER, CELERY_MODEL_RETENTION_DAYS * 86400),
     }
 
     master_vacuumed = await asyncio.to_thread(_query, master_db)
@@ -109,7 +111,7 @@ async def vacuum_user_models(params: dict | None = None) -> dict:
             skipped_count += 1
             continue
         file_age = time.time() - os.path.getmtime(model_path)
-        if file_age < VACUUM_INTERVAL_SECONDS:
+        if file_age < VACUUM_INTERVAL_DAYS * 86400:
             skipped_count += 1
             continue  # Skip if file is not old enough for vacuuming
 
@@ -119,7 +121,7 @@ async def vacuum_user_models(params: dict | None = None) -> dict:
                 skipped_count += 1
                 continue  # Skip if last vacuum date is invalid
             vacuum_age = (datetime.now(timezone.utc) - vacuum_date).total_seconds()
-            if vacuum_age < VACUUM_INTERVAL_SECONDS:
+            if vacuum_age < VACUUM_INTERVAL_DAYS * 86400:
                 skipped_count += 1
                 continue  # Skip if vacuumed recently
             if abs(file_age - vacuum_age) < 3600:  # 1 hour threshold to account for time differences
@@ -164,7 +166,7 @@ def db_cleanup():
         )
         rows = cursor.execute(
             cleanup_queries.delete_task_history,
-            (TASK_HISTORY_MAX_RECORDS_PER_USER, CELERY_LOG_RETENTION_SECONDS / 86400),
+            (TASK_HISTORY_MAX_RECORDS_PER_USER, CELERY_LOG_RETENTION_DAYS),
         ).fetchall()
         task_history_deleted = len(rows)
         logger.info(
