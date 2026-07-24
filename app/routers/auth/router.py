@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
-from app.config import ACCESS_TOKEN_EXPIRE_MINUTES
+from app.config import ACCESS_TOKEN_EXPIRE_DAYS
 from app.connection import master_connection
 
 from . import methods as auth_methods
@@ -99,7 +99,7 @@ def login(request: auth_schemas.LoginRequest, response: Response) -> auth_schema
         httponly=True,
         secure=True,
         samesite="Lax",
-        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        max_age=ACCESS_TOKEN_EXPIRE_DAYS * 86400,
     )
     return auth_schemas.RedirectUrlResponse(redirect_url=home_url)
 

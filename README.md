@@ -133,7 +133,7 @@ Defined in `.env` (see `.env.example`):
 | Variable | Default | Description |
 |---|---|---|
 | `SECRET_KEY` | — | Secret key for password hashing & tokens |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | Token expiry in minutes |
+| `ACCESS_TOKEN_EXPIRE_DAYS` | `1` | Token expiry in days |
 | `SQLITE_DB_PATH` | `./data.db` | Path to SQLite database file |
 | `LOG_LEVEL` | `INFO` | Minimum log level for console and file logging |
 

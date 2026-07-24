@@ -11,7 +11,7 @@ import jwt
 from fastapi import HTTPException, Request, Response
 
 from app.config import (
-    ACCESS_TOKEN_EXPIRE_MINUTES,
+    ACCESS_TOKEN_EXPIRE_DAYS,
     BASE_URL,
     LOCK_TIME_MINUTES,
     MAX_ATTEMPTS,
@@ -172,7 +172,7 @@ def reset_password(cursor, useremail: str, verification_code: str, password: str
 
 
 def _generate_token(token_version: int, useremail: str) -> str:
-    expiration = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expiration = datetime.now(timezone.utc) + timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
     payload = {"token_version": token_version, "useremail": useremail, "exp": expiration.timestamp()}
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
     return token

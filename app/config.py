@@ -9,7 +9,7 @@ load_dotenv()
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
     raise Exception("SECRET_KEY is not set in environment variables.")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 600))
+ACCESS_TOKEN_EXPIRE_DAYS = int(os.getenv("ACCESS_TOKEN_EXPIRE_DAYS", 1))
 
 # Password hashing pepper — kept separate from SECRET_KEY so JWT key rotation
 # does not invalidate existing password hashes. Set this once and never change it.
@@ -29,6 +29,7 @@ S3_SECRET_KEY = os.getenv("S3_SECRET_KEY")
 S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
 S3_URL = os.getenv("S3_URL")
 SETUP_S3 = int(os.getenv("SETUP_S3", "0"))
+SQLITE_DIFF_TOOL = os.getenv("SQLITE_DIFF_TOOL", "sqldiff.exe")
 
 
 if not master_db:

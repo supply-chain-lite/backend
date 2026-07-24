@@ -33,7 +33,7 @@ You can expect an acknowledgement within **48 hours** and a resolution or status
 
 ### Authentication & Sessions
 - Passwords are hashed using a strong one-way algorithm before storage — plain-text passwords are never persisted.
-- Session tokens are signed **JWT** (via `PyJWT`) with a configurable expiry (`ACCESS_TOKEN_EXPIRE_MINUTES`).
+- Session tokens are signed **JWT** (via `PyJWT`) with a configurable expiry (`ACCESS_TOKEN_EXPIRE_DAYS`).
 - Tokens are delivered as **HTTP-only cookies** to mitigate XSS-based theft.
 - Brute-force protection: accounts are locked after `MAX_ATTEMPTS` consecutive failed logins for `LOCK_TIME_MINUTES` minutes.
 
@@ -79,7 +79,7 @@ You can expect an acknowledgement within **48 hours** and a resolution or status
 ## Deployment Hardening Checklist
 
 - [ ] Generate a strong, random `SECRET_KEY` (≥ 32 bytes of entropy, e.g. `openssl rand -hex 32`).
-- [ ] Set `ACCESS_TOKEN_EXPIRE_MINUTES` to the shortest practical value for your use case.
+- [ ] Set `ACCESS_TOKEN_EXPIRE_DAYS` to the shortest practical value for your use case.
 - [ ] Serve exclusively over HTTPS with a valid TLS certificate.
 - [ ] Restrict CORS to known frontend origin(s).
 - [ ] Set `LOG_LEVEL=WARNING` or higher in production to avoid leaking sensitive data in logs.

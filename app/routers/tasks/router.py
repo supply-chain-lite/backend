@@ -92,3 +92,31 @@ def cancel_task(
     with master_connection() as cursor:
         status = run_methods.cancel_task(cursor, task_id, useremail)
     return run_schemas.MessageResponse(message=status)
+
+
+@router.post("/restore-db", response_model=run_schemas.MessageResponse)
+def restore_db(
+    request: run_schemas.taskDetailsRequest,
+    user_data: tuple = Depends(_get_user_from_token),
+) -> run_schemas.MessageResponse:
+    useremail, _display_name, _role_name = user_data
+    task_id = request.task_id
+    model_name = request.model_name
+    project_name = request.project_name
+    with master_connection() as cursor:
+        status = run_methods.restore_db(cursor, task_id, useremail, model_name, project_name)
+    return run_schemas.MessageResponse(message=status)
+
+
+@router.post("/get-diff", response_model=run_schemas.MessageResponse)
+def get_diff(
+    request: run_schemas.taskDetailsRequest,
+    user_data: tuple = Depends(_get_user_from_token),
+) -> run_schemas.MessageResponse:
+    useremail, _display_name, _role_name = user_data
+    task_id = request.task_id
+    model_name = request.model_name
+    project_name = request.project_name
+    with master_connection() as cursor:
+        status = run_methods.get_diff(cursor, task_id, useremail, model_name, project_name)
+    return run_schemas.MessageResponse(message=status)
