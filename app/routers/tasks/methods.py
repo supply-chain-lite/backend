@@ -515,11 +515,12 @@ def restore_db(cursor, task_id: int, user_email: str, model_name: str, project_n
             detail=f"Output model file for task {task_id} does not exist at {output_model_path}.",
         )
     access_level, is_running = cursor.execute(get_access_level, (model_id, user_email)).fetchone()
-    if is_running:
-        raise HTTPException(status_code=400, detail="Cannot restore while a task using the model is running")
 
     if access_level != "owner":
         raise HTTPException(status_code=403, detail="Only owner can restore")
+    if is_running:
+        raise HTTPException(status_code=400, detail="Cannot restore while a task using the model is running")
+
     backup_connection = apsw.Connection(output_model_path)
     this_connection = apsw.Connection(model_path)
 
