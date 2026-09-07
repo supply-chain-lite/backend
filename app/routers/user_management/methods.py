@@ -1,6 +1,8 @@
 import json
 from datetime import datetime, timedelta, timezone
+
 from fastapi import HTTPException
+
 from app.routers.auth.methods import forgot_password
 
 from . import queries as user_queries
