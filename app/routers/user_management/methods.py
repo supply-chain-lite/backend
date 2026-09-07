@@ -115,6 +115,12 @@ def get_roles(cursor) -> list[user_schema.RoleDetail]:
     return role_details
 
 
+def _validate_role_name(role_name: str | None) -> None:
+    """Reject the SUPER_ADMIN role from user assignment paths."""
+    if role_name and role_name.upper() == "SUPER_ADMIN":
+        raise HTTPException(status_code=400, detail="Cannot change the role to a SUPER_ADMIN user.")
+
+
 def add_new_user(cursor, user_data: user_schema.AddNewUserRequest):
     """
     Add a new user to the database.
@@ -123,6 +129,7 @@ def add_new_user(cursor, user_data: user_schema.AddNewUserRequest):
         cursor: Database cursor.
         user_data: User data as an AddNewUserRequest object.
     """
+    _validate_role_name(user_data.RoleName)
     access_templates = json.dumps(user_data.Templates)
     other_data = json.dumps({"end_date": user_data.EndDate, "max_concurrent_runs": user_data.MaxConcurrentRuns})
     row = cursor.execute(
@@ -221,6 +228,7 @@ def update_user(cursor, user_data: user_schema.UpdateUserRequest):
     other_data = json.dumps(other_data)
     role_id = None
     if user_data.RoleName:
+        _validate_role_name(user_data.RoleName)
         role_id_row = cursor.execute(user_queries.get_role_id, (user_data.RoleName,)).fetchone()
         if role_id_row is None:
             raise HTTPException(status_code=400, detail=f"Role with name {user_data.RoleName} does not exist.")
