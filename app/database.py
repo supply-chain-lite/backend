@@ -211,7 +211,7 @@ admin_role = {
 user_role = {
     "modules": [module[0] for module in module_data if module[0] != "Scheduler"],
     "homePage": "home-page.html",
-    "canAddNewModel": False,
+    "canAddNewModel": True,
 }
 power_user_role = {
     "modules": [module[0] for module in module_data if module[0] != "Scheduler"],

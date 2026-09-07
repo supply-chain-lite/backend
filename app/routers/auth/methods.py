@@ -85,28 +85,44 @@ def register_user(cursor, useremail: str, username: str, password: str):
     ).fetchone()
     if existing:
         raise HTTPException(status_code=400, detail="User already exists")
+
+    total_users = cursor.execute("SELECT COUNT(*) FROM S_Users").fetchone()[0]
+    is_first_user = total_users == 0
+    role_name = "SUPER_ADMIN" if is_first_user else "User"
+    role_row = cursor.execute("SELECT RoleId FROM S_UserRoles WHERE RoleName = ?", (role_name,)).fetchone()
+    if not role_row:
+        raise HTTPException(status_code=500, detail=f"Role {role_name} not found")
+    role_id = role_row[0]
+
     model_templates = _get_model_templates(cursor)
-    default_end_date = (datetime.now(timezone.utc).date() + timedelta(days=365)).isoformat()
+    default_end_date = (
+        "2099-01-01" if is_first_user else (datetime.now(timezone.utc).date() + timedelta(days=365)).isoformat()
+    )
     user_json_data = json.dumps({"end_date": default_end_date})
 
-    activation_code = f"{ACTIVATION_CODE_PREFIX}{os.urandom(3).hex()}"
+    activation_code = None if is_first_user else f"{ACTIVATION_CODE_PREFIX}{os.urandom(3).hex()}"
+    is_active = 1 if is_first_user else 0
 
     cursor.execute(
         queries.create_user,
         (
             useremail,
-            2,
+            role_id,
             username,
             password_hash,
             salt,
             activation_code,
-            0,
+            is_active,
             json.dumps(model_templates),
             user_json_data,
         ),
     )
     cursor.execute(queries.add_default_project, (useremail, useremail))
     cursor.intermediate_commit()
+
+    if is_first_user:
+        return
+
     # Even if the email fails to send, the user is created, so we don't want to rollback the transaction.
     # The user can request a new activation code if needed.
     params = urlencode({"useremail": useremail, "activationcode": activation_code})

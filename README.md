@@ -263,6 +263,7 @@ Defined in `.env` (see `.env.example`). Variables marked **Required** must be se
 | `SECRET_KEY` | — | **Required**. Secret key for password hashing & JWT tokens |
 | `PASSWORD_PEPPER` | `""` | Optional pepper for password hashing; set once and never change it |
 | `ACCESS_TOKEN_EXPIRE_DAYS` | `1` | Access-token cookie expiry in days |
+| `COOKIE_SECURE` | `true` | Set to `false` for local HTTP development; defaults to `true` if unset |
 | `MAX_ATTEMPTS` | `5` | Failed login attempts before temporary lockout |
 | `LOCK_TIME_MINUTES` | `1` | Account lockout duration after max failed attempts |
 
