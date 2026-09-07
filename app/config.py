@@ -11,6 +11,9 @@ if not SECRET_KEY:
     raise Exception("SECRET_KEY is not set in environment variables.")
 ACCESS_TOKEN_EXPIRE_DAYS = int(os.getenv("ACCESS_TOKEN_EXPIRE_DAYS", 1))
 
+_COOKIE_SECURE_RAW = os.getenv("COOKIE_SECURE", "true")
+COOKIE_SECURE = str(_COOKIE_SECURE_RAW).strip().lower() not in {"0", "false", "no", "off"}
+
 # Password hashing pepper — kept separate from SECRET_KEY so JWT key rotation
 # does not invalidate existing password hashes. Set this once and never change it.
 # For existing deployments, set PASSWORD_PEPPER to the previous SECRET_KEY value.

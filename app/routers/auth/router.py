@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
-from app.config import ACCESS_TOKEN_EXPIRE_DAYS
+from app.config import ACCESS_TOKEN_EXPIRE_DAYS, COOKIE_SECURE
 from app.connection import master_connection
 
 from . import methods as auth_methods
@@ -97,7 +97,7 @@ def login(request: auth_schemas.LoginRequest, response: Response) -> auth_schema
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=True,
+        secure=COOKIE_SECURE,
         samesite="Lax",
         max_age=ACCESS_TOKEN_EXPIRE_DAYS * 86400,
     )
@@ -107,7 +107,7 @@ def login(request: auth_schemas.LoginRequest, response: Response) -> auth_schema
 @router.post("/logout", response_model=auth_schemas.MessageResponse)
 def logout(response: Response) -> auth_schemas.MessageResponse:
     """Log out the current user by clearing the access-token cookie."""
-    response.delete_cookie(key="access_token", httponly=True, secure=True, samesite="lax", path="/")
+    response.delete_cookie(key="access_token", httponly=True, secure=COOKIE_SECURE, samesite="lax", path="/")
     return auth_schemas.MessageResponse(message="Logout successful")
 
 

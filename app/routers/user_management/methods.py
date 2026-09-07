@@ -1,6 +1,8 @@
 import json
 from datetime import datetime, timedelta, timezone
 
+from fastapi import HTTPException
+
 from app.routers.auth.methods import forgot_password
 
 from . import queries as user_queries
@@ -135,7 +137,7 @@ def add_new_user(cursor, user_data: user_schema.AddNewUserRequest):
         ),
     ).fetchone()
     if row is None:
-        raise ValueError(f"User with email {user_data.UserEmail} already exists.")
+        raise HTTPException(status_code=400, detail=f"User with email {user_data.UserEmail} already exists.")
     forgot_password(cursor, user_data.UserEmail)  # Send forgot password email to the new user
     return
 
@@ -151,7 +153,7 @@ def add_new_role(cursor, role_data: user_schema.AddNewRoleRequest):
     all_modules, _ = get_modules(cursor)
     for module in role_data.Modules:
         if module not in all_modules:
-            raise ValueError(f"Module '{module}' does not exist.")
+            raise HTTPException(status_code=400, detail=f"Module '{module}' does not exist.")
 
     other_data = json.dumps(
         {
@@ -165,7 +167,7 @@ def add_new_role(cursor, role_data: user_schema.AddNewRoleRequest):
         (role_data.RoleName, role_data.RoleDescription, other_data, role_data.RoleName),
     ).fetchone()
     if row is None:
-        raise ValueError(f"Role with name {role_data.RoleName} already exists.")
+        raise HTTPException(status_code=400, detail=f"Role with name {role_data.RoleName} already exists.")
     return
 
 
@@ -181,7 +183,7 @@ def update_role(cursor, role_data: user_schema.UpdateRoleRequest):
         all_modules, _ = get_modules(cursor)
         for module in role_data.Modules:
             if module not in all_modules:
-                raise ValueError(f"Module '{module}' does not exist.")
+                raise HTTPException(status_code=400, detail=f"Module '{module}' does not exist.")
 
     other_data = {}
     if role_data.Modules:
@@ -197,7 +199,7 @@ def update_role(cursor, role_data: user_schema.UpdateRoleRequest):
         (role_data.RoleName, role_data.RoleDescription, other_data, other_data, role_data.RoleId),
     ).fetchone()
     if row is None:
-        raise ValueError(f"Role with id {role_data.RoleId} does not exist.")
+        raise HTTPException(status_code=400, detail=f"Role with id {role_data.RoleId} does not exist.")
     return
 
 
@@ -221,7 +223,7 @@ def update_user(cursor, user_data: user_schema.UpdateUserRequest):
     if user_data.RoleName:
         role_id_row = cursor.execute(user_queries.get_role_id, (user_data.RoleName,)).fetchone()
         if role_id_row is None:
-            raise ValueError(f"Role with name {user_data.RoleName} does not exist.")
+            raise HTTPException(status_code=400, detail=f"Role with name {user_data.RoleName} does not exist.")
         role_id = role_id_row[0]
     row = cursor.execute(
         user_queries.update_user,
@@ -235,5 +237,5 @@ def update_user(cursor, user_data: user_schema.UpdateUserRequest):
         ),
     ).fetchone()
     if row is None:
-        raise ValueError(f"User with email {user_data.UserEmail} does not exist.")
+        raise HTTPException(status_code=400, detail=f"User with email {user_data.UserEmail} does not exist.")
     return
