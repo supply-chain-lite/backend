@@ -1,7 +1,5 @@
 from fastapi import HTTPException
 
-get_table_columns = "select name, type from pragma_table_xinfo(?) where UPPER(type) != 'BLOB' "
-
 get_column_order = """select ifnull(ColumnOrder, '[]') as ColumnOrder
                     from S_TableGroup WHERE TableName = ? collate nocase"""
 
@@ -15,13 +13,9 @@ update_column_order = "UPDATE S_TableGroup SET ColumnOrder = ? WHERE TableName =
 
 insert_column_order = "INSERT INTO S_TableGroup (GroupName, TableName, ColumnOrder) VALUES (?, ?, ?) RETURNING rowid"
 
-check_if_table_exists = (
-    "select type from sqlite_master where type in ('table', 'view') collate nocase and name=? collate nocase"
-)
 
 add_new_column = "ALTER TABLE [{table_name}] ADD COLUMN [{column_name}] {column_type}"
 
-check_if_table_column_exists = "SELECT 1 FROM pragma_table_xinfo(?) WHERE name = ? COLLATE NOCASE"
 
 set_column_formatting = """UPDATE S_TableParameters Set ParameterType = ?, ParameterValue = ?
                             WHERE TableName = ? COLLATE NOCASE and ColumnName = ? COLLATE NOCASE RETURNING rowid"""
@@ -33,21 +27,6 @@ get_column_formatting = """SELECT ColumnName, ParameterType, ParameterValue FROM
                             WHERE TableName = ? COLLATE NOCASE """
 
 
-get_default_values_query = """select name, [dflt_value] from pragma_table_xinfo(?)
-                              WHERE [dflt_value] is not null;"""
-
-get_generated_columns = """select name from pragma_table_xinfo(?)
-                              WHERE hidden in (2, 3);"""
-
-get_object_types = """SELECT t1.table_name, sqlite_master.type
-                        FROM
-                        (
-                        SELECT column1 AS table_name
-                        FROM (VALUES
-                            {placeholders}
-                        ) ) as t1, sqlite_master
-                        WHERE T1.table_name = sqlite_master.name COLLATE NOCASE
-                        """
 get_table_types = """SELECT t1.table_name, ifnull(S_TableGroup.TableType, 'table') as TableType
                         FROM
                         (

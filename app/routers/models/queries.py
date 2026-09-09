@@ -135,9 +135,6 @@ check_if_model_shared_with_user = """select 1
                                     AND  AT.value = ?
                                     AND  S_UserNotifications.IsAccepted = 0"""
 
-check_if_table_exists = (
-    "select type from sqlite_master where type in ('table') collate nocase and name=? collate nocase"
-)
 
 get_data_files = """select FileId, FileName, FileType, FileExtension, UploadedFileName, LastUpdated,
                     CASE WHEN FileBlob Is NULL THEN 'No' ELSE 'Yes' END FileExists  from S_DataFiles"""
@@ -153,11 +150,3 @@ update_file_blob = """UPDATE S_DataFiles SET FileBlob = ?,
 get_table_groups = """select GroupName, TableName, TableDisplayName, rowid
                         FROM S_TableGroup
                         ORDER BY 4;"""
-
-get_table_group_from_sqlite_master = """select CASE WHEN type = 'table' THEN 'All Tables'
-                                        WHEN type = 'view' THEN 'All Views'
-                                        END as TableGroup,  name as TableName, name as TableDisplayName, 1 as rowid
-                                        from sqlite_master
-                                        WHERE type in ('view', 'table')
-                                        AND name NOT LIKE 'sqlite_%' COLLATE NOCASE
-                                        ORDER BY 1, 2;"""
