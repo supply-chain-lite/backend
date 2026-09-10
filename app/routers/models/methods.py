@@ -557,7 +557,7 @@ def _get_table_groups(cursor):
     try:
         rows = cursor.execute(model_queries.get_table_groups, silent=True).fetchall()
     except Exception:
-        rows = cursor.execute(model_queries.get_table_group_from_sqlite_master).fetchall()
+        rows = cursor.get_default_table_groups()
     table_groups = {}
     for group_name, table_name, table_display_name, _ in rows:
         if table_display_name is None:

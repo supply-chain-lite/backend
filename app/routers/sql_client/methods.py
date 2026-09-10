@@ -18,7 +18,7 @@ def get_sql_objects(cursor, user_email: str, model_name: str, project_name: str)
     with sql_connection(model_id, model_path) as model_cursor:
         tables = []
         views = []
-        all_rows = model_cursor.execute(sql_client_queries.get_sql_objects).fetchall()
+        all_rows = model_cursor.get_sql_objects()
         for obj_type, name in all_rows:
             if obj_type.lower() == "table":
                 tables.append(name)
@@ -36,7 +36,7 @@ def get_object_ddl(cursor, user_email: str, model_name: str, project_name: str, 
     if access_level not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="User does not have permission to get object DDL")
     with sql_connection(model_id, model_path) as model_cursor:
-        ddl_row = model_cursor.execute(sql_client_queries.get_object_ddl, (object_name,)).fetchone()
+        ddl_row = model_cursor.get_object_ddl(object_name)
         if ddl_row is None:
             raise HTTPException(status_code=404, detail="Object not found")
         return ddl_row[0]

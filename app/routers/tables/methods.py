@@ -51,7 +51,7 @@ def _get_table_headers_with_types(cursor, table_name: str, get_all_columns=False
     Returns:
         list[tuple[str, str]]: List of (column_name, column_type) tuples in the chosen order.
     """
-    all_rows = cursor.execute(table_queries.get_table_columns, (table_name,)).fetchall()
+    all_rows = cursor.get_table_columns(table_name)
 
     if get_all_columns:
         return all_rows
@@ -255,7 +255,7 @@ def get_table_columns_all(cursor, user_email: str, model_name: str, project_name
 
     with sql_connection(model_id, model_path) as model_cursor:
         _validate_table_and_column_names(model_cursor, table_name, [])
-        all_rows = model_cursor.execute(table_queries.get_table_columns, (table_name,)).fetchall()
+        all_rows = model_cursor.get_table_columns(table_name)
 
         table_columns = list(row[0] for row in all_rows)
 
@@ -297,7 +297,7 @@ def set_columns_order(
 
     with sql_connection(model_id, model_path) as model_cursor:
         _validate_table_and_column_names(model_cursor, table_name, column_names)
-        row = model_cursor.execute(table_queries.check_if_table_exists, ("S_TableGroup",)).fetchone()
+        row = model_cursor.get_table_object("S_TableGroup")
         if not row:
             raise HTTPException(status_code=404, detail="Cannot set column order: Table not found: S_TableGroup")
         column_order_json = json.dumps(column_names)
@@ -342,7 +342,7 @@ def add_new_column(
         object_type = _validate_table_and_column_names(model_cursor, table_name, [])
         if object_type != "table":
             raise HTTPException(status_code=404, detail=f"Cannot add column to view:{table_name}")
-        row = model_cursor.execute(table_queries.check_if_table_column_exists, (table_name, column_name)).fetchone()
+        row = model_cursor.get_table_column(table_name, column_name)
         if row:
             raise HTTPException(status_code=400, detail=f"Cannot add column: Column already exists: {column_name}")
         if column_type.upper() not in ("TEXT", "INTEGER", "REAL", "NUMERIC", "VARCHAR", "BOOLEAN"):
@@ -408,7 +408,7 @@ def _set_column_formatting(
     column_type: str,
     column_formatting: dict[str, str | int | float | bool | None],
 ):
-    row = model_cursor.execute(table_queries.check_if_table_exists, ("S_TableParameters",)).fetchone()
+    row = model_cursor.get_table_object("S_TableParameters")
     if not row:
         return 0
     format_json = json.dumps(column_formatting)
@@ -453,7 +453,7 @@ def _get_column_formatting(model_cursor, table_name: str):
     Returns:
         dict: Mapping from column name (str) to a formatting dict that always contains a "column_type" key and may include additional formatting keys from the stored JSON.
     """
-    row = model_cursor.execute(table_queries.check_if_table_exists, ("S_TableParameters",)).fetchone()
+    row = model_cursor.get_table_object("S_TableParameters")
     if not row:
         return {}
     all_rows = model_cursor.execute(table_queries.get_column_formatting, (table_name,)).fetchall()
@@ -529,7 +529,7 @@ def _get_generated_columns(cursor, table_name: str) -> list[str]:
     Returns:
         list[str]: A list of generated column names for the specified table.
     """
-    rows = cursor.execute(table_queries.get_generated_columns, (table_name,)).fetchall()
+    rows = cursor.get_generated_columns(table_name)
     generated_columns = [row[0].lower() for row in rows]
     return generated_columns
 
@@ -605,12 +605,12 @@ def _validate_table_and_column_names(cursor, table_name: str, column_names: list
         fastapi.HTTPException: 404 if the table is not found (detail="Table not found: {table_name}").
         fastapi.HTTPException: 404 if any column is not found (detail="Column not found: {column_name} for table: {table_name}").
     """
-    row = cursor.execute(table_queries.check_if_table_exists, (table_name,)).fetchone()
+    row = cursor.get_table_object(table_name)
     if not row:
         raise HTTPException(status_code=404, detail=f"Table not found: {table_name}")
     object_type = row[0].lower()
     for column_name in column_names:
-        row = cursor.execute(table_queries.check_if_table_column_exists, (table_name, column_name)).fetchone()
+        row = cursor.get_table_column(table_name, column_name)
         if not row:
             raise HTTPException(status_code=404, detail=f"Column not found: {column_name} for table: {table_name}")
     return object_type
@@ -972,7 +972,7 @@ def upload_excel(
             if action == "ignore":
                 continue
             if action == "create":
-                row = model_cursor.execute(table_queries.check_if_table_exists, (table_name,)).fetchone()
+                row = model_cursor.get_table_object(table_name)
                 if row:
                     response_status[table_name] = {"status": "failed", "reason": "object already exists"}
                     continue
@@ -1081,9 +1081,7 @@ def _import_excel_to_table(model_cursor, all_rows, table_name, table_headers, co
         raise Exception("No matching columns found between the Excel file and the target table")
 
     default_values = {}
-    for column_name, default_value in model_cursor.execute(
-        table_queries.get_default_values_query, (table_name,)
-    ).fetchall():
+    for column_name, default_value in model_cursor.get_column_defaults(table_name):
         default_values[column_name.lower()] = default_value
 
     delete_query, insert_query = table_queries.get_excel_upload_insert_query(table_name, common_columns, default_values)
@@ -1224,13 +1222,12 @@ def check_excel_sheets_exist(cursor, user_email: str, model_name: str, project_n
         return {}
 
     with sql_connection(model_id, model_path) as model_cursor:
-        query = table_queries.get_object_types.format(placeholders=",".join(["(?)"] * len(sheet_names)))
         object_types = {}
-        for name, obj_type in model_cursor.execute(query, sheet_names).fetchall():
+        for name, obj_type in model_cursor.get_object_types(sheet_names):
             object_types[name] = obj_type
             if obj_type != "table":
                 object_types[name] = "not a table"
-        row = model_cursor.execute(table_queries.check_if_table_exists, ("S_TableGroup",)).fetchone()
+        row = model_cursor.get_table_object("S_TableGroup")
         if not row:
             return object_types
         query = table_queries.get_table_types.format(placeholders=",".join(["(?)"] * len(sheet_names)))
