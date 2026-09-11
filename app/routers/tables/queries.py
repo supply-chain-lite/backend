@@ -14,7 +14,7 @@ update_column_order = "UPDATE S_TableGroup SET ColumnOrder = ? WHERE TableName =
 insert_column_order = "INSERT INTO S_TableGroup (GroupName, TableName, ColumnOrder) VALUES (?, ?, ?) RETURNING rowid"
 
 
-add_new_column = "ALTER TABLE [{table_name}] ADD COLUMN [{column_name}] {column_type}"
+add_new_column = 'ALTER TABLE "{table_name}" ADD COLUMN "{column_name}" {column_type}'
 
 
 set_column_formatting = """UPDATE S_TableParameters Set ParameterType = ?, ParameterValue = ?
@@ -39,8 +39,8 @@ get_table_types = """SELECT t1.table_name, ifnull(S_TableGroup.TableType, 'table
 
 
 def create_table_query(table_name, columns):
-    column_defs = ", ".join(f"[{col_name}] {col_type}" for col_name, col_type in columns)
-    return f"CREATE TABLE [{table_name}] ({column_defs})"
+    column_defs = ", ".join(f'"{col_name}" {col_type}' for col_name, col_type in columns)
+    return f'CREATE TABLE "{table_name}" ({column_defs})'
 
 
 operation_dict = {
@@ -64,13 +64,13 @@ def get_table_query(
     page_size: int,
 ) -> tuple[str, list]:
     """
-    Builds a parameterized SQLite SELECT query for the given table and columns, applying exact-match filters, text/date-aware substring filters, sorting, and pagination.
+    Builds a parameterized SELECT query for the given table and columns, applying exact-match filters, text/date-aware substring filters, sorting, and pagination.
 
     Parameters:
         table_name (str): Table name used in the FROM clause.
         column_names (list[str]): Columns to include in the SELECT; must contain at least one name.
-        select_filters (dict[str, list[str]]): Exact-match filters mapping column -> list of allowed values. Empty lists are ignored. If a filter list contains `None` alongside other values the condition becomes `([col] IN (...) OR [col] IS NULL)`; if it contains only `None` the condition becomes `[col] IS NULL`.
-        text_filters (dict[str, str]): Substring filters mapping column -> substring; falsy or empty values are ignored and non-empty values are bound as `%<text>%`. Columns listed in `date_columns` are filtered against `DATE([column] + julianday('1899-12-30'))`; all others use `LIKE ? COLLATE NOCASE`.
+        select_filters (dict[str, list[str]]): Exact-match filters mapping column -> list of allowed values. Empty lists are ignored. If a filter list contains `None` alongside other values the condition becomes `("col" IN (...) OR "col" IS NULL)`; if it contains only `None` the condition becomes `"col" IS NULL`.
+        text_filters (dict[str, str]): Substring filters mapping column -> substring; falsy or empty values are ignored and non-empty values are bound as `%<text>%`. Columns listed in `date_columns` are filtered against `DATE("column" + julianday('1899-12-30'))`; all others use `LIKE ? COLLATE NOCASE`.
         date_columns (list[str]): Columns from `text_filters` that should be matched as dates after converting Excel-style serial values to SQLite dates.
         sort_columns (list[list[str, str]]): Sort directives as lists of `[column_name, direction]` where `direction` must be `'ASC'` or `'DESC'` (case-insensitive).
         page_number (int): 1-based page index used to compute OFFSET; must be greater than 0.
@@ -93,8 +93,8 @@ def get_table_query(
     if page_number <= 0:
         raise HTTPException(status_code=400, detail="Page number must be greater than 0")
 
-    select_list = ", ".join(f"[{col}]" for col in column_names)
-    select_query = f"SELECT {select_list} FROM [{table_name}] WHERE 1=1 "
+    select_list = ", ".join(f'"{col}"' for col in column_names)
+    select_query = f'SELECT {select_list} FROM "{table_name}" WHERE 1=1 '
 
     for filter_col, filter_values in select_filters.items():
         if not filter_values:
@@ -103,22 +103,22 @@ def get_table_query(
             non_null_values = [value for value in filter_values if value is not None]
             if non_null_values:
                 select_query += (
-                    f"AND ([{filter_col}] IN ({', '.join('?' for _ in non_null_values)}) OR [{filter_col}] IS NULL) "
+                    f'AND ("{filter_col}" IN ({", ".join("?" for _ in non_null_values)}) OR "{filter_col}" IS NULL) '
                 )
                 params.extend(non_null_values)
             else:
-                select_query += f"AND [{filter_col}] IS NULL "
+                select_query += f'AND "{filter_col}" IS NULL '
         else:
-            select_query += f"AND [{filter_col}] IN ({', '.join('?' for _ in filter_values)}) "
+            select_query += f'AND "{filter_col}" IN ({", ".join("?" for _ in filter_values)}) '
             params.extend(filter_values)
 
     for column_name, text in text_filters.items():
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
         if column_name in date_columns:
-            select_query += f"AND DATE([{column_name}] + julianday('1899-12-30')) LIKE ? "
+            select_query += f'AND DATE("{column_name}" + julianday(\'1899-12-30\')) LIKE ? '
         else:
-            select_query += f"AND [{column_name}] LIKE ? COLLATE NOCASE "
+            select_query += f'AND "{column_name}" LIKE ? COLLATE NOCASE '
         params.append(f"%{text}%")
 
     for column_name, operator, value in numeric_filters:
@@ -127,7 +127,7 @@ def get_table_query(
                 status_code=400, detail=f"Invalid operator '{operator}' for numeric filter on column '{column_name}'"
             )
         sql_operator = operation_dict[operator]
-        select_query += f"AND [{column_name}] {sql_operator} ? "
+        select_query += f'AND "{column_name}" {sql_operator} ? '
         params.append(value)
 
     offset = (page_number - 1) * page_size
@@ -138,7 +138,7 @@ def get_table_query(
             raise HTTPException(
                 status_code=400, detail=f"Invalid sort direction '{direction}' for column '{column_name}'"
             )
-        select_query += f"[{column_name}] {direction.upper()}, "
+        select_query += f'"{column_name}" {direction.upper()}, '
     select_query = select_query.rstrip(", ")  # Remove trailing comma and space if sort_columns were added
     select_query += " LIMIT ? OFFSET ?"
     params.extend([page_size, offset])
@@ -181,7 +181,7 @@ def get_distinct_column_values_query(
     if page_size <= 0:
         raise HTTPException(status_code=400, detail="Page size must be greater than 0")
 
-    query = f"SELECT DISTINCT [{column_name}] FROM [{table_name}] WHERE 1=1 "
+    query = f'SELECT DISTINCT "{column_name}" FROM "{table_name}" WHERE 1=1 '
 
     for filter_col, filter_values in select_filters.items():
         if filter_col.upper() == column_name.upper():
@@ -192,22 +192,22 @@ def get_distinct_column_values_query(
             non_null_values = [value for value in filter_values if value is not None]
             if non_null_values:
                 query += (
-                    f"AND ([{filter_col}] IN ({', '.join('?' for _ in non_null_values)}) OR [{filter_col}] IS NULL) "
+                    f'AND ("{filter_col}" IN ({", ".join("?" for _ in non_null_values)}) OR "{filter_col}" IS NULL) '
                 )
                 params.extend(non_null_values)
             else:
-                query += f"AND [{filter_col}] IS NULL "
+                query += f'AND "{filter_col}" IS NULL '
         else:
-            query += f"AND [{filter_col}] IN ({', '.join('?' for _ in filter_values)}) "
+            query += f'AND "{filter_col}" IN ({", ".join("?" for _ in filter_values)}) '
             params.extend(filter_values)
 
     for filter_col, text in text_filters.items():
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
         if filter_col in date_columns:
-            query += f"AND DATE([{filter_col}] + julianday('1899-12-30')) LIKE ? "
+            query += f'AND DATE("{filter_col}" + julianday(\'1899-12-30\')) LIKE ? '
         else:
-            query += f"AND [{filter_col}] LIKE ? COLLATE NOCASE "
+            query += f'AND "{filter_col}" LIKE ? COLLATE NOCASE '
         params.append(f"%{text}%")
 
     for column_name, operator, value in numeric_filters:
@@ -216,7 +216,7 @@ def get_distinct_column_values_query(
                 status_code=400, detail=f"Invalid operator '{operator}' for numeric filter on column '{column_name}'"
             )
         sql_operator = operation_dict[operator]
-        query += f"AND [{column_name}] {sql_operator} ? "
+        query += f'AND "{column_name}" {sql_operator} ? '
         params.append(value)
 
     query += " ORDER BY 1 COLLATE NOCASE"
@@ -256,7 +256,7 @@ def get_row_count_query(
     if not table_name or table_name.strip() == "":
         raise HTTPException(status_code=400, detail="Table name must be specified")
 
-    query = f"SELECT COUNT(*) FROM [{table_name}] WHERE 1=1 "
+    query = f'SELECT COUNT(*) FROM "{table_name}" WHERE 1=1 '
 
     for filter_col, filter_values in select_filters.items():
         if not filter_values:
@@ -265,22 +265,22 @@ def get_row_count_query(
             non_null_values = [value for value in filter_values if value is not None]
             if non_null_values:
                 query += (
-                    f"AND ([{filter_col}] IN ({', '.join('?' for _ in non_null_values)}) OR [{filter_col}] IS NULL) "
+                    f'AND ("{filter_col}" IN ({", ".join("?" for _ in non_null_values)}) OR "{filter_col}" IS NULL) '
                 )
                 params.extend(non_null_values)
             else:
-                query += f"AND [{filter_col}] IS NULL "
+                query += f'AND "{filter_col}" IS NULL '
         else:
-            query += f"AND [{filter_col}] IN ({', '.join('?' for _ in filter_values)}) "
+            query += f'AND "{filter_col}" IN ({", ".join("?" for _ in filter_values)}) '
             params.extend(filter_values)
 
     for filter_col, text in text_filters.items():
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
         if filter_col in date_columns:
-            query += f"AND DATE([{filter_col}] + julianday('1899-12-30')) LIKE ? "
+            query += f'AND DATE("{filter_col}" + julianday(\'1899-12-30\')) LIKE ? '
         else:
-            query += f"AND [{filter_col}] LIKE ? COLLATE NOCASE "
+            query += f'AND "{filter_col}" LIKE ? COLLATE NOCASE '
         params.append(f"%{text}%")
 
     for column_name, operator, value in numeric_filters:
@@ -289,7 +289,7 @@ def get_row_count_query(
                 status_code=400, detail=f"Invalid operator '{operator}' for numeric filter on column '{column_name}'"
             )
         sql_operator = operation_dict[operator]
-        query += f"AND [{column_name}] {sql_operator} ? "
+        query += f'AND "{column_name}" {sql_operator} ? '
         params.append(value)
 
     return query, params
@@ -297,7 +297,7 @@ def get_row_count_query(
 
 def update_row(table_name, row_id, updates):
     """
-    Builds a parameterized SQLite UPDATE statement that sets multiple columns for a row identified by `rowid`.
+    Builds a parameterized UPDATE statement that sets multiple columns for a row identified by `rowid`.
 
     Parameters:
         table_name (str): Name of the table to update.
@@ -305,14 +305,14 @@ def update_row(table_name, row_id, updates):
         updates (dict[str, Any]): Mapping of column names to new values; iteration order determines the parameter order.
 
     Returns:
-        tuple[str, list]: SQL string with bracket-quoted identifiers and a list of parameters: the update values in iteration order followed by `row_id`.
+        tuple[str, list]: SQL string with double-quoted identifiers and a list of parameters: the update values in iteration order followed by `row_id`.
     """
     params = []
-    update_query = f"UPDATE [{table_name}] SET "
+    update_query = f'UPDATE "{table_name}" SET '
     if len(updates) == 0:
         raise HTTPException(status_code=400, detail="No columns provided for update")
     for column, value in updates.items():
-        update_query += f"[{column}] = ?, "
+        update_query += f'"{column}" = ?, '
         params.append(value)
     update_query = update_query.rstrip(", ")  # Remove trailing comma and space
     update_query += " WHERE rowid = ?"
@@ -332,15 +332,15 @@ def update_rows(
         column_name (str): Name of the column to set.
         column_value: Value to bind for the column.
         select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters where each key is a column name and each value is a list of allowed values. If a filter list contains None, the clause becomes `IN (...) OR IS NULL` when there are non-null values, or `IS NULL` when None is the only value.
-        text_filters (dict[str, str]): Substring filters where each key is a column name and each value is the text to match; empty strings are ignored. For columns listed in `date_columns`, matching uses a date conversion (`DATE([col] + julianday('1899-12-30')) LIKE ?`); otherwise it uses `LIKE ? COLLATE NOCASE`.
+        text_filters (dict[str, str]): Substring filters where each key is a column name and each value is the text to match; empty strings are ignored. For columns listed in `date_columns`, matching uses a date conversion (`DATE("col" + julianday('1899-12-30')) LIKE ?`); otherwise it uses `LIKE ? COLLATE NOCASE`.
         date_columns (list[str]): Column names (from text_filters) that should be matched as converted dates.
         numeric_filters (list[tuple[str, str, str | int | float]]): Numeric comparisons as tuples of (column_name, operator, value). `operator` must be a key in `operation_dict`; an invalid operator raises HTTPException(status_code=400).
 
     Returns:
-        tuple[str, list]: The SQL UPDATE string with bracket-quoted identifiers and the ordered list of bound parameters.
+        tuple[str, list]: The SQL UPDATE string with double-quoted identifiers and the ordered list of bound parameters.
     """
     params = []
-    update_query = f"UPDATE [{table_name}] SET [{column_name}] = ? WHERE 1=1 "
+    update_query = f'UPDATE "{table_name}" SET "{column_name}" = ? WHERE 1=1 '
     params.append(column_value)
     # Empty row_ids is intentional: it means update all rows (subject to select_filters/text_filters)
     if len(row_ids) > 0:
@@ -354,22 +354,22 @@ def update_rows(
             non_null_values = [v for v in filter_values if v is not None]
             if non_null_values:
                 update_query += (
-                    f"AND ([{filter_col}] IN ({', '.join('?' for _ in non_null_values)}) OR [{filter_col}] IS NULL) "
+                    f'AND ("{filter_col}" IN ({", ".join("?" for _ in non_null_values)}) OR "{filter_col}" IS NULL) '
                 )
                 params.extend(non_null_values)
             else:
-                update_query += f"AND [{filter_col}] IS NULL "
+                update_query += f'AND "{filter_col}" IS NULL '
         else:
-            update_query += f"AND [{filter_col}] IN ({', '.join('?' for _ in filter_values)}) "
+            update_query += f'AND "{filter_col}" IN ({", ".join("?" for _ in filter_values)}) '
             params.extend(filter_values)
 
     for filter_col, text in text_filters.items():
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
         if filter_col in date_columns:
-            update_query += f"AND DATE([{filter_col}] + julianday('1899-12-30')) LIKE ? "
+            update_query += f'AND DATE("{filter_col}" + julianday(\'1899-12-30\')) LIKE ? '
         else:
-            update_query += f"AND [{filter_col}] LIKE ? COLLATE NOCASE "
+            update_query += f'AND "{filter_col}" LIKE ? COLLATE NOCASE '
         params.append(f"%{text}%")
 
     for column_name, operator, value in numeric_filters:
@@ -378,7 +378,7 @@ def update_rows(
                 status_code=400, detail=f"Invalid operator '{operator}' for numeric filter on column '{column_name}'"
             )
         sql_operator = operation_dict[operator]
-        update_query += f"AND [{column_name}] {sql_operator} ? "
+        update_query += f'AND "{column_name}" {sql_operator} ? '
         params.append(value)
 
     return update_query, params
@@ -389,10 +389,10 @@ def delete_rows(table_name, row_ids, select_filters, text_filters, date_columns,
     Build a parameterized DELETE SQL statement for a table with optional rowid, exact-match (including NULL), text/date substring, and numeric filters.
 
     Parameters:
-        table_name (str): Target table name inserted as a bracket-quoted identifier.
+        table_name (str): Target table name inserted as a double-quoted identifier.
         row_ids (Sequence): If non-empty, restricts deletion to rows whose `rowid` is in this sequence; if empty, no rowid restriction is applied.
-        select_filters (Mapping[str, Sequence]): Exact-match filters mapping column -> list of values. Empty lists are ignored. If a list contains `None` and other values, the condition becomes `([col] IN (...) OR [col] IS NULL)`; if the list contains only `None`, the condition becomes `[col] IS NULL`.
-        text_filters (Mapping[str, str]): Substring filters mapping column -> text; falsy or empty values are ignored. For columns listed in `date_columns`, matches use `DATE([col] + julianday('1899-12-30')) LIKE ?`; otherwise matches use `LIKE ? COLLATE NOCASE`.
+        select_filters (Mapping[str, Sequence]): Exact-match filters mapping column -> list of values. Empty lists are ignored. If a list contains `None` and other values, the condition becomes `("col" IN (...) OR "col" IS NULL)`; if the list contains only `None`, the condition becomes `"col" IS NULL`.
+        text_filters (Mapping[str, str]): Substring filters mapping column -> text; falsy or empty values are ignored. For columns listed in `date_columns`, matches use `DATE("col" + julianday('1899-12-30')) LIKE ?`; otherwise matches use `LIKE ? COLLATE NOCASE`.
         date_columns (list[str]): Columns from `text_filters` that should be compared as converted Excel-style serial dates.
         numeric_filters (list[tuple[str, str, int | float | str]]): Numeric comparisons as tuples of `(column_name, operator_key, value)`. `operator_key` must be present in `operation_dict` or a 400 HTTPException is raised.
 
@@ -400,7 +400,7 @@ def delete_rows(table_name, row_ids, select_filters, text_filters, date_columns,
         tuple: `(query, params)` where `query` is the DELETE SQL with `?` placeholders and `params` is the list of bound values in order.
     """
     params = []
-    delete_query = f"DELETE FROM [{table_name}] WHERE 1=1 "
+    delete_query = f'DELETE FROM "{table_name}" WHERE 1=1 '
     # Empty row_ids is intentional: it means delete all rows (subject to select_filters/text_filters)
     if len(row_ids) > 0:
         delete_query += f"AND rowid IN ({', '.join('?' for _ in row_ids)}) "
@@ -413,22 +413,22 @@ def delete_rows(table_name, row_ids, select_filters, text_filters, date_columns,
             non_null_values = [v for v in filter_values if v is not None]
             if non_null_values:
                 delete_query += (
-                    f"AND ([{filter_col}] IN ({', '.join('?' for _ in non_null_values)}) OR [{filter_col}] IS NULL) "
+                    f'AND ("{filter_col}" IN ({", ".join("?" for _ in non_null_values)}) OR "{filter_col}" IS NULL) '
                 )
                 params.extend(non_null_values)
             else:
-                delete_query += f"AND [{filter_col}] IS NULL "
+                delete_query += f'AND "{filter_col}" IS NULL '
         else:
-            delete_query += f"AND [{filter_col}] IN ({', '.join('?' for _ in filter_values)}) "
+            delete_query += f'AND "{filter_col}" IN ({", ".join("?" for _ in filter_values)}) '
             params.extend(filter_values)
 
     for filter_col, text in text_filters.items():
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
         if filter_col in date_columns:
-            delete_query += f"AND DATE([{filter_col}] + julianday('1899-12-30')) LIKE ? "
+            delete_query += f'AND DATE("{filter_col}" + julianday(\'1899-12-30\')) LIKE ? '
         else:
-            delete_query += f"AND [{filter_col}] LIKE ? COLLATE NOCASE "
+            delete_query += f'AND "{filter_col}" LIKE ? COLLATE NOCASE '
         params.append(f"%{text}%")
 
     for column_name, operator, value in numeric_filters:
@@ -437,7 +437,7 @@ def delete_rows(table_name, row_ids, select_filters, text_filters, date_columns,
                 status_code=400, detail=f"Invalid operator '{operator}' for numeric filter on column '{column_name}'"
             )
         sql_operator = operation_dict[operator]
-        delete_query += f"AND [{column_name}] {sql_operator} ? "
+        delete_query += f'AND "{column_name}" {sql_operator} ? '
         params.append(value)
 
     return delete_query, params
@@ -452,7 +452,7 @@ def get_summary_stats_query(table_name, column_names, select_filters, text_filte
         column_names (dict[str, str]): Mapping of column name -> aggregate function name (e.g., {"age": "MAX", "salary": "AVG"}).
         select_filters (dict[str, list]): Exact-match filters where each key is a column and the value is a list of allowed values; include `None` in the list to allow NULL values (combined as `IN (...) OR IS NULL` when mixed with non-null values).
         text_filters (dict[str, str]): Substring filters where each key is a column and the value is the text to match; columns listed in `date_columns` use date conversion before matching, others use case-insensitive `LIKE`.
-        date_columns (list[str]): Columns from `text_filters` that should be compared as dates using `DATE([col] + julianday('1899-12-30'))`.
+        date_columns (list[str]): Columns from `text_filters` that should be compared as dates using `DATE("col" + julianday('1899-12-30'))`.
         numeric_filters (list[tuple[str, str, int | float | str]]): Numeric comparisons as tuples of `(column_name, operator_key, value)`. `operator_key` must be one of the keys in `operation_dict` (e.g., "gte", "lt").
 
     Returns:
@@ -469,10 +469,10 @@ def get_summary_stats_query(table_name, column_names, select_filters, text_filte
             raise HTTPException(
                 status_code=400, detail=f"Invalid aggregate function '{stat}' for column '{column_name}'"
             )
-        stats_query += f"{stat.upper()}([{column_name}]), "
+        stats_query += f'{stat.upper()}("{column_name}"), '
 
     stats_query = stats_query.rstrip(", ")  # Remove trailing comma and space
-    stats_query += f" FROM [{table_name}] WHERE 1=1 "
+    stats_query += f' FROM "{table_name}" WHERE 1=1 '
 
     for filter_col, filter_values in select_filters.items():
         if not filter_values:
@@ -481,22 +481,22 @@ def get_summary_stats_query(table_name, column_names, select_filters, text_filte
             non_null_values = [v for v in filter_values if v is not None]
             if non_null_values:
                 stats_query += (
-                    f"AND ([{filter_col}] IN ({', '.join('?' for _ in non_null_values)}) OR [{filter_col}] IS NULL) "
+                    f'AND ("{filter_col}" IN ({", ".join("?" for _ in non_null_values)}) OR "{filter_col}" IS NULL) '
                 )
                 params.extend(non_null_values)
             else:
-                stats_query += f"AND [{filter_col}] IS NULL "
+                stats_query += f'AND "{filter_col}" IS NULL '
         else:
-            stats_query += f"AND [{filter_col}] IN ({', '.join('?' for _ in filter_values)}) "
+            stats_query += f'AND "{filter_col}" IN ({", ".join("?" for _ in filter_values)}) '
             params.extend(filter_values)
 
     for filter_col, text in text_filters.items():
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
         if filter_col in date_columns:
-            stats_query += f"AND DATE([{filter_col}] + julianday('1899-12-30')) LIKE ? "
+            stats_query += f'AND DATE("{filter_col}" + julianday(\'1899-12-30\')) LIKE ? '
         else:
-            stats_query += f"AND [{filter_col}] LIKE ? COLLATE NOCASE "
+            stats_query += f'AND "{filter_col}" LIKE ? COLLATE NOCASE '
         params.append(f"%{text}%")
 
     for column_name, operator, value in numeric_filters:
@@ -505,7 +505,7 @@ def get_summary_stats_query(table_name, column_names, select_filters, text_filte
                 status_code=400, detail=f"Invalid operator '{operator}' for numeric filter on column '{column_name}'"
             )
         sql_operator = operation_dict[operator]
-        stats_query += f"AND [{column_name}] {sql_operator} ? "
+        stats_query += f'AND "{column_name}" {sql_operator} ? '
         params.append(value)
 
     return stats_query, params
@@ -534,9 +534,9 @@ def add_row(table_name, values, generated_columns):
         raise HTTPException(
             status_code=400, detail="No valid columns provided for new row after excluding generated columns"
         )
-    columns = ", ".join(f"[{col}]" for col in column_names)
+    columns = ", ".join(f'"{col}"' for col in column_names)
     placeholders = ", ".join("?" for _ in column_names)
-    insert_query = f"INSERT INTO [{table_name}] ({columns}) VALUES ({placeholders})"
+    insert_query = f'INSERT INTO "{table_name}" ({columns}) VALUES ({placeholders})'
     params.extend(values[col] for col in column_names)
     if len(params) == 0:
         raise HTTPException(status_code=400, detail="At least one non-null value must be provided to add a row")
@@ -557,14 +557,14 @@ def get_excel_upload_insert_query(table_name, column_names, default_values):
         default_values (dict): Mapping of column names to SQL literal defaults (used when present and safe to inline).
 
     Returns:
-        tuple[str, str]: `(delete_query, insert_query)` where `delete_query` is `DELETE FROM [table_name]` and `insert_query` is `INSERT INTO [table_name] ([col...]) VALUES (...)`.
+        tuple[str, str]: `(delete_query, insert_query)` where `delete_query` is `DELETE FROM "table_name"` and `insert_query` is `INSERT INTO "table_name" ("col"...) VALUES (...)`.
 
     Raises:
         fastapi.HTTPException: Raised with status code 400 if `column_names` is empty.
     """
     if len(column_names) == 0:
         raise HTTPException(status_code=400, detail="At least one column must be specified for Excel upload")
-    columns = ", ".join(f"[{col}]" for col in column_names)
+    columns = ", ".join(f'"{col}"' for col in column_names)
     placeholders = ""
     for column_name in column_names:
         if column_name in default_values and ";" not in str(default_values[column_name]):
@@ -572,6 +572,6 @@ def get_excel_upload_insert_query(table_name, column_names, default_values):
         else:
             placeholders += "?, "
     placeholders = placeholders.rstrip(", ")
-    insert_query = f"INSERT INTO [{table_name}] ({columns}) VALUES ({placeholders})"
-    delete_query = f"DELETE FROM [{table_name}]"
+    insert_query = f'INSERT INTO "{table_name}" ({columns}) VALUES ({placeholders})'
+    delete_query = f'DELETE FROM "{table_name}"'
     return delete_query, insert_query
