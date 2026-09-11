@@ -1,12 +1,12 @@
 list_task_query = """SELECT TaskId, TaskDisplayName, ifnull(TaskParameters, '[]') as TaskParameters
-                     FROM [S_TaskMaster]"""
+                     FROM S_TaskMaster"""
 
 get_current_running_tasks = """select count(*) from ST_TaskRecords
                                 WHERE Status in ('RUNNING', 'PENDING', 'STARTED') COLLATE NOCASE
                                 and   ModelID = ?"""
 
 get_user_run_count = """SELECT  ifnull(json_extract(ifnull(JsonData, '{}'), '$.max_concurrent_runs'),
-                        1) as max_runs FROM [S_Users] WHERE UserEmail = ? """
+                        1) as max_runs FROM S_Users WHERE UserEmail = ? """
 
 get_user_model_run_count = """select count(*)
                                 from S_UserModels, ST_TaskRecords

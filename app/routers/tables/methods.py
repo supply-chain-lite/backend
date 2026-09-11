@@ -15,6 +15,31 @@ from . import queries as table_queries
 
 SQLITE_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_ ]*$")
 
+BLOB_PLACEHOLDER = "<BLOB_DATA>"
+BLOB_TYPES = (bytes, bytearray, memoryview)
+
+
+def _mask_blob_values(
+    rows: list[tuple],
+) -> list[tuple[str | int | float | bool | None, ...]]:
+    """
+    Replace BLOB column values with a placeholder so rows stay JSON-serializable.
+
+    SQLite returns BLOB columns as bytes, which cannot be represented by the API
+    response schema. Any bytes-like value is substituted with `BLOB_PLACEHOLDER`;
+    all other values are returned unchanged.
+
+    Returns:
+        list[tuple[str | int | float | bool | None, ...]]: Rows with blob values masked.
+    """
+    masked_rows = []
+    for row in rows:
+        if any(isinstance(value, BLOB_TYPES) for value in row):
+            masked_rows.append(tuple(BLOB_PLACEHOLDER if isinstance(value, BLOB_TYPES) else value for value in row))
+        else:
+            masked_rows.append(tuple(row))
+    return masked_rows
+
 
 def get_table_headers(
     cursor, user_email: str, model_name: str, project_name: str, table_name: str
@@ -139,9 +164,10 @@ def get_table_data(
             sort_columns,
             page_number,
             page_size,
+            model_cursor.dbType,
         )
         data = model_cursor.execute(query, params).fetchall()
-        return data
+        return _mask_blob_values(data)
 
 
 def get_distinct_column_values(
@@ -177,18 +203,25 @@ def get_distinct_column_values(
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    query, params = table_queries.get_distinct_column_values_query(
-        table_name, column_name, select_filters, text_filters, date_columns, numeric_filters, page_size
-    )
-
     column_names = [column_name]
     column_names.extend(select_filters.keys())
     column_names.extend(text_filters.keys())
     column_names.extend([col for col, _, _ in numeric_filters])
     with sql_connection(model_id, model_path) as model_cursor:
         _validate_table_and_column_names(model_cursor, table_name, column_names)
+        query, params = table_queries.get_distinct_column_values_query(
+            table_name,
+            column_name,
+            select_filters,
+            text_filters,
+            date_columns,
+            numeric_filters,
+            page_size,
+            model_cursor.dbType,
+        )
         values = model_cursor.execute(query, params).fetchall()
-        return [row[0] for row in values]
+        masked_values = _mask_blob_values(values)
+        return [row[0] for row in masked_values]
 
 
 def get_row_count(
@@ -212,7 +245,7 @@ def get_row_count(
         table_name (str): Table to query.
         select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters keyed by column name; each key maps to allowed values for that column.
         text_filters (dict[str, str]): Text filters keyed by column name. Filters for columns listed in `date_columns` are applied against converted date strings.
-        date_columns (list[str]): Columns from `text_filters` that should be matched as dates after converting Excel-style serial values to SQLite dates.
+        date_columns (list[str]): Columns from `text_filters` that should be matched as dates after converting Excel-style serial values to engine-native dates.
 
     Returns:
         int: Count of rows matching the filters.
@@ -224,15 +257,14 @@ def get_row_count(
     if not model_id:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    query, params = table_queries.get_row_count_query(
-        table_name, select_filters, text_filters, date_columns, numeric_filters
-    )
-
     column_names = list(select_filters.keys())
     column_names.extend(text_filters.keys())
     column_names.extend([col for col, _, _ in numeric_filters])
     with sql_connection(model_id, model_path) as model_cursor:
         _validate_table_and_column_names(model_cursor, table_name, column_names)
+        query, params = table_queries.get_row_count_query(
+            table_name, select_filters, text_filters, date_columns, numeric_filters, model_cursor.dbType
+        )
         row = model_cursor.execute(query, params).fetchone()
         return row[0] if row else 0
 
@@ -588,7 +620,15 @@ def update_rows(
         if object_type != "table":
             raise HTTPException(status_code=404, detail=f"View: {table_name} is not updatable")
         query, values = table_queries.update_rows(
-            table_name, row_ids, column_name, column_value, select_filters, text_filters, date_columns, numeric_filters
+            table_name,
+            row_ids,
+            column_name,
+            column_value,
+            select_filters,
+            text_filters,
+            date_columns,
+            numeric_filters,
+            model_cursor.dbType,
         )
         model_cursor.execute(query, values)
         return model_cursor.rowcount()
@@ -663,7 +703,7 @@ def delete_rows(
         if object_type != "table":
             raise HTTPException(status_code=404, detail=f"View: {table_name} is not updatable")
         query, values = table_queries.delete_rows(
-            table_name, row_ids, select_filters, text_filters, date_columns, numeric_filters
+            table_name, row_ids, select_filters, text_filters, date_columns, numeric_filters, model_cursor.dbType
         )
         model_cursor.execute(query, values)
         return model_cursor.rowcount()
@@ -716,12 +756,19 @@ def get_summary_stats(
         if not validated_columns:
             raise HTTPException(status_code=400, detail="No valid summary functions provided")
         query, values = table_queries.get_summary_stats_query(
-            table_name, validated_columns, select_filters, text_filters, date_columns, numeric_filters
+            table_name,
+            validated_columns,
+            select_filters,
+            text_filters,
+            date_columns,
+            numeric_filters,
+            model_cursor.dbType,
         )
         result = model_cursor.execute(query, values).fetchone()
+        masked_result = _mask_blob_values([result])[0]
         summary_stats = {}
         for idx, column_name in enumerate(validated_columns.keys()):
-            summary_stats[column_name] = result[idx]
+            summary_stats[column_name] = masked_result[idx]
         return summary_stats
 
 
@@ -812,7 +859,7 @@ def export_tables_to_excel(cursor, user_email: str, model_name: str, project_nam
                 column_formatting = _get_column_formatting(model_cursor, table_name)
                 select_columns = [col for col, _ in table_headers]
                 query, params = table_queries.get_table_query(
-                    table_name, select_columns, {}, {}, [], [], [], 1, 1000000
+                    table_name, select_columns, {}, {}, [], [], [], 1, 1000000, model_cursor.dbType
                 )
                 data = model_cursor.execute(query, params).fetchall()
                 sheet_name = re.sub(r"[\[\]:*?/\\]", "_", table_name)
@@ -1007,7 +1054,7 @@ def upload_excel(
                 response_status[table_name] = {"status": "failed", "reason": "not a table"}
                 continue
             if action == "delete":
-                delete_query, _ = table_queries.delete_rows(table_name, [], {}, {}, [], [])
+                delete_query, _ = table_queries.delete_rows(table_name, [], {}, {}, [], [], model_cursor.dbType)
                 model_cursor.execute(delete_query)
                 rows_deleted = model_cursor.rowcount()
                 model_cursor.intermediate_commit()

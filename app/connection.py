@@ -1,25 +1,39 @@
+"""Database entry points, file detection, pooling, and transaction lifecycle."""
+
 import os
 import threading
 
-import apsw
-import apsw.ext
-
+from . import connection_duckdb, connection_sqlite
 from .config import master_db
 from .logging_config import get_logger
 
+_BACKENDS = {"sqlite": connection_sqlite, "duckdb": connection_duckdb}
 connection_pool = {}
 _pool_lock = threading.Lock()
 logger = get_logger(__name__)
 
 
+def _backend_for_connection(connection):
+    for backend in _BACKENDS.values():
+        if backend.owns_connection(connection):
+            return backend
+    raise TypeError(f"Unsupported database connection: {type(connection).__name__}")
+
+
 class sql_connection:
-    def __init__(self, db_id, db_path):
-        self.connection, self.cursor = get_cursor(db_id, db_path)
+    def __init__(self, db_id, db_path, db_access=1):
+        self.connection, self.cursor = get_cursor(db_id, db_path, db_access)
+        self._backend = _backend_for_connection(self.connection)
+        self.dbType = self._backend.dbType
         self.db_id = db_id
 
     def __enter__(self):
-        self.cursor.execute("BEGIN")
-        return this_cursor(self.connection, self.cursor, self.db_id)
+        try:
+            self.cursor.execute("BEGIN")
+        except Exception:
+            self.cursor.close()
+            raise
+        return self._backend.Cursor(self.connection, self.cursor, self.db_id)
 
     def __exit__(self, exception_type, exception_value, traceback_val):
         if exception_type:
@@ -30,16 +44,14 @@ class sql_connection:
             finally:
                 self.cursor.close()
 
-            if issubclass(exception_type, apsw.ReadOnlyError):
-                logger.warning("Read-only access denied on connection %s", self.db_id)
-                raise apsw.ReadOnlyError("Sorry!, You have Read Only access.") from exception_value
+            self._backend.handle_transaction_error(exception_type, exception_value, self.db_id)
 
             logger.error(
                 "Database transaction failed on connection %s",
                 self.db_id,
                 exc_info=(exception_type, exception_value, traceback_val),
             )
-            raise
+            return False
         else:
             try:
                 self.cursor.execute("COMMIT")
@@ -51,205 +63,73 @@ class sql_connection:
                 self.cursor.close()
 
 
-def authorizer(action, arg1, arg2, dbname, source):
-    if action in (apsw.SQLITE_ATTACH, apsw.SQLITE_DETACH):
-        return apsw.SQLITE_DENY
-    return apsw.SQLITE_OK
-
-
-def get_cursor(db_id, db_path):
-    thread_id = threading.get_ident()
-    if db_id == "master":
-        thread_id = f"master-{thread_id}"
+def get_cursor(db_id, db_path, db_access=1):
+    db_path = os.path.abspath(db_path)
+    thread_id = (db_id == "master", threading.get_ident(), db_access)
     with _pool_lock:
         if db_path in connection_pool and thread_id in connection_pool[db_path]:
             connection = connection_pool[db_path][thread_id]
-            return connection, connection.cursor()
+            return connection, _backend_for_connection(connection).get_cursor(connection)
 
-        connection = init_db(db_path)
+        # DuckDB locks its file on Windows. Reuse the open database handle
+        # and create a separate cursor/transaction for each caller/thread.
+        by_thread = connection_pool.get(db_path, {})
+        connection = None
+        for key, existing in by_thread.items():
+            backend = _backend_for_connection(existing)
+            if backend.share_connection_across_threads:
+                if key[2] != db_access:
+                    raise ValueError(f"Close existing {backend.dbType} connections before changing read-only mode.")
+                connection = existing
+                break
+        if connection is None:
+            connection = init_db(db_path, db_access)
         if db_path in connection_pool:
             connection_pool[db_path][thread_id] = connection
         else:
             connection_pool[db_path] = {thread_id: connection}
 
-        return connection, connection.cursor()
+        return connection, _backend_for_connection(connection).get_cursor(connection)
+
+
+def detect_db_type(db_path):
+    """Identify an existing database by its file signature, never its extension."""
+    with open(db_path, "rb") as database_file:
+        header = database_file.read(16)
+    if header == b"SQLite format 3\x00":
+        return "sqlite"
+    if header[8:12] == b"DUCK":
+        return "duckdb"
+    raise ValueError(f"Unrecognized database file format: {db_path}")
 
 
 def init_db(db_path, db_access=1):
-    if not os.path.isfile(db_path):
-        raise Exception(f"DBFile Doesn't exists in system, {db_path}")
-    if db_access == 0:
-        conn = apsw.Connection(db_path, flags=apsw.SQLITE_OPEN_READONLY)
-    else:
-        conn = apsw.Connection(db_path, flags=apsw.SQLITE_OPEN_READWRITE)
-    conn.setbusytimeout(30000)
-    conn.setauthorizer(authorizer)
-    conn.enable_load_extension(False)
-    conn.cursor().execute("PRAGMA journal_mode=WAL;")
-    conn.cursor().execute("PRAGMA synchronous=NORMAL;")
-    conn.cursor().execute("PRAGMA temp_store =  MEMORY")
-    return conn
+    """Open an existing file with the engine selected from its header."""
+    return _BACKENDS[detect_db_type(db_path)].init_db(os.fspath(db_path), db_access)
 
 
-class this_cursor:
-    def __init__(self, conn, cursor, id):
-        self.conn = conn
-        self.cursor = cursor
-        self.id = id
-
-    def get_table_columns(self, table_name):
-        """Return column names and types, excluding BLOB columns."""
-        return self.execute(
-            "select name, type from pragma_table_xinfo(?) where UPPER(type) != 'BLOB'", (table_name,)
-        ).fetchall()
-
-    def get_table_object(self, table_name):
-        """Return the table or view type row, or None if missing."""
-        return self.execute(
-            "select type from sqlite_master where type in ('table', 'view') collate nocase and name=? collate nocase",
-            (table_name,),
-        ).fetchone()
-
-    def get_table_column(self, table_name, column_name):
-        """Return an existence row for a column, including generated columns."""
-        return self.execute(
-            "SELECT 1 FROM pragma_table_xinfo(?) WHERE name = ? COLLATE NOCASE",
-            (
-                table_name,
-                column_name,
-            ),
-        ).fetchone()
-
-    def get_column_defaults(self, table_name):
-        """Return column names and their SQL default expressions."""
-        return self.execute(
-            "select name, [dflt_value] from pragma_table_xinfo(?) WHERE [dflt_value] is not null;", (table_name,)
-        ).fetchall()
-
-    def get_generated_columns(self, table_name):
-        """Return name rows for virtual and stored generated columns."""
-        return self.execute("select name from pragma_table_xinfo(?) WHERE hidden in (2, 3);", (table_name,)).fetchall()
-
-    def get_object_types(self, table_names):
-        """Return matching input names and catalog types, preserving duplicates."""
-        if not table_names:
-            return []
-        placeholders = ",".join("(?)" for _ in table_names)
-        query = "SELECT t1.table_name, sqlite_master.type FROM ( SELECT column1 AS table_name FROM (VALUES {placeholders} ) ) as t1, sqlite_master WHERE T1.table_name = sqlite_master.name COLLATE NOCASE".format(
-            placeholders=placeholders
-        )
-        return self.execute(query, table_names).fetchall()
-
-    def get_default_table_groups(self):
-        """Return fallback table and view groups, excluding SQLite internal objects."""
-        return self.execute(
-            "select CASE WHEN type = 'table' THEN 'All Tables' WHEN type = 'view' THEN 'All Views' END as TableGroup, name as TableName, name as TableDisplayName, 1 as rowid from sqlite_master WHERE type in ('view', 'table') AND name NOT LIKE 'sqlite_%' COLLATE NOCASE ORDER BY 1, 2;"
-        ).fetchall()
-
-    def get_sql_objects(self):
-        """Return table and view type/name rows in catalog order."""
-        return self.execute(
-            "select type, name from sqlite_master where type in ('table', 'view') COLLATE NOCASE ORDER BY 1, 2"
-        ).fetchall()
-
-    def get_object_ddl(self, object_name):
-        """Return the object DDL row, or None if missing."""
-        return self.execute("select sql from sqlite_master where name = ? COLLATE NOCASE", (object_name,)).fetchone()
-
-    def rowcount(self):
-        count_query = "SELECT CHANGES()"
-        self.cursor.execute(count_query)
-        return self.cursor.fetchone()[0]
-
-    def execute(self, query, args=tuple(), silent=False):
-        if ";" in query.strip().rstrip(";"):
-            raise ValueError("; is not allowed in query to prevent SQL injection.")
-        try:
-            self.cursor.execute(query, args)
-        except Exception:
-            if not silent:
-                logger.exception("Query execution failed: %s", query)
-            raise
-        return self.cursor
-
-    def executemany(self, query, seq_of_args):
-        if ";" in query.strip().rstrip(";"):
-            raise ValueError("; is not allowed in query to prevent SQL injection.")
-        try:
-            self.cursor.executemany(query, seq_of_args)
-        except Exception:
-            logger.exception("Batch query execution failed: %s", query)
-            raise
-        return self.cursor
-
-    def executescript(self, query, args=tuple()):
-        try:
-            self.cursor.execute(query, args)
-        except Exception:
-            logger.exception("Query execution failed: %s", query)
-            raise
-        return self.cursor
-
-    def get_description(self, query):
-        try:
-            qd = apsw.ext.query_info(
-                self.conn,
-                query,
-                actions=False,
-                explain=False,
-                explain_query_plan=False,
-            )
-            return qd.description
-        except Exception:
-            logger.exception("Query execution failed: %s", query)
-            raise
-
-    def fetchall(self):
-        return self.cursor.fetchall()
-
-    def fetchmany(self, size):
-        rows = []
-        for _ in range(size):
-            row = self.cursor.fetchone()
-            if row is None:
-                break
-            rows.append(row)
-        return rows
-
-    def description(self):
-        return self.cursor.description
-
-    def intermediate_commit(self):
-        try:
-            self.cursor.execute("COMMIT")
-            self.cursor.execute("BEGIN")
-        except Exception:
-            raise
-
-    def rollback_changes(self):
-        try:
-            self.cursor.execute("ROLLBACK")
-            self.cursor.execute("BEGIN")
-        except Exception:
-            raise
+def this_cursor(conn, cursor, id):
+    """Compatibility factory for callers wrapping an existing driver cursor."""
+    return _backend_for_connection(conn).Cursor(conn, cursor, id)
 
 
 def close_all_conn():
     with _pool_lock:
-        conns = list(conn for by_thread in connection_pool.values() for conn in by_thread.values())
+        conns = {id(conn): conn for by_thread in connection_pool.values() for conn in by_thread.values()}.values()
 
         connection_pool.clear()
     for conn in conns:
         conn.close()
 
 
-def remove_connection_object(id):
+def remove_connection_object(db_path):
+    db_path = os.path.abspath(db_path)
     with _pool_lock:
-        if id in connection_pool:
-            for thread_id in connection_pool[id]:
-                conn = connection_pool[id][thread_id]
+        if db_path in connection_pool:
+            for thread_id in connection_pool[db_path]:
+                conn = connection_pool[db_path][thread_id]
                 conn.close()
-            del connection_pool[id]
+            del connection_pool[db_path]
 
 
 def master_connection():

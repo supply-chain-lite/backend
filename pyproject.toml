@@ -23,6 +23,7 @@ dependencies = [
     "celery>=5.6.3",
     "croniter>=2.0.0",
     "cron-descriptor>=2.1.0",
+    "duckdb>=1.5.0,<2",
 ]
 
 [dependency-groups]

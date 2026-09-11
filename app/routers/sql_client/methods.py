@@ -64,6 +64,9 @@ def execute_sql_query(cursor, user_email: str, model_name: str, project_name: st
             raise HTTPException(status_code=400, detail=f"Error validating SQL query: {str(e)}")
         try:
             model_cursor.execute(query)
+            if model_cursor.dbType == "duckdb":
+                # RETURNING metadata is only available after DuckDB executes.
+                desc = model_cursor.description()
             if len(desc) == 0:
                 count_changes = model_cursor.rowcount()
                 if is_running and count_changes > 0:
