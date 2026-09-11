@@ -179,9 +179,7 @@ def delete_model(cursor, user_email: str, model_name: str, project_name: str):
 
     cursor.executescript(model_queries.delete_model_for_all_users, (model_id, model_id))
 
-    conn = sqlite3.connect(model_path)
-    conn.close()
-
+    remove_connection_object(model_path)
     if os.path.exists(model_path):
         os.remove(model_path)
 
@@ -191,7 +189,6 @@ def delete_model(cursor, user_email: str, model_name: str, project_name: str):
         if os.path.exists(backup_path):
             os.remove(backup_path)
     cursor.execute(model_queries.delete_model_backup, (model_id, "NA"))
-    remove_connection_object(model_path)
 
     return 1
 
