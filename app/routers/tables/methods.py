@@ -220,7 +220,8 @@ def get_distinct_column_values(
             model_cursor.dbType,
         )
         values = model_cursor.execute(query, params).fetchall()
-        return [row[0] for row in values]
+        masked_values = _mask_blob_values(values)
+        return [row[0] for row in masked_values]
 
 
 def get_row_count(
@@ -764,9 +765,10 @@ def get_summary_stats(
             model_cursor.dbType,
         )
         result = model_cursor.execute(query, values).fetchone()
+        masked_result = _mask_blob_values([result])[0]
         summary_stats = {}
         for idx, column_name in enumerate(validated_columns.keys()):
-            summary_stats[column_name] = result[idx]
+            summary_stats[column_name] = masked_result[idx]
         return summary_stats
 
 
