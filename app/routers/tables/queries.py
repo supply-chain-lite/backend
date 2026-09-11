@@ -116,7 +116,7 @@ def get_table_query(
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
         if column_name in date_columns:
-            select_query += f'AND DATE("{column_name}" + julianday(\'1899-12-30\')) LIKE ? '
+            select_query += f"AND DATE(\"{column_name}\" + julianday('1899-12-30')) LIKE ? "
         else:
             select_query += f'AND "{column_name}" LIKE ? COLLATE NOCASE '
         params.append(f"%{text}%")
@@ -205,7 +205,7 @@ def get_distinct_column_values_query(
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
         if filter_col in date_columns:
-            query += f'AND DATE("{filter_col}" + julianday(\'1899-12-30\')) LIKE ? '
+            query += f"AND DATE(\"{filter_col}\" + julianday('1899-12-30')) LIKE ? "
         else:
             query += f'AND "{filter_col}" LIKE ? COLLATE NOCASE '
         params.append(f"%{text}%")
@@ -278,7 +278,7 @@ def get_row_count_query(
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
         if filter_col in date_columns:
-            query += f'AND DATE("{filter_col}" + julianday(\'1899-12-30\')) LIKE ? '
+            query += f"AND DATE(\"{filter_col}\" + julianday('1899-12-30')) LIKE ? "
         else:
             query += f'AND "{filter_col}" LIKE ? COLLATE NOCASE '
         params.append(f"%{text}%")
@@ -367,7 +367,7 @@ def update_rows(
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
         if filter_col in date_columns:
-            update_query += f'AND DATE("{filter_col}" + julianday(\'1899-12-30\')) LIKE ? '
+            update_query += f"AND DATE(\"{filter_col}\" + julianday('1899-12-30')) LIKE ? "
         else:
             update_query += f'AND "{filter_col}" LIKE ? COLLATE NOCASE '
         params.append(f"%{text}%")
@@ -426,7 +426,7 @@ def delete_rows(table_name, row_ids, select_filters, text_filters, date_columns,
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
         if filter_col in date_columns:
-            delete_query += f'AND DATE("{filter_col}" + julianday(\'1899-12-30\')) LIKE ? '
+            delete_query += f"AND DATE(\"{filter_col}\" + julianday('1899-12-30')) LIKE ? "
         else:
             delete_query += f'AND "{filter_col}" LIKE ? COLLATE NOCASE '
         params.append(f"%{text}%")
@@ -494,7 +494,7 @@ def get_summary_stats_query(table_name, column_names, select_filters, text_filte
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
         if filter_col in date_columns:
-            stats_query += f'AND DATE("{filter_col}" + julianday(\'1899-12-30\')) LIKE ? '
+            stats_query += f"AND DATE(\"{filter_col}\" + julianday('1899-12-30')) LIKE ? "
         else:
             stats_query += f'AND "{filter_col}" LIKE ? COLLATE NOCASE '
         params.append(f"%{text}%")
