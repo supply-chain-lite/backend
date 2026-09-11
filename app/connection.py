@@ -122,13 +122,13 @@ def close_all_conn():
         conn.close()
 
 
-def remove_connection_object(id):
+def remove_connection_object(db_path):
     with _pool_lock:
-        if id in connection_pool:
-            for thread_id in connection_pool[id]:
-                conn = connection_pool[id][thread_id]
+        if db_path in connection_pool:
+            for thread_id in connection_pool[db_path]:
+                conn = connection_pool[db_path][thread_id]
                 conn.close()
-            del connection_pool[id]
+            del connection_pool[db_path]
 
 
 def master_connection():

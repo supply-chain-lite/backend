@@ -52,6 +52,39 @@ operation_dict = {
 }
 
 
+DEFAULT_DB_TYPE = "sqlite"
+
+# Date columns hold Excel-style serial numbers (days since 1899-12-30). Each engine needs its own
+# expression to render that serial as a 'YYYY-MM-DD' string so text filters can LIKE-match it.
+_DATE_FILTER_EXPRESSIONS = {
+    "sqlite": "DATE(\"{column_name}\" + julianday('1899-12-30'))",
+    "duckdb": "CAST(DATE '1899-12-30' + CAST(FLOOR(\"{column_name}\") AS INTEGER) AS VARCHAR)",
+}
+
+
+def date_filter_expression(column_name: str, db_type: str = DEFAULT_DB_TYPE) -> str:
+    """
+    Build the engine-specific SQL expression that renders an Excel serial date column as a 'YYYY-MM-DD' string.
+
+    Both engines truncate the serial to whole days, so a value carrying a fractional time component still
+    matches on its calendar date.
+
+    Parameters:
+        column_name (str): Column holding Excel-style serial dates; embedded as a double-quoted identifier.
+        db_type (str): Target engine, either `'sqlite'` or `'duckdb'` (case-insensitive).
+
+    Returns:
+        str: SQL expression evaluating to the column's date as text.
+
+    Raises:
+        HTTPException: 400 if `db_type` is not a supported engine.
+    """
+    expression = _DATE_FILTER_EXPRESSIONS.get((db_type or DEFAULT_DB_TYPE).lower())
+    if expression is None:
+        raise HTTPException(status_code=400, detail=f"Unsupported database type: {db_type}")
+    return expression.format(column_name=column_name)
+
+
 def get_table_query(
     table_name: str,
     column_names: list[str],
@@ -62,6 +95,7 @@ def get_table_query(
     sort_columns: list[list[str, str]],
     page_number: int,
     page_size: int,
+    db_type: str = DEFAULT_DB_TYPE,
 ) -> tuple[str, list]:
     """
     Builds a parameterized SELECT query for the given table and columns, applying exact-match filters, text/date-aware substring filters, sorting, and pagination.
@@ -70,17 +104,18 @@ def get_table_query(
         table_name (str): Table name used in the FROM clause.
         column_names (list[str]): Columns to include in the SELECT; must contain at least one name.
         select_filters (dict[str, list[str]]): Exact-match filters mapping column -> list of allowed values. Empty lists are ignored. If a filter list contains `None` alongside other values the condition becomes `("col" IN (...) OR "col" IS NULL)`; if it contains only `None` the condition becomes `"col" IS NULL`.
-        text_filters (dict[str, str]): Substring filters mapping column -> substring; falsy or empty values are ignored and non-empty values are bound as `%<text>%`. Columns listed in `date_columns` are filtered against `DATE("column" + julianday('1899-12-30'))`; all others use `LIKE ? COLLATE NOCASE`.
-        date_columns (list[str]): Columns from `text_filters` that should be matched as dates after converting Excel-style serial values to SQLite dates.
+        text_filters (dict[str, str]): Substring filters mapping column -> substring; falsy or empty values are ignored and non-empty values are bound as `%<text>%`. Columns listed in `date_columns` are filtered against the engine-specific expression from `date_filter_expression`; all others use `LIKE ? COLLATE NOCASE`.
+        date_columns (list[str]): Columns from `text_filters` that should be matched as dates after converting Excel-style serial values to engine-native dates.
         sort_columns (list[list[str, str]]): Sort directives as lists of `[column_name, direction]` where `direction` must be `'ASC'` or `'DESC'` (case-insensitive).
         page_number (int): 1-based page index used to compute OFFSET; must be greater than 0.
         page_size (int): Number of rows per page used for LIMIT; must be greater than 0.
+        db_type (str): Target engine (`'sqlite'` or `'duckdb'`) that selects the date-filter expression.
 
     Returns:
         tuple[str, list]: A parameterized SQL query string using `?` placeholders and the ordered list of parameter values to bind.
 
     Raises:
-        HTTPException: If `column_names` is empty, or if `page_size` or `page_number` is less than or equal to zero, or if a sort direction is invalid.
+        HTTPException: If `column_names` is empty, if `page_size` or `page_number` is less than or equal to zero, if a sort direction is invalid, or if `db_type` is unsupported.
     """
     params = []
 
@@ -116,7 +151,7 @@ def get_table_query(
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
         if column_name in date_columns:
-            select_query += f"AND DATE(\"{column_name}\" + julianday('1899-12-30')) LIKE ? "
+            select_query += f"AND {date_filter_expression(column_name, db_type)} LIKE ? "
         else:
             select_query += f'AND "{column_name}" LIKE ? COLLATE NOCASE '
         params.append(f"%{text}%")
@@ -154,6 +189,7 @@ def get_distinct_column_values_query(
     date_columns: list[str],
     numeric_filters: list[tuple[str, str, str | int | float]],
     page_size: int,
+    db_type: str = DEFAULT_DB_TYPE,
 ) -> tuple[str, list]:
     """
     Get distinct values of a single column from a table applying exact-match, text/date substring, and numeric filters, limited by page_size.
@@ -163,15 +199,16 @@ def get_distinct_column_values_query(
         column_name (str): Target column whose distinct values to return; must be non-empty.
         select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters keyed by column. Empty lists are ignored. If a filter list contains `None` and also non-null values, the filter matches rows where the column is in the non-null list or is NULL; if the list contains only `None`, the filter matches NULL. Filters for `column_name` are ignored.
         text_filters (dict[str, str]): Substring filters keyed by column; falsy/empty values are ignored. Columns listed in `date_columns` are filtered against converted date strings, while all others use case-insensitive substring matching.
-        date_columns (list[str]): Columns from `text_filters` that should be matched as dates after converting Excel-style serial values to SQLite dates.
+        date_columns (list[str]): Columns from `text_filters` that should be matched as dates after converting Excel-style serial values to engine-native dates.
         numeric_filters (list[tuple[str, str, str | int | float]]): Numeric comparisons as (column_name, operator, value); `operator` must be one of the keys in `operation_dict`.
         page_size (int): Maximum number of distinct values to return; must be greater than 0.
+        db_type (str): Target engine (`'sqlite'` or `'duckdb'`) that selects the date-filter expression.
 
     Returns:
         tuple[str, list]: Parameterized SQL SELECT DISTINCT query (with `?` placeholders) and the ordered list of parameters; results are ordered case-insensitively and limited to `page_size`.
 
     Raises:
-        HTTPException: If `column_name` is missing/blank, if `page_size <= 0`, or if a numeric filter `operator` is invalid.
+        HTTPException: If `column_name` is missing/blank, if `page_size <= 0`, if a numeric filter `operator` is invalid, or if `db_type` is unsupported.
     """
     params = []
 
@@ -205,7 +242,7 @@ def get_distinct_column_values_query(
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
         if filter_col in date_columns:
-            query += f"AND DATE(\"{filter_col}\" + julianday('1899-12-30')) LIKE ? "
+            query += f"AND {date_filter_expression(filter_col, db_type)} LIKE ? "
         else:
             query += f'AND "{filter_col}" LIKE ? COLLATE NOCASE '
         params.append(f"%{text}%")
@@ -232,6 +269,7 @@ def get_row_count_query(
     text_filters: dict[str, str],
     date_columns: list[str],
     numeric_filters: list[tuple[str, str, str | int | float]],
+    db_type: str = DEFAULT_DB_TYPE,
 ) -> tuple[str, list]:
     """
     Build a parameterized COUNT(*) SQL query for a table applying exact-match (including nullable) and text/date-aware substring filters.
@@ -243,13 +281,14 @@ def get_row_count_query(
             - when mixed with non-null values, the query will filter for `IN (...) OR IS NULL`.
             Non-null values are added to the returned parameter list in placeholder order.
         text_filters (dict[str, str]): Mapping of column names to substring filters; falsy or empty values are ignored. Columns listed in `date_columns` are filtered against converted date strings, while all others use case-insensitive substring matching.
-        date_columns (list[str]): Columns from `text_filters` that should be matched as dates after converting Excel-style serial values to SQLite dates.
+        date_columns (list[str]): Columns from `text_filters` that should be matched as dates after converting Excel-style serial values to engine-native dates.
+        db_type (str): Target engine (`'sqlite'` or `'duckdb'`) that selects the date-filter expression.
 
     Returns:
         tuple[str, list]: (query, params) where `query` is the SQL string with `?` placeholders and `params` is the ordered list of parameter values to bind.
 
     Raises:
-        HTTPException: status 400 if `table_name` is missing or empty.
+        HTTPException: status 400 if `table_name` is missing or empty, or if `db_type` is unsupported.
     """
     params = []
 
@@ -278,7 +317,7 @@ def get_row_count_query(
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
         if filter_col in date_columns:
-            query += f"AND DATE(\"{filter_col}\" + julianday('1899-12-30')) LIKE ? "
+            query += f"AND {date_filter_expression(filter_col, db_type)} LIKE ? "
         else:
             query += f'AND "{filter_col}" LIKE ? COLLATE NOCASE '
         params.append(f"%{text}%")
@@ -321,7 +360,15 @@ def update_row(table_name, row_id, updates):
 
 
 def update_rows(
-    table_name, row_ids, column_name, column_value, select_filters, text_filters, date_columns, numeric_filters
+    table_name,
+    row_ids,
+    column_name,
+    column_value,
+    select_filters,
+    text_filters,
+    date_columns,
+    numeric_filters,
+    db_type=DEFAULT_DB_TYPE,
 ):
     """
     Builds a parameterized UPDATE statement that sets a single column's value, optionally restricted by rowids and filters.
@@ -332,9 +379,10 @@ def update_rows(
         column_name (str): Name of the column to set.
         column_value: Value to bind for the column.
         select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters where each key is a column name and each value is a list of allowed values. If a filter list contains None, the clause becomes `IN (...) OR IS NULL` when there are non-null values, or `IS NULL` when None is the only value.
-        text_filters (dict[str, str]): Substring filters where each key is a column name and each value is the text to match; empty strings are ignored. For columns listed in `date_columns`, matching uses a date conversion (`DATE("col" + julianday('1899-12-30')) LIKE ?`); otherwise it uses `LIKE ? COLLATE NOCASE`.
+        text_filters (dict[str, str]): Substring filters where each key is a column name and each value is the text to match; empty strings are ignored. For columns listed in `date_columns`, matching uses the engine-specific date conversion from `date_filter_expression`; otherwise it uses `LIKE ? COLLATE NOCASE`.
         date_columns (list[str]): Column names (from text_filters) that should be matched as converted dates.
         numeric_filters (list[tuple[str, str, str | int | float]]): Numeric comparisons as tuples of (column_name, operator, value). `operator` must be a key in `operation_dict`; an invalid operator raises HTTPException(status_code=400).
+        db_type (str): Target engine (`'sqlite'` or `'duckdb'`) that selects the date-filter expression; an unsupported value raises HTTPException(status_code=400).
 
     Returns:
         tuple[str, list]: The SQL UPDATE string with double-quoted identifiers and the ordered list of bound parameters.
@@ -367,7 +415,7 @@ def update_rows(
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
         if filter_col in date_columns:
-            update_query += f"AND DATE(\"{filter_col}\" + julianday('1899-12-30')) LIKE ? "
+            update_query += f"AND {date_filter_expression(filter_col, db_type)} LIKE ? "
         else:
             update_query += f'AND "{filter_col}" LIKE ? COLLATE NOCASE '
         params.append(f"%{text}%")
@@ -384,7 +432,9 @@ def update_rows(
     return update_query, params
 
 
-def delete_rows(table_name, row_ids, select_filters, text_filters, date_columns, numeric_filters):
+def delete_rows(
+    table_name, row_ids, select_filters, text_filters, date_columns, numeric_filters, db_type=DEFAULT_DB_TYPE
+):
     """
     Build a parameterized DELETE SQL statement for a table with optional rowid, exact-match (including NULL), text/date substring, and numeric filters.
 
@@ -392,9 +442,10 @@ def delete_rows(table_name, row_ids, select_filters, text_filters, date_columns,
         table_name (str): Target table name inserted as a double-quoted identifier.
         row_ids (Sequence): If non-empty, restricts deletion to rows whose `rowid` is in this sequence; if empty, no rowid restriction is applied.
         select_filters (Mapping[str, Sequence]): Exact-match filters mapping column -> list of values. Empty lists are ignored. If a list contains `None` and other values, the condition becomes `("col" IN (...) OR "col" IS NULL)`; if the list contains only `None`, the condition becomes `"col" IS NULL`.
-        text_filters (Mapping[str, str]): Substring filters mapping column -> text; falsy or empty values are ignored. For columns listed in `date_columns`, matches use `DATE("col" + julianday('1899-12-30')) LIKE ?`; otherwise matches use `LIKE ? COLLATE NOCASE`.
+        text_filters (Mapping[str, str]): Substring filters mapping column -> text; falsy or empty values are ignored. For columns listed in `date_columns`, matches use the engine-specific date conversion from `date_filter_expression`; otherwise matches use `LIKE ? COLLATE NOCASE`.
         date_columns (list[str]): Columns from `text_filters` that should be compared as converted Excel-style serial dates.
         numeric_filters (list[tuple[str, str, int | float | str]]): Numeric comparisons as tuples of `(column_name, operator_key, value)`. `operator_key` must be present in `operation_dict` or a 400 HTTPException is raised.
+        db_type (str): Target engine (`'sqlite'` or `'duckdb'`) that selects the date-filter expression; an unsupported value raises a 400 HTTPException.
 
     Returns:
         tuple: `(query, params)` where `query` is the DELETE SQL with `?` placeholders and `params` is the list of bound values in order.
@@ -426,7 +477,7 @@ def delete_rows(table_name, row_ids, select_filters, text_filters, date_columns,
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
         if filter_col in date_columns:
-            delete_query += f"AND DATE(\"{filter_col}\" + julianday('1899-12-30')) LIKE ? "
+            delete_query += f"AND {date_filter_expression(filter_col, db_type)} LIKE ? "
         else:
             delete_query += f'AND "{filter_col}" LIKE ? COLLATE NOCASE '
         params.append(f"%{text}%")
@@ -443,7 +494,9 @@ def delete_rows(table_name, row_ids, select_filters, text_filters, date_columns,
     return delete_query, params
 
 
-def get_summary_stats_query(table_name, column_names, select_filters, text_filters, date_columns, numeric_filters):
+def get_summary_stats_query(
+    table_name, column_names, select_filters, text_filters, date_columns, numeric_filters, db_type=DEFAULT_DB_TYPE
+):
     """
     Builds a parameterized SQL SELECT that returns aggregate statistics for the given columns, applying exact-match, text/date-aware substring, and numeric comparison filters.
 
@@ -452,14 +505,15 @@ def get_summary_stats_query(table_name, column_names, select_filters, text_filte
         column_names (dict[str, str]): Mapping of column name -> aggregate function name (e.g., {"age": "MAX", "salary": "AVG"}).
         select_filters (dict[str, list]): Exact-match filters where each key is a column and the value is a list of allowed values; include `None` in the list to allow NULL values (combined as `IN (...) OR IS NULL` when mixed with non-null values).
         text_filters (dict[str, str]): Substring filters where each key is a column and the value is the text to match; columns listed in `date_columns` use date conversion before matching, others use case-insensitive `LIKE`.
-        date_columns (list[str]): Columns from `text_filters` that should be compared as dates using `DATE("col" + julianday('1899-12-30'))`.
+        date_columns (list[str]): Columns from `text_filters` that should be compared as dates using the engine-specific expression from `date_filter_expression`.
         numeric_filters (list[tuple[str, str, int | float | str]]): Numeric comparisons as tuples of `(column_name, operator_key, value)`. `operator_key` must be one of the keys in `operation_dict` (e.g., "gte", "lt").
+        db_type (str): Target engine (`'sqlite'` or `'duckdb'`) that selects the date-filter expression.
 
     Returns:
         tuple[str, list]: The SQL query string and the ordered list of parameters to bind.
 
     Raises:
-        HTTPException: If a numeric filter uses an operator not present in `operation_dict` (status code 400).
+        HTTPException: If a numeric filter uses an operator not present in `operation_dict`, or if `db_type` is unsupported (status code 400).
     """
     params = []
     stats_query = "SELECT "
@@ -494,7 +548,7 @@ def get_summary_stats_query(table_name, column_names, select_filters, text_filte
         if not text:
             continue  # Skip empty text filters to avoid unnecessary conditions
         if filter_col in date_columns:
-            stats_query += f"AND DATE(\"{filter_col}\" + julianday('1899-12-30')) LIKE ? "
+            stats_query += f"AND {date_filter_expression(filter_col, db_type)} LIKE ? "
         else:
             stats_query += f'AND "{filter_col}" LIKE ? COLLATE NOCASE '
         params.append(f"%{text}%")

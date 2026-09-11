@@ -34,7 +34,7 @@ Add matching module-level functions to both backends so `app/connection.py` can 
 
 - `create_database(db_path, script_path)`: open a **new** file and execute the template script. SQLite keeps today's `sqlite3.connect` + `executescript` behavior; DuckDB opens via `duckdb.connect`, extracts statements via `cursor.extract_statements`, and executes them one by one (mirroring the existing `Cursor.executescript` logic already in `connection_duckdb.py`).
 - `copy_out(db_path, dest_path)` (live file → new file, used for backup/save-as/download/task-snapshot): SQLite keeps the existing `apsw.Connection(db_path).execute("VACUUM INTO ...")`. DuckDB: open a connection, run `CHECKPOINT`, close it, then `shutil.copyfile(db_path, dest_path)`.
-- `copy_in(source_path, db_path)` (new/backup file → overwrite live model file, used for restore/upload/merging task output back): SQLite keeps the existing `apsw` `.backup("main", ...)` streaming copy. DuckDB: same checkpoint-then-`shutil.copyfile` approach, copying `source_path` onto `db_path`.
+- `copy_in(source_path, db_path)` (new/backup file → overwrite live model file, used for restore/upload/merging task output back): SQLite keeps the existing `apsw` `.backup("main", ...)` streaming copy. DuckDB: open `source_path`, run `CHECKPOINT`, close it, then `shutil.copyfile(source_path, db_path)`.
 - `vacuum(db_path)`: SQLite keeps `VACUUM` + `PRAGMA wal_checkpoint(TRUNCATE)`. DuckDB: `VACUUM` + `CHECKPOINT`.
 
 ### 4. Dispatcher (`app/connection.py`)
