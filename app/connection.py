@@ -123,6 +123,7 @@ def close_all_conn():
 
 
 def remove_connection_object(db_path):
+    db_path = os.path.abspath(db_path)
     with _pool_lock:
         if db_path in connection_pool:
             for thread_id in connection_pool[db_path]:
