@@ -174,6 +174,28 @@ class this_cursor:
         except Exception:
             raise
 
+    def get_table_columns(self, table_name):
+        """Return column names and types """
+        return self.execute(
+            "select name, type, dflt_value, hidden from pragma_table_xinfo(?) ", (table_name,)
+        ).fetchall()
+
+    def get_object_ddl(self, object_name):
+        query = """select sql from sqlite_master
+                    where name = ? COLLATE NOCASE"""
+        row = self.execute(query, (object_name,)).fetchone() 
+        return row[0] if row else None
+
+    def get_all_objects(self):
+        query = """select type, name from sqlite_master
+                    where type in ('table', 'view') COLLATE NOCASE
+                      and substr(lower(name), 1, 7) <> 'sqlite_' 
+                      ORDER BY 1, 2"""
+        return self.execute(query).fetchall()
+
+    def check_if_table_exists(self, table_name):
+        query = "select type from sqlite_master where type in ('table') collate nocase and name=? collate nocase"
+        return self.execute(query, (table_name,)).fetchone()
 
 def close_all_conn():
     with _pool_lock:

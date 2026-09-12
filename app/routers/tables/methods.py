@@ -16,6 +16,30 @@ from . import queries as table_queries
 SQLITE_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_ ]*$")
 
 
+def _mask_blob_values(
+    rows: list[tuple],
+) -> list[tuple[str | int | float | bool | None, ...]]:
+    """
+    Replace BLOB column values with a placeholder so rows stay JSON-serializable.
+
+    SQLite returns BLOB columns as bytes, which cannot be represented by the API
+    response schema. Any bytes-like value is substituted with `BLOB_PLACEHOLDER`;
+    all other values are returned unchanged.
+
+    Returns:
+        list[tuple[str | int | float | bool | None, ...]]: Rows with blob values masked.
+    """
+    BLOB_PLACEHOLDER = "<BLOB_DATA>"
+    BLOB_TYPES = (bytes, bytearray, memoryview)
+
+    masked_rows = []
+    for row in rows:
+        if any(isinstance(value, BLOB_TYPES) for value in row):
+            masked_rows.append(tuple(BLOB_PLACEHOLDER if isinstance(value, BLOB_TYPES) else value for value in row))
+        else:
+            masked_rows.append(tuple(row))
+    return masked_rows
+
 def get_table_headers(
     cursor, user_email: str, model_name: str, project_name: str, table_name: str
 ) -> list[tuple[str, str]]:
@@ -51,7 +75,8 @@ def _get_table_headers_with_types(cursor, table_name: str, get_all_columns=False
     Returns:
         list[tuple[str, str]]: List of (column_name, column_type) tuples in the chosen order.
     """
-    all_rows = cursor.execute(table_queries.get_table_columns, (table_name,)).fetchall()
+    all_rows = cursor.get_table_columns(table_name)
+    all_rows = [(name, col_type) for name, col_type, _, _ in all_rows]
 
     if get_all_columns:
         return all_rows
@@ -141,7 +166,7 @@ def get_table_data(
             page_size,
         )
         data = model_cursor.execute(query, params).fetchall()
-        return data
+        return _mask_blob_values(data)
 
 
 def get_distinct_column_values(
@@ -255,7 +280,7 @@ def get_table_columns_all(cursor, user_email: str, model_name: str, project_name
 
     with sql_connection(model_id, model_path) as model_cursor:
         _validate_table_and_column_names(model_cursor, table_name, [])
-        all_rows = model_cursor.execute(table_queries.get_table_columns, (table_name,)).fetchall()
+        all_rows = model_cursor.get_table_columns(table_name)
 
         table_columns = list(row[0] for row in all_rows)
 
@@ -297,7 +322,7 @@ def set_columns_order(
 
     with sql_connection(model_id, model_path) as model_cursor:
         _validate_table_and_column_names(model_cursor, table_name, column_names)
-        row = model_cursor.execute(table_queries.check_if_table_exists, ("S_TableGroup",)).fetchone()
+        row = model_cursor.check_if_table_exists("S_TableGroup")
         if not row:
             raise HTTPException(status_code=404, detail="Cannot set column order: Table not found: S_TableGroup")
         column_order_json = json.dumps(column_names)
@@ -342,8 +367,8 @@ def add_new_column(
         object_type = _validate_table_and_column_names(model_cursor, table_name, [])
         if object_type != "table":
             raise HTTPException(status_code=404, detail=f"Cannot add column to view:{table_name}")
-        row = model_cursor.execute(table_queries.check_if_table_column_exists, (table_name, column_name)).fetchone()
-        if row:
+        table_columns = model_cursor.get_table_columns(table_name)
+        if any(col_name.lower() == column_name.lower() for col_name, _, _, _ in table_columns):
             raise HTTPException(status_code=400, detail=f"Cannot add column: Column already exists: {column_name}")
         if column_type.upper() not in ("TEXT", "INTEGER", "REAL", "NUMERIC", "VARCHAR", "BOOLEAN"):
             raise HTTPException(status_code=400, detail=f"Cannot add column: Invalid column type: {column_type}")
@@ -408,7 +433,7 @@ def _set_column_formatting(
     column_type: str,
     column_formatting: dict[str, str | int | float | bool | None],
 ):
-    row = model_cursor.execute(table_queries.check_if_table_exists, ("S_TableParameters",)).fetchone()
+    row = model_cursor.check_if_table_exists("S_TableParameters")
     if not row:
         return 0
     format_json = json.dumps(column_formatting)
@@ -453,7 +478,7 @@ def _get_column_formatting(model_cursor, table_name: str):
     Returns:
         dict: Mapping from column name (str) to a formatting dict that always contains a "column_type" key and may include additional formatting keys from the stored JSON.
     """
-    row = model_cursor.execute(table_queries.check_if_table_exists, ("S_TableParameters",)).fetchone()
+    row = model_cursor.check_if_table_exists("S_TableParameters")
     if not row:
         return {}
     all_rows = model_cursor.execute(table_queries.get_column_formatting, (table_name,)).fetchall()
@@ -529,8 +554,8 @@ def _get_generated_columns(cursor, table_name: str) -> list[str]:
     Returns:
         list[str]: A list of generated column names for the specified table.
     """
-    rows = cursor.execute(table_queries.get_generated_columns, (table_name,)).fetchall()
-    generated_columns = [row[0].lower() for row in rows]
+    all_rows = cursor.get_table_columns(table_name)
+    generated_columns = [row[0].lower() for row in all_rows if row[3] in (2, 3)]
     return generated_columns
 
 
@@ -605,13 +630,13 @@ def _validate_table_and_column_names(cursor, table_name: str, column_names: list
         fastapi.HTTPException: 404 if the table is not found (detail="Table not found: {table_name}").
         fastapi.HTTPException: 404 if any column is not found (detail="Column not found: {column_name} for table: {table_name}").
     """
-    row = cursor.execute(table_queries.check_if_table_exists, (table_name,)).fetchone()
+    row = cursor.check_if_table_exists(table_name)
     if not row:
         raise HTTPException(status_code=404, detail=f"Table not found: {table_name}")
     object_type = row[0].lower()
     for column_name in column_names:
-        row = cursor.execute(table_queries.check_if_table_column_exists, (table_name, column_name)).fetchone()
-        if not row:
+        all_rows = cursor.get_table_columns(table_name)
+        if not any(col_name.lower() == column_name.lower() for col_name, _, _, _ in all_rows):
             raise HTTPException(status_code=404, detail=f"Column not found: {column_name} for table: {table_name}")
     return object_type
 
@@ -972,7 +997,7 @@ def upload_excel(
             if action == "ignore":
                 continue
             if action == "create":
-                row = model_cursor.execute(table_queries.check_if_table_exists, (table_name,)).fetchone()
+                row = model_cursor.check_if_table_exists(table_name)
                 if row:
                     response_status[table_name] = {"status": "failed", "reason": "object already exists"}
                     continue
@@ -1081,10 +1106,10 @@ def _import_excel_to_table(model_cursor, all_rows, table_name, table_headers, co
         raise Exception("No matching columns found between the Excel file and the target table")
 
     default_values = {}
-    for column_name, default_value in model_cursor.execute(
-        table_queries.get_default_values_query, (table_name,)
-    ).fetchall():
-        default_values[column_name.lower()] = default_value
+    column_metadata = model_cursor.get_table_columns(table_name)
+    for column_name, _, default_value, _ in column_metadata:
+        if default_value:
+            default_values[column_name.lower()] = default_value
 
     delete_query, insert_query = table_queries.get_excel_upload_insert_query(table_name, common_columns, default_values)
     insert_rows = []
@@ -1230,7 +1255,7 @@ def check_excel_sheets_exist(cursor, user_email: str, model_name: str, project_n
             object_types[name] = obj_type
             if obj_type != "table":
                 object_types[name] = "not a table"
-        row = model_cursor.execute(table_queries.check_if_table_exists, ("S_TableGroup",)).fetchone()
+        row = model_cursor.check_if_table_exists("S_TableGroup")
         if not row:
             return object_types
         query = table_queries.get_table_types.format(placeholders=",".join(["(?)"] * len(sheet_names)))
