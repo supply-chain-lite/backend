@@ -189,7 +189,8 @@ class this_cursor:
     def get_all_objects(self):
         query = """select type, name from sqlite_master
                     where type in ('table', 'view') COLLATE NOCASE
-                    ORDER BY 1, 2"""
+                      and substr(lower(name), 1, 7) <> 'sqlite_' 
+                      ORDER BY 1, 2"""
         return self.execute(query).fetchall()
 
     def check_if_table_exists(self, table_name):
