@@ -40,6 +40,7 @@ def _mask_blob_values(
             masked_rows.append(tuple(row))
     return masked_rows
 
+
 def get_table_headers(
     cursor, user_email: str, model_name: str, project_name: str, table_name: str
 ) -> list[tuple[str, str]]:
@@ -634,8 +635,8 @@ def _validate_table_and_column_names(cursor, table_name: str, column_names: list
     if not row:
         raise HTTPException(status_code=404, detail=f"Table not found: {table_name}")
     object_type = row[0].lower()
+    all_rows = cursor.get_table_columns(table_name)
     for column_name in column_names:
-        all_rows = cursor.get_table_columns(table_name)
         if not any(col_name.lower() == column_name.lower() for col_name, _, _, _ in all_rows):
             raise HTTPException(status_code=404, detail=f"Column not found: {column_name} for table: {table_name}")
     return object_type

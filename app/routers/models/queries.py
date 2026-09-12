@@ -149,4 +149,3 @@ update_file_blob = """UPDATE S_DataFiles SET FileBlob = ?,
 get_table_groups = """select GroupName, TableName, TableDisplayName, rowid
                         FROM S_TableGroup
                         ORDER BY 4;"""
-

@@ -543,6 +543,7 @@ def get_template_sql_file(cursor, user_email: str, template_name: str, with_data
 
     return sql_file
 
+
 def _get_table_group_from_sqlite_master(cursor):
     all_rows = cursor.get_all_objects()
     table_groups = []
