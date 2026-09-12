@@ -752,10 +752,3 @@ def upload_file(
         rows = model_cursor.execute(model_queries.update_file_blob, (file_content, file_name, file_id)).fetchall()
         if len(rows) == 0:
             raise HTTPException(status_code=400, detail="Failed to upload the file")
-
-
-def mark_notification_read(cursor, notification_id: int, user_email: str):
-    cursor.execute(model_queries.read_notification, (notification_id, user_email))
-    ct = cursor.rowcount()
-    if ct == 0:
-        raise HTTPException(status_code=404, detail="Notification not found")

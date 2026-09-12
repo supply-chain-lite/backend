@@ -374,7 +374,7 @@ def add_new_column(
         if column_type.upper() not in ("TEXT", "INTEGER", "REAL", "NUMERIC", "VARCHAR", "BOOLEAN"):
             raise HTTPException(status_code=400, detail=f"Cannot add column: Invalid column type: {column_type}")
 
-        this_query = table_queries.add_new_column.format(
+        this_query = table_queries.add_new_column(
             table_name=table_name, column_name=column_name, column_type=column_type
         )
         model_cursor.execute(this_query)
