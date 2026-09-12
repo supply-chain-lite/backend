@@ -9,7 +9,7 @@ from .logging_config import get_logger
 
 logger = get_logger(__name__)
 dbType = "duckdb"
-share_connection_across_threads = True
+pool_connections = False
 
 
 def owns_connection(connection):

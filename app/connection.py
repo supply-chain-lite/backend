@@ -22,18 +22,27 @@ def _backend_for_connection(connection):
 
 class sql_connection:
     def __init__(self, db_id, db_path, db_access=1):
-        self.connection, self.cursor = get_cursor(db_id, db_path, db_access)
-        self._backend = _backend_for_connection(self.connection)
-        self.dbType = self._backend.dbType
         self.db_id = db_id
+        self.db_path = db_path
+        self.db_access = db_access
 
     def __enter__(self):
+        self.connection, self.cursor = get_cursor(self.db_id, self.db_path, self.db_access)
+        self._backend = _backend_for_connection(self.connection)
+        self.dbType = self._backend.dbType
         try:
             self.cursor.execute("BEGIN")
+            return self._backend.Cursor(self.connection, self.cursor, self.db_id)
         except Exception:
-            self.cursor.close()
+            self._close()
             raise
-        return self._backend.Cursor(self.connection, self.cursor, self.db_id)
+
+    def _close(self):
+        try:
+            self.cursor.close()
+        finally:
+            if not self._backend.pool_connections:
+                self.connection.close()
 
     def __exit__(self, exception_type, exception_value, traceback_val):
         if exception_type:
@@ -42,7 +51,7 @@ class sql_connection:
             except Exception as _e:
                 logger.warning("Rollback failed for connection %s", self.db_id, exc_info=_e)
             finally:
-                self.cursor.close()
+                self._close()
 
             self._backend.handle_transaction_error(exception_type, exception_value, self.db_id)
 
@@ -56,11 +65,10 @@ class sql_connection:
             try:
                 self.cursor.execute("COMMIT")
             except Exception:
-                self.cursor.close()
                 logger.exception("Commit failed on connection %s", self.db_id)
                 raise
             finally:
-                self.cursor.close()
+                self._close()
 
 
 def get_cursor(db_id, db_path, db_access=1):
@@ -71,25 +79,18 @@ def get_cursor(db_id, db_path, db_access=1):
             connection = connection_pool[db_path][thread_id]
             return connection, _backend_for_connection(connection).get_cursor(connection)
 
-        # DuckDB locks its file on Windows. Reuse the open database handle
-        # and create a separate cursor/transaction for each caller/thread.
-        by_thread = connection_pool.get(db_path, {})
-        connection = None
-        for key, existing in by_thread.items():
-            backend = _backend_for_connection(existing)
-            if backend.share_connection_across_threads:
-                if key[2] != db_access:
-                    raise ValueError(f"Close existing {backend.dbType} connections before changing read-only mode.")
-                connection = existing
-                break
-        if connection is None:
-            connection = init_db(db_path, db_access)
-        if db_path in connection_pool:
-            connection_pool[db_path][thread_id] = connection
-        else:
-            connection_pool[db_path] = {thread_id: connection}
-
-        return connection, _backend_for_connection(connection).get_cursor(connection)
+        connection = init_db(db_path, db_access)
+        backend = _backend_for_connection(connection)
+        try:
+            cursor = backend.get_cursor(connection)
+        except Exception:
+            connection.close()
+            raise
+        # SQLite retains per-thread connections. DuckDB is owned by the
+        # transaction and must close both its cursor and parent connection.
+        if backend.pool_connections:
+            connection_pool.setdefault(db_path, {})[thread_id] = connection
+        return connection, cursor
 
 
 def detect_db_type(db_path):

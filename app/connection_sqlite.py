@@ -7,7 +7,7 @@ from .logging_config import get_logger
 
 logger = get_logger(__name__)
 dbType = "sqlite"
-share_connection_across_threads = False
+pool_connections = True
 
 
 def owns_connection(connection):
