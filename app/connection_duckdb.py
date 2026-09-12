@@ -25,7 +25,7 @@ def handle_transaction_error(exception_type, exception_value, db_id):
     return None
 
 
-def init_db(db_path, db_access=1):
+def init_db(db_path, db_access=0):
     return duckdb.connect(
         os.fspath(db_path),
         read_only=(db_access == 0),

@@ -680,7 +680,7 @@ def delete_file(cursor, user_email: str, model_name: str, project_name: str, fil
     if is_running:
         raise HTTPException(status_code=400, detail="Cannot delete file while a task using the model is running")
 
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_access=1) as model_cursor:
         rows = model_cursor.execute(model_queries.update_file_blob, (None, None, file_id)).fetchall()
         if len(rows) == 0:
             raise HTTPException(status_code=400, detail="Failed to delete the file")
@@ -734,7 +734,7 @@ def upload_file(
 
     file_content = file.file.read()
 
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_access=1) as model_cursor:
         rows = model_cursor.execute(model_queries.update_file_blob, (file_content, file_name, file_id)).fetchall()
         if len(rows) == 0:
             raise HTTPException(status_code=400, detail="Failed to upload the file")

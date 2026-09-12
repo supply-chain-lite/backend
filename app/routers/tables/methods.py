@@ -327,7 +327,7 @@ def set_columns_order(
             status_code=403, detail="Cannot modify column order while a task using the model is running"
         )
 
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_access=1) as model_cursor:
         _validate_table_and_column_names(model_cursor, table_name, column_names)
         row = model_cursor.get_table_object("S_TableGroup")
         if not row:
@@ -370,7 +370,7 @@ def add_new_column(
     if not SQLITE_IDENTIFIER_RE.fullmatch(column_name):
         raise HTTPException(status_code=400, detail="Invalid characters in column name")
 
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_access=1) as model_cursor:
         object_type = _validate_table_and_column_names(model_cursor, table_name, [])
         if object_type != "table":
             raise HTTPException(status_code=404, detail=f"Cannot add column to view:{table_name}")
@@ -426,7 +426,7 @@ def set_column_formatting(
         raise HTTPException(
             status_code=403, detail="Cannot modify column formatting while a task using the model is running"
         )
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_access=1) as model_cursor:
         _validate_table_and_column_names(model_cursor, table_name, [column_name])
         status = _set_column_formatting(model_cursor, table_name, column_name, column_type, column_formatting)
         if status == 0:
@@ -536,7 +536,7 @@ def update_row(
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     if is_running:
         raise HTTPException(status_code=403, detail="Cannot modify the model while a task using the model is running")
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_access=1) as model_cursor:
         column_names = list(updates.keys())
         generated_columns = _get_generated_columns(model_cursor, table_name)
         common_columns = [col for col in column_names if col.lower() in generated_columns]
@@ -608,7 +608,7 @@ def update_rows(
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     if is_running:
         raise HTTPException(status_code=403, detail="Cannot modify the model while a task using the model is running")
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_access=1) as model_cursor:
         generated_columns = _get_generated_columns(model_cursor, table_name)
         if column_name.lower() in generated_columns:
             raise HTTPException(status_code=400, detail=f"Cannot update generated column: {column_name}")
@@ -695,7 +695,7 @@ def delete_rows(
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     if is_running:
         raise HTTPException(status_code=403, detail="Cannot modify the model while a task using the model is running")
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_access=1) as model_cursor:
         column_names = list(select_filters.keys())
         column_names.extend(text_filters.keys())
         column_names.extend([col for col, _, _ in numeric_filters])
@@ -802,7 +802,7 @@ def add_row(
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     if is_running:
         raise HTTPException(status_code=403, detail="Cannot modify the model while a task using the model is running")
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_access=1) as model_cursor:
         column_names = list(values.keys())
         object_type = _validate_table_and_column_names(model_cursor, table_name, column_names)
         generated_columns = _get_generated_columns(model_cursor, table_name)
@@ -1012,7 +1012,7 @@ def upload_excel(
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     if is_running:
         raise HTTPException(status_code=403, detail="Cannot modify the model while a task using the model is running")
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_access=1) as model_cursor:
         workbook = CalamineWorkbook.from_object(file.file)
         response_status = {}
         for table_name, action in sheet_actions.items():

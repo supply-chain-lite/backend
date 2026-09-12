@@ -21,7 +21,7 @@ def _backend_for_connection(connection):
 
 
 class sql_connection:
-    def __init__(self, db_id, db_path, db_access=1):
+    def __init__(self, db_id, db_path, db_access=None):
         self.db_id = db_id
         self.db_path = db_path
         self.db_access = db_access
@@ -71,9 +71,11 @@ class sql_connection:
                 self._close()
 
 
-def get_cursor(db_id, db_path, db_access=1):
+def get_cursor(db_id, db_path, db_access=None):
     db_path = os.path.abspath(db_path)
-    thread_id = (db_id == "master", threading.get_ident(), db_access)
+    # Only SQLite is pooled; its default access is read/write (1).
+    pool_access = 1 if db_access is None else db_access
+    thread_id = (db_id == "master", threading.get_ident(), pool_access)
     with _pool_lock:
         if db_path in connection_pool and thread_id in connection_pool[db_path]:
             connection = connection_pool[db_path][thread_id]
@@ -104,9 +106,12 @@ def detect_db_type(db_path):
     raise ValueError(f"Unrecognized database file format: {db_path}")
 
 
-def init_db(db_path, db_access=1):
-    """Open an existing file with the engine selected from its header."""
-    return _BACKENDS[detect_db_type(db_path)].init_db(os.fspath(db_path), db_access)
+def init_db(db_path, db_access=None):
+    """Open an existing file; default to read-only for DuckDB, read/write for SQLite."""
+    backend = _BACKENDS[detect_db_type(db_path)]
+    if db_access is None:
+        return backend.init_db(os.fspath(db_path))
+    return backend.init_db(os.fspath(db_path), db_access)
 
 
 def this_cursor(conn, cursor, id):

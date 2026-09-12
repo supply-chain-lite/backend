@@ -51,7 +51,7 @@ class ConnectionTests(unittest.TestCase):
                 handle.execute("SELECT 1")
 
     def test_fresh_connections_commit_and_release_file_to_another_process(self):
-        first = api.sql_connection("model", self.path)
+        first = api.sql_connection("model", self.path, db_access=1)
         with first as cursor:
             cursor.execute("INSERT INTO marker VALUES (1)")
         self.assert_closed(first)
@@ -76,7 +76,7 @@ class ConnectionTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_rollback_discards_changes_and_closes_connection(self):
-        transaction = api.sql_connection("model", self.path)
+        transaction = api.sql_connection("model", self.path, db_access=1)
         with patch.object(api, "logger"), self.assertRaisesRegex(ValueError, "cancel"):
             with transaction as cursor:
                 cursor.execute("INSERT INTO marker VALUES (2)")
@@ -88,8 +88,55 @@ class ConnectionTests(unittest.TestCase):
     def test_read_only_transaction_can_be_followed_by_write(self):
         with api.sql_connection("model", self.path, db_access=0) as cursor:
             self.assertEqual(cursor.execute("SELECT * FROM marker").fetchall(), [])
-        with api.sql_connection("model", self.path) as cursor:
+        with api.sql_connection("model", self.path, db_access=1) as cursor:
             cursor.execute("INSERT INTO marker VALUES (3)")
+
+    def test_duckdb_transaction_defaults_to_read_only(self):
+        transaction = api.sql_connection("model", self.path)
+        with patch.object(api, "logger"), self.assertRaises(duckdb.InvalidInputException):
+            with transaction as cursor:
+                self.assertEqual(cursor.execute("SELECT * FROM marker").fetchall(), [])
+                cursor.execute("INSERT INTO marker VALUES (4)")
+        self.assert_closed(transaction)
+        with api.sql_connection("model", self.path) as cursor:
+            self.assertEqual(cursor.execute("SELECT * FROM marker").fetchall(), [])
+
+    def test_duckdb_direct_open_defaults_to_read_only(self):
+        for opener in (api.init_db, api.connection_duckdb.init_db):
+            with self.subTest(opener=opener.__module__):
+                conn = opener(self.path)
+                try:
+                    with self.assertRaises(duckdb.InvalidInputException):
+                        conn.execute("INSERT INTO marker VALUES (5)")
+                finally:
+                    conn.close()
+
+    def test_table_edits_still_write_and_enforce_permissions(self):
+        from fastapi import HTTPException
+
+        from app.routers.tables import methods
+
+        master = Mock()
+        master.execute.return_value.fetchone.return_value = ("owner", False)
+        with patch.object(methods, "get_model_id_and_path", return_value=(1, self.path)):
+            methods.add_row(master, "user", "model", "project", "marker", {"value": 6})
+            master.execute.return_value.fetchone.return_value = ("readonly", False)
+            with self.assertRaises(HTTPException) as error:
+                methods.add_row(master, "user", "model", "project", "marker", {"value": 7})
+            self.assertEqual(error.exception.status_code, 403)
+        with api.sql_connection("model", self.path) as cursor:
+            self.assertEqual(cursor.execute("SELECT * FROM marker").fetchall(), [(6,)])
+
+    def test_sql_editor_can_still_execute_modifying_queries(self):
+        from app.routers.sql_client import methods
+
+        master = Mock()
+        master.execute.return_value.fetchone.return_value = ("owner", False)
+        with patch.object(methods, "get_model_id_and_path", return_value=(1, self.path)):
+            result = methods.execute_sql_query(master, "user", "model", "project", "INSERT INTO marker VALUES (8)")
+        self.assertEqual(result["changes"], 1)
+        with api.sql_connection("model", self.path) as cursor:
+            self.assertEqual(cursor.execute("SELECT * FROM marker").fetchall(), [(8,)])
 
     def test_connection_opens_only_when_entering_transaction(self):
         with patch.object(api, "get_cursor", wraps=api.get_cursor) as get_cursor:
@@ -149,7 +196,7 @@ class ConnectionTests(unittest.TestCase):
         first = api.sql_connection("sqlite", path)
         with first as cursor:
             cursor.execute("INSERT INTO marker VALUES (1)")
-        second = api.sql_connection("sqlite", path)
+        second = api.sql_connection("sqlite", path, db_access=1)
         with patch.object(api, "logger"), self.assertRaises(ValueError):
             with second as cursor:
                 self.assertIs(first.connection, second.connection)

@@ -56,7 +56,7 @@ def execute_sql_query(cursor, user_email: str, model_name: str, project_name: st
             status_code=403, detail="Cannot execute modifying SQL query while a task using the model is running"
         )
 
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_access=1) as model_cursor:
         desc = ()
         try:
             desc = model_cursor.get_description(query)  # Check if query is valid and get column info

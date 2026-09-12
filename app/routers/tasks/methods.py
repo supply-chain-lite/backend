@@ -97,7 +97,7 @@ def run_model_task(
 
     template_name = cursor.execute(get_template_name, (model_id,)).fetchone()[0]
 
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_access=1) as model_cursor:
         task_name, task_display_name = update_task_param_values(model_cursor, task_code, task_param_values)
         if not task_name:
             raise HTTPException(status_code=404, detail=f"Task: {task_display_name} not found")
