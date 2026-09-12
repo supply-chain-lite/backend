@@ -368,7 +368,7 @@ def add_new_column(
         if object_type != "table":
             raise HTTPException(status_code=404, detail=f"Cannot add column to view:{table_name}")
         table_columns = model_cursor.get_table_columns(table_name)
-        if any(col_name.lower() == column_name.lower() for col_name, _ in table_columns):
+        if any(col_name.lower() == column_name.lower() for col_name, _, _, _ in table_columns):
             raise HTTPException(status_code=400, detail=f"Cannot add column: Column already exists: {column_name}")
         if column_type.upper() not in ("TEXT", "INTEGER", "REAL", "NUMERIC", "VARCHAR", "BOOLEAN"):
             raise HTTPException(status_code=400, detail=f"Cannot add column: Invalid column type: {column_type}")
@@ -636,7 +636,7 @@ def _validate_table_and_column_names(cursor, table_name: str, column_names: list
     object_type = row[0].lower()
     for column_name in column_names:
         all_rows = cursor.get_table_columns(table_name)
-        if not any(col_name.lower() == column_name.lower() for col_name, _ in all_rows):
+        if not any(col_name.lower() == column_name.lower() for col_name, _, _, _ in all_rows):
             raise HTTPException(status_code=404, detail=f"Column not found: {column_name} for table: {table_name}")
     return object_type
 
@@ -1106,8 +1106,8 @@ def _import_excel_to_table(model_cursor, all_rows, table_name, table_headers, co
         raise Exception("No matching columns found between the Excel file and the target table")
 
     default_values = {}
-    all_rows = model_cursor.get_table_columns(table_name)
-    for column_name, _, default_value, __ in all_rows:
+    column_metadata = model_cursor.get_table_columns(table_name)
+    for column_name, _, default_value, _ in column_metadata:
         if default_value:
             default_values[column_name.lower()] = default_value
 
