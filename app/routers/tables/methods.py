@@ -322,7 +322,7 @@ def set_columns_order(
 
     with sql_connection(model_id, model_path) as model_cursor:
         _validate_table_and_column_names(model_cursor, table_name, column_names)
-        row = model_cursor.execute(table_queries.check_if_table_exists, ("S_TableGroup",)).fetchone()
+        row = model_cursor.check_if_table_exists("S_TableGroup")
         if not row:
             raise HTTPException(status_code=404, detail="Cannot set column order: Table not found: S_TableGroup")
         column_order_json = json.dumps(column_names)
@@ -433,7 +433,7 @@ def _set_column_formatting(
     column_type: str,
     column_formatting: dict[str, str | int | float | bool | None],
 ):
-    row = model_cursor.execute(table_queries.check_if_table_exists, ("S_TableParameters",)).fetchone()
+    row = model_cursor.check_if_table_exists("S_TableParameters")
     if not row:
         return 0
     format_json = json.dumps(column_formatting)
@@ -478,7 +478,7 @@ def _get_column_formatting(model_cursor, table_name: str):
     Returns:
         dict: Mapping from column name (str) to a formatting dict that always contains a "column_type" key and may include additional formatting keys from the stored JSON.
     """
-    row = model_cursor.execute(table_queries.check_if_table_exists, ("S_TableParameters",)).fetchone()
+    row = model_cursor.check_if_table_exists("S_TableParameters")
     if not row:
         return {}
     all_rows = model_cursor.execute(table_queries.get_column_formatting, (table_name,)).fetchall()
@@ -630,7 +630,7 @@ def _validate_table_and_column_names(cursor, table_name: str, column_names: list
         fastapi.HTTPException: 404 if the table is not found (detail="Table not found: {table_name}").
         fastapi.HTTPException: 404 if any column is not found (detail="Column not found: {column_name} for table: {table_name}").
     """
-    row = cursor.execute(table_queries.check_if_table_exists, (table_name,)).fetchone()
+    row = cursor.check_if_table_exists(table_name)
     if not row:
         raise HTTPException(status_code=404, detail=f"Table not found: {table_name}")
     object_type = row[0].lower()
@@ -997,7 +997,7 @@ def upload_excel(
             if action == "ignore":
                 continue
             if action == "create":
-                row = model_cursor.execute(table_queries.check_if_table_exists, (table_name,)).fetchone()
+                row = model_cursor.check_if_table_exists(table_name)
                 if row:
                     response_status[table_name] = {"status": "failed", "reason": "object already exists"}
                     continue
@@ -1255,7 +1255,7 @@ def check_excel_sheets_exist(cursor, user_email: str, model_name: str, project_n
             object_types[name] = obj_type
             if obj_type != "table":
                 object_types[name] = "not a table"
-        row = model_cursor.execute(table_queries.check_if_table_exists, ("S_TableGroup",)).fetchone()
+        row = model_cursor.check_if_table_exists("S_TableGroup")
         if not row:
             return object_types
         query = table_queries.get_table_types.format(placeholders=",".join(["(?)"] * len(sheet_names)))

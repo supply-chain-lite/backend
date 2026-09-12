@@ -13,9 +13,6 @@ update_column_order = "UPDATE S_TableGroup SET ColumnOrder = ? WHERE TableName =
 
 insert_column_order = "INSERT INTO S_TableGroup (GroupName, TableName, ColumnOrder) VALUES (?, ?, ?) RETURNING rowid"
 
-check_if_table_exists = (
-    "select type from sqlite_master where type in ('table', 'view') collate nocase and name=? collate nocase"
-)
 
 add_new_column = "ALTER TABLE [{table_name}] ADD COLUMN [{column_name}] {column_type}"
 
