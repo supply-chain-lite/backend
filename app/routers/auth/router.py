@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from app.config import ACCESS_TOKEN_EXPIRE_DAYS, COOKIE_SECURE
-from app.connection import master_connection
+from app.connections.connection import master_connection
 
 from . import methods as auth_methods
 from . import schemas as auth_schemas

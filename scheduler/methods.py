@@ -1,6 +1,6 @@
 import asyncio
 
-from app.connection import master_connection
+from app.connections.connection import master_connection
 
 from . import queries as db_queries
 

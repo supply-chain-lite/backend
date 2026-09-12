@@ -16,7 +16,8 @@ A lightweight FastAPI backend using raw SQLite (no ORM), built with UV for packa
 app/
 ├── main.py             # FastAPI app entry point & router wiring
 ├── config.py           # Settings loaded from .env
-├── connection.py       # SQLite connection helpers
+├── connections/        # Database connection package
+│   └── connection.py   # SQLite connection helpers
 ├── database.py         # SQLite database initialization & migrations
 ├── logging_config.py   # Shared logging setup
 └── routers/
@@ -322,7 +323,7 @@ Defined in `.env` (see `.env.example`). Variables marked **Required** must be se
 The application configures standard library logging during FastAPI startup and uses it in three places:
 
 - Request logging in [app/main.py](app/main.py) for method, path, status code, duration, and request ID.
-- Exception logging in [app/connection.py](app/connection.py) and [app/main.py](app/main.py) for failed DB operations and unhandled API errors.
+- Exception logging in [app/connections/connection.py](app/connections/connection.py) and [app/main.py](app/main.py) for failed DB operations and unhandled API errors.
 - Business-event logging in [app/routers/auth/methods.py](app/routers/auth/methods.py) as an example of feature-level usage.
 
 ### Example Usage

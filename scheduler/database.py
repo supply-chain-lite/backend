@@ -9,7 +9,7 @@ This module defines the tables for the scheduler system:
 
 from cron_descriptor import CasingTypeEnum, ExpressionDescriptor, Options
 
-from app.connection import master_connection
+from app.connections.connection import master_connection
 from app.logging_config import get_logger
 
 logger = get_logger(__name__)

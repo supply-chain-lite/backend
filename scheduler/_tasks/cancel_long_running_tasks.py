@@ -1,7 +1,7 @@
 import asyncio
 
 from app.config import DEFAULT_MAX_RUN_HOURS
-from app.connection import master_connection
+from app.connections.connection import master_connection
 from app.logging_config import get_logger
 from app.routers.tasks.methods import cancel_task
 from scheduler._tasks.queries import get_long_running_started_tasks, update_task_log

@@ -9,7 +9,7 @@ import apsw
 from fastapi import File, HTTPException, UploadFile, responses
 
 from app.config import BACKUP_FOLDER, DATA_FOLDER, MAX_BACKUPS, TEMP_FOLDER
-from app.connection import remove_connection_object, sql_connection
+from app.connections.connection import remove_connection_object, sql_connection
 
 from . import queries as model_queries
 

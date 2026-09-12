@@ -1,6 +1,6 @@
 from fastapi import HTTPException
 
-from app.connection import sql_connection
+from app.connections.connection import sql_connection
 from app.routers.models.methods import get_model_id_and_path
 from app.routers.tables.queries import get_access_level as get_access_level_query
 

@@ -4,7 +4,7 @@ import json
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
-from app.connection import master_connection
+from app.connections.connection import master_connection
 from app.routers.auth.methods import _get_user_from_token, check_module_access
 
 from . import methods as table_methods

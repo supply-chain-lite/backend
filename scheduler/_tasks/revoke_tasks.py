@@ -4,7 +4,7 @@ import json
 from celery import Celery
 
 from app.config import TASK_PROCESS_TIMEOUT_MINUTES
-from app.connection import master_connection
+from app.connections.connection import master_connection
 from app.logging_config import get_logger
 from app.routers.tasks.methods import update_task_output_and_logs
 from app.routers.tasks.queries import insert_task_notifications, update_model_lock, update_task_status

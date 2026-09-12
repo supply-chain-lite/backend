@@ -8,7 +8,7 @@ be wrapped with ``asyncio.to_thread`` so the event loop stays responsive.
 
 import asyncio
 
-from app.connection import master_connection
+from app.connections.connection import master_connection
 from app.logging_config import get_logger
 from app.routers.tasks.methods import run_task_by_model_id as submit_model_task
 from app.routers.tasks.methods import update_task_status
