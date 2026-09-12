@@ -544,6 +544,17 @@ def get_template_sql_file(cursor, user_email: str, template_name: str, with_data
     return sql_file
 
 
+def _get_table_group_from_sqlite_master(cursor):
+    all_rows = cursor.get_all_objects()
+    table_groups = []
+    for table_type, table_name in all_rows:
+        if table_type == "table":
+            table_groups.append(("All Tables", table_name, table_name, 1))
+        elif table_type == "view":
+            table_groups.append(("All Views", table_name, table_name, 1))
+    return table_groups
+
+
 def _get_table_groups(cursor):
     """
     Create a dictionary mapping each group name to a list of (table_name, table_display_name) tuples.
@@ -557,7 +568,7 @@ def _get_table_groups(cursor):
     try:
         rows = cursor.execute(model_queries.get_table_groups, silent=True).fetchall()
     except Exception:
-        rows = cursor.execute(model_queries.get_table_group_from_sqlite_master).fetchall()
+        rows = _get_table_group_from_sqlite_master(cursor)
     table_groups = {}
     for group_name, table_name, table_display_name, _ in rows:
         if table_display_name is None:

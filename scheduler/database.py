@@ -83,12 +83,6 @@ update_cron_schedule_description = """UPDATE SJ_ScheduledJobs
     WHERE ScheduleId = ?"""
 
 
-def _ensure_scheduled_job_column(cursor, column_name: str, column_type: str) -> None:
-    existing_columns = {row[1] for row in cursor.execute("PRAGMA table_info(SJ_ScheduledJobs)").fetchall()}
-    if column_name not in existing_columns:
-        cursor.execute(f"ALTER TABLE SJ_ScheduledJobs ADD COLUMN {column_name} {column_type}")
-
-
 def get_cron_description(cron_expr: str | None) -> str | None:
     """Return a human-readable schedule description for a cron expression."""
     if not cron_expr:
@@ -145,10 +139,6 @@ def init_scheduler_db() -> None:
         cursor.execute(create_task_master_table)
         cursor.execute(create_scheduled_jobs_table)
         cursor.execute(create_job_executions_table)
-
-        _ensure_scheduled_job_column(cursor, "ScheduleDescription", "TEXT")
-        _ensure_scheduled_job_column(cursor, "TaskParams", "TEXT")
-        _ensure_scheduled_job_column(cursor, "CreatedBy", "TEXT")
 
         # Insert task definitions
         for task in task_definitions:
