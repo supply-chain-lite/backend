@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import STATIC_FOLDER, TEMP_FOLDER
-from app.connection import master_connection
+from app.connections.connection import master_connection
 from app.database import init_db
 from app.logging_config import configure_logging, get_logger
 from app.routers.auth.router import router as auth_router

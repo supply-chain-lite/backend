@@ -8,7 +8,7 @@ Per-task lifecycle and telemetry are recorded on the app's ST_TaskRecords table
 (see app.database); the worker updates that row rather than a separate table.
 """
 
-from app.connection import master_connection
+from app.connections.connection import master_connection
 from app.logging_config import get_logger
 
 logger = get_logger(__name__)

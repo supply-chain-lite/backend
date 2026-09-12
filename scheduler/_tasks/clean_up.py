@@ -17,7 +17,7 @@ from app.config import (
     TEMP_FOLDER,
     master_db,
 )
-from app.connection import master_connection
+from app.connections.connection import master_connection
 from app.logging_config import get_logger
 from scheduler._tasks import queries as cleanup_queries
 

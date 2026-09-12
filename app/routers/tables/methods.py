@@ -8,7 +8,7 @@ import xlsxwriter as xw
 from fastapi import HTTPException, UploadFile, responses
 from python_calamine import CalamineWorkbook
 
-from app.connection import sql_connection
+from app.connections.connection import sql_connection
 from app.routers.models.methods import get_model_id_and_path
 
 from . import queries as table_queries

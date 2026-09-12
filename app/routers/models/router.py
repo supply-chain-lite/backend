@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import FileResponse
 
-from app.connection import master_connection
+from app.connections.connection import master_connection
 from app.routers.auth.methods import _get_user_from_token, check_can_add_new_model, check_module_access
 
 from . import methods as model_methods

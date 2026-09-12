@@ -1,7 +1,7 @@
 import json
 from datetime import UTC, datetime
 
-from app.connection import master_connection
+from app.connections.connection import master_connection
 
 from . import queries as task_queries
 

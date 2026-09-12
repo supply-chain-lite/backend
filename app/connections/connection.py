@@ -4,8 +4,8 @@ import threading
 import apsw
 import apsw.ext
 
-from .config import master_db
-from .logging_config import get_logger
+from ..config import master_db
+from ..logging_config import get_logger
 
 connection_pool = {}
 _pool_lock = threading.Lock()

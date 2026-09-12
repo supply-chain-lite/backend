@@ -26,7 +26,7 @@ from app.config import (
     SQLITE_DIFF_TOOL,
     TEMP_FOLDER,
 )
-from app.connection import master_connection, sql_connection
+from app.connections.connection import master_connection, sql_connection
 from app.logging_config import get_logger
 from app.routers.models.methods import get_model_id_and_path
 from app.routers.models.queries import get_access_level, get_model_name_and_project_name, get_template_name

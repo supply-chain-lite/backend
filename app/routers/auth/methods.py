@@ -22,7 +22,7 @@ from app.config import (
     SMTP_URL,
     SMTP_USER,
 )
-from app.connection import master_connection
+from app.connections.connection import master_connection
 from app.logging_config import get_logger
 
 from . import queries as queries
