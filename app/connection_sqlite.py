@@ -29,6 +29,15 @@ def authorizer(action, arg1, arg2, dbname, source):
         return apsw.SQLITE_DENY
     return apsw.SQLITE_OK
 
+def create_db(db_path, db_sql):
+    connection = apsw.Connection(db_path)
+    try:
+        connection.execute(db_sql)
+    except Exception as e:
+        connection.close()
+        raise
+    connection.close()
+
 
 def init_db(db_path, db_access=1):
     flags = apsw.SQLITE_OPEN_READONLY if db_access == 0 else apsw.SQLITE_OPEN_READWRITE
@@ -136,9 +145,11 @@ class Cursor:
             raise
         return self.cursor
 
-    def executescript(self, query, args=tuple()):
+    def executescript(self, query):
         try:
-            self.cursor.execute(query, args)
+            self.cursor.execute("COMMIT")
+            self.cursor.execute(query)
+            self.cursor.execute("BEGIN")
         except Exception:
             logger.exception("Query execution failed: %s", query)
             raise

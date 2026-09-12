@@ -177,7 +177,8 @@ def delete_model(cursor, user_email: str, model_name: str, project_name: str):
         cursor.execute(model_queries.delete_user_model, (model_id, user_email))
         return 1
 
-    cursor.executescript(model_queries.delete_model_for_all_users, (model_id, model_id))
+    cursor.execute(model_queries.delete_model_from_user_models, (model_id,))
+    cursor.execute(model_queries.delete_model_from_models, (model_id,))
 
     remove_connection_object(model_path)
     if os.path.exists(model_path):

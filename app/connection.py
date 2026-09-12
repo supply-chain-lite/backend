@@ -140,3 +140,16 @@ def remove_connection_object(db_path):
 
 def master_connection():
     return sql_connection("master", master_db)
+
+
+def create_database(db_path, db_type, db_sql):
+    db_path = os.path.abspath(db_path)
+    backend = _BACKENDS[db_type]
+    connection = backend.init_db(os.fspath(db_path))
+    cursor = backend.get_cursor(connection)
+    try:
+        cursor.execute(db_sql)
+        connection.commit()
+    finally:
+        cursor.close()
+        connection.close()

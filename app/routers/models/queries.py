@@ -65,8 +65,10 @@ delete_user_model = """DELETE FROM S_UserModels WHERE ModelId = ?
                        AND UserEmail = ?
                        RETURNING 1"""
 
-delete_model_for_all_users = """DELETE FROM S_UserModels WHERE ModelId = ?;
-                                DELETE FROM S_Models WHERE ModelId = ?"""
+delete_model_from_user_models = "DELETE FROM S_UserModels WHERE ModelId = ?; "
+
+delete_model_from_models = "DELETE FROM S_Models WHERE ModelId = ?"
+
 get_model_backups = "select BackupPath from S_ModelBackups WHERE ModelId = ? order by BackupId"
 
 delete_model_backup = "DELETE FROM S_ModelBackups WHERE ModelId = ? OR BackupPath = ?"

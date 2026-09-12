@@ -36,6 +36,9 @@ def init_db(db_path, db_access=0):
         },
     )
 
+def create_db(db_path, db_sql):
+    with duckdb.connect(os.fspath(db_path)) as connection:
+        connection.execute(db_sql)
 
 # Catalog functions include system objects; restrict them to the model schema.
 _DUCKDB_OBJECTS = """
@@ -76,7 +79,10 @@ class Cursor:
     def get_table_columns(self, table_name):
         """Return column names and types, excluding BLOB columns."""
         return self.execute(
-            "SELECT column_name, data_type FROM duckdb_columns()\n                   WHERE database_name = current_database() AND schema_name = current_schema()\n                     AND lower(table_name) = lower(?) AND upper(data_type) != 'BLOB'\n                   ORDER BY column_index",
+            "SELECT column_name, data_type FROM duckdb_columns()\n  " \
+            "WHERE database_name = current_database() AND schema_name = current_schema()\n " \
+            "AND lower(table_name) = lower(?) AND upper(data_type) != 'BLOB'\n " \
+            "ORDER BY column_index",
             (table_name,),
         ).fetchall()
 
@@ -273,13 +279,13 @@ class Cursor:
     def intermediate_commit(self):
         try:
             self.cursor.execute("COMMIT")
-            self.cursor.execute("BEGIN")
+            self.cursor.execute("BEGIN TRANSACTION")
         except Exception:
             raise
 
     def rollback_changes(self):
         try:
             self.cursor.execute("ROLLBACK")
-            self.cursor.execute("BEGIN")
+            self.cursor.execute("BEGIN TRANSACTION")
         except Exception:
             raise

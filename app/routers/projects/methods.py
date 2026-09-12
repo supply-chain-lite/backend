@@ -21,7 +21,8 @@ def add_new_project(cursor, user_email: str, project_name: str, open_after_creat
     if not row:
         raise HTTPException(status_code=500, detail="Failed to create project")
     if open_after_create:
-        cursor.executescript(project_queries.set_project_status, (user_email, user_email, project_name))
+        cursor.execute(project_queries.set_project_status_null, (user_email,))
+        cursor.execute(project_queries.set_project_status_active, (user_email, project_name))
     return
 
 
@@ -29,7 +30,8 @@ def open_project(cursor, user_email: str, project_name: str):
     project_id = _get_project_id(cursor, user_email, project_name)
     if not project_id:
         raise HTTPException(status_code=404, detail="Project not found")
-    cursor.executescript(project_queries.set_project_status, (user_email, user_email, project_name))
+    cursor.execute(project_queries.set_project_status_null, (user_email,))
+    cursor.execute(project_queries.set_project_status_active, (user_email, project_name))
     return project_name
 
 
