@@ -174,6 +174,12 @@ class this_cursor:
         except Exception:
             raise
 
+    def get_table_columns(self, table_name):
+        """Return column names and types """
+        return self.execute(
+            "select name, type, dflt_value, hidden from pragma_table_xinfo(?) ", (table_name,)
+        ).fetchall()
+
 
 def close_all_conn():
     with _pool_lock:

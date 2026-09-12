@@ -1,7 +1,5 @@
 from fastapi import HTTPException
 
-get_table_columns = "select name, type from pragma_table_xinfo(?) where UPPER(type) != 'BLOB' "
-
 get_column_order = """select ifnull(ColumnOrder, '[]') as ColumnOrder
                     from S_TableGroup WHERE TableName = ? collate nocase"""
 
@@ -21,8 +19,6 @@ check_if_table_exists = (
 
 add_new_column = "ALTER TABLE [{table_name}] ADD COLUMN [{column_name}] {column_type}"
 
-check_if_table_column_exists = "SELECT 1 FROM pragma_table_xinfo(?) WHERE name = ? COLLATE NOCASE"
-
 set_column_formatting = """UPDATE S_TableParameters Set ParameterType = ?, ParameterValue = ?
                             WHERE TableName = ? COLLATE NOCASE and ColumnName = ? COLLATE NOCASE RETURNING rowid"""
 
@@ -31,13 +27,6 @@ insert_column_formatting = """INSERT INTO S_TableParameters (TableName, ColumnNa
 
 get_column_formatting = """SELECT ColumnName, ParameterType, ParameterValue FROM S_TableParameters
                             WHERE TableName = ? COLLATE NOCASE """
-
-
-get_default_values_query = """select name, [dflt_value] from pragma_table_xinfo(?)
-                              WHERE [dflt_value] is not null;"""
-
-get_generated_columns = """select name from pragma_table_xinfo(?)
-                              WHERE hidden in (2, 3);"""
 
 get_object_types = """SELECT t1.table_name, sqlite_master.type
                         FROM
