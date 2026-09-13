@@ -1,6 +1,6 @@
 from fastapi import HTTPException
 
-from app.connections.connection import sql_connection
+from app.connections.connection import query_requires_write_access, sql_connection
 from app.routers.models.methods import get_model_details
 
 from . import queries as sql_client_queries
@@ -59,9 +59,7 @@ def execute_sql_query(cursor, user_email: str, model_name: str, project_name: st
     if access_level not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="User does not have permission to execute SQL queries")
 
-    write_mode = 0
-    if query.strip().lower().startswith(("insert", "update", "delete", "create", "alter", "drop")):
-        write_mode = 1
+    write_mode = int(query_requires_write_access(query, db_type))
     if is_running and write_mode:
         raise HTTPException(
             status_code=403, detail="Cannot execute modifying SQL query while a task using the model is running"

@@ -264,6 +264,24 @@ class ConnectionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             connection.sql_connection("model", missing, db_type="unknown")
 
+    def test_query_write_access_detection(self):
+        cases = (
+            ("SELECT 1", "DUCKDB", False),
+            ("-- UPDATE\nSELECT 'DELETE'", "DUCKDB", False),
+            ("WITH x AS (SELECT 1) UPDATE items SET id = 1", "DUCKDB", True),
+            ("WITH x AS (SELECT 1) INSERT INTO items SELECT * FROM x", "DUCKDB", True),
+            ("COPY items TO 'out.csv'", "DUCKDB", False),
+            ("COPY items FROM 'in.csv'", "DUCKDB", True),
+            ("VACUUM", "DUCKDB", True),
+            ("EXPLAIN INSERT INTO items VALUES (1)", "DUCKDB", False),
+            ("/* DROP */ SELECT 1", "SQLITE", False),
+            ("-- DELETE\nUPDATE items SET id = 1", "SQLITE", True),
+            ("WITH x AS (SELECT 1) DELETE FROM items", "SQLITE", True),
+        )
+        for query, db_type, expected in cases:
+            with self.subTest(query=query, db_type=db_type):
+                self.assertEqual(connection.query_requires_write_access(query, db_type), expected)
+
 
 if __name__ == "__main__":
     unittest.main()
