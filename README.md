@@ -5,9 +5,8 @@ A lightweight FastAPI backend using raw SQLite (no ORM), built with UV for packa
 ## Tech Stack
 
 - **Python 3.13** + **FastAPI**
-- **SQLite** (stdlib `sqlite3`, no ORM)
-- **UV** — package manager
-- **Ruff** — linter & formatter
+- **SQLite** (APSW, no ORM)
+- **UV** — package manager- **Ruff** — linter & formatter
 - **pydantic-settings** — `.env` configuration
 
 ## Project Structure

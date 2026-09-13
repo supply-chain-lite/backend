@@ -4,6 +4,7 @@ import shutil
 import sqlite3
 import tempfile
 import uuid
+from types import SimpleNamespace
 
 import apsw
 from fastapi import File, HTTPException, UploadFile, responses
@@ -20,10 +21,10 @@ def add_new_model(
 
     project_id = get_project_id(cursor, user_name, project_name)
 
-    model_id, _ = get_model_id_and_path(cursor, model_name, project_name, user_name)
-    if model_id:
-        raise HTTPException(status_code=400, detail="Model already exists in project for user")
+    model = get_model_details(cursor, model_name, project_name, user_name)
 
+    if model:
+        raise HTTPException(status_code=400, detail="Model already exists in project for user")
     template_sql_file = get_template_sql_file(cursor, user_name, template_name, with_sample_data)
 
     db_uid = str(uuid.uuid4())
@@ -49,12 +50,15 @@ def move_model_to_project(
     old_project_name: str,
     new_project_name: str,
 ) -> int:
-    old_model_id, _ = get_model_id_and_path(cursor, model_name, old_project_name, user_email)
-    if not old_model_id:
-        raise HTTPException(status_code=404, detail="Model not found in the old project")
+    old_model = get_model_details(cursor, model_name, old_project_name, user_email)
 
-    new_model_id, _ = get_model_id_and_path(cursor, model_name, new_project_name, user_email)
-    if new_model_id:
+    if not old_model:
+        raise HTTPException(status_code=404, detail="Model not found in the old project")
+    old_model_id = old_model.model_id
+
+    new_model = get_model_details(cursor, model_name, new_project_name, user_email)
+
+    if new_model:
         raise HTTPException(status_code=400, detail="Model already exists in the new project")
 
     new_project_id = get_project_id(cursor, user_email, new_project_name)
@@ -98,15 +102,18 @@ def save_as_model(
     new_user_email: str,
 ):
 
-    old_model_id, old_model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not old_model_id:
+    old_model = get_model_details(cursor, model_name, project_name, user_email)
+
+    if not old_model:
         raise HTTPException(status_code=404, detail="Model not found in the old project")
 
-    new_model_id, new_model_path = get_model_id_and_path(cursor, new_model_name, new_project_name, new_user_email)
-    if new_model_id:
+    old_model_path = old_model.model_path if old_model else None
+
+    new_model = get_model_details(cursor, new_model_name, new_project_name, new_user_email)
+    if new_model:
         raise HTTPException(status_code=400, detail="Model already exists in the new project")
 
-    template_name = cursor.execute(model_queries.get_template_name, (old_model_id,)).fetchone()[0]
+    template_name = old_model.template_name
 
     db_uid = str(uuid.uuid4())
     new_model_path = os.path.join(DATA_FOLDER, f"{db_uid}.sqlite3")
@@ -138,12 +145,14 @@ def save_as_model(
 
 
 def rename_model(cursor, user_email: str, model_name: str, project_name: str, new_model_name: str):
-    model_id, _ = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
-        raise HTTPException(status_code=404, detail="Model not found")
+    model = get_model_details(cursor, model_name, project_name, user_email)
 
-    existing_model_id, _ = get_model_id_and_path(cursor, new_model_name, project_name, user_email)
-    if existing_model_id:
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+    model_id = model.model_id
+
+    existing_model = get_model_details(cursor, new_model_name, project_name, user_email)
+    if existing_model:
         raise HTTPException(status_code=400, detail="Model with the new name already exists")
 
     cursor.execute(model_queries.rename_model, (new_model_name, model_id, user_email))
@@ -166,11 +175,15 @@ def delete_model(cursor, user_email: str, model_name: str, project_name: str):
     Raises:
         fastapi.HTTPException: 404 if the specified model cannot be found.
     """
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    access_level, is_running = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()
+    model_id = model.model_id
+    model_path = model.model_path
+
+    access_level, is_running = model.access_level, model.is_running
     if is_running:
         raise HTTPException(status_code=400, detail="Cannot delete model while a task using it is running")
     if access_level != "owner":
@@ -204,11 +217,15 @@ def create_model_backup(cursor, user_email: str, model_name: str, project_name: 
             status_code=400,
             detail="Backup comment cannot be 'SYSTEM GENERATED BACKUP', it is reserved for system generated backups",
         )
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    access_level, is_running = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()
+    model_id = model.model_id
+    model_path = model.model_path
+    access_level = model.access_level
+    is_running = model.is_running
+
     if is_running:
         raise HTTPException(status_code=400, detail="Cannot create backup while a task using the model is running")
 
@@ -243,11 +260,13 @@ def create_model_backup(cursor, user_email: str, model_name: str, project_name: 
 
 
 def get_model_backups(cursor, user_email: str, model_name: str, project_name: str):
-    model_id, _ = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    access_level, _ = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()
+    access_level = model.access_level
+    model_id = model.model_id
 
     if access_level != "owner":
         raise HTTPException(status_code=403, detail="Only owner can get backups")
@@ -258,11 +277,15 @@ def get_model_backups(cursor, user_email: str, model_name: str, project_name: st
 
 
 def restore_model_from_backup(cursor, user_email: str, model_name: str, project_name: str, backup_id: int):
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    access_level, is_running = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()
+    model_id = model.model_id
+    model_path = model.model_path
+    access_level = model.access_level
+    is_running = model.is_running
+
     if is_running:
         raise HTTPException(
             status_code=400, detail="Cannot restore from backup while a task using the model is running"
@@ -323,11 +346,13 @@ def share_model(
         raise HTTPException(status_code=400, detail="Cannot share model with yourself")
     if not cursor.execute(model_queries.check_user_email, (to_user_email,)).fetchone():
         raise HTTPException(status_code=404, detail="Target user not found")
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, from_user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, from_user_email)
+
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    from_user_access_level, _ = cursor.execute(model_queries.get_access_level, (model_id, from_user_email)).fetchone()
+    from_user_access_level = model.access_level
+    model_id = model.model_id
 
     if from_user_access_level != "owner":
         raise HTTPException(status_code=403, detail="Only owner can share the model")
@@ -368,11 +393,13 @@ def share_model(
 
 
 def download_model(cursor, user_email: str, model_name: str, project_name: str):
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    access_level = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()[0]
+    model_path = model.model_path
+    access_level = model.access_level
 
     if access_level not in ["owner", "editor"]:
         raise HTTPException(status_code=403, detail="Only owner and editor can download the model")
@@ -406,11 +433,14 @@ def upload_model(
     model_name: str,
     model_file: UploadFile = File(...),
 ):
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    access_level, is_running = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()
+    model_path = model.model_path
+    access_level = model.access_level
+    is_running = model.is_running
 
     if access_level not in ["owner", "editor"]:
         raise HTTPException(status_code=403, detail="Only owner and editor can upload the model")
@@ -436,11 +466,13 @@ def upload_model(
 
 
 def update_model_access_level(cursor, user_email: str, model_name: str, project_name: str, access_list: list):
-    model_id, _ = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    from_user_access_level = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()[0]
+    from_user_access_level = model.access_level
+    model_id = model.model_id
 
     if from_user_access_level != "owner":
         raise HTTPException(status_code=403, detail="Only owner can update access level")
@@ -490,14 +522,28 @@ def get_project_id(cursor, user_name: str, project_name: str):
     return row[0]
 
 
-def get_model_id_and_path(cursor, model_name: str, project_name: str, user_name: str):
+def get_model_details(cursor, model_name: str, project_name: str, user_name: str):
+    """Return details for a model visible to this user, or None when absent.
+
+    Callers choose whether absence means a 404 or an available destination name.
+    """
     if model_name.strip() == "" or project_name.strip() == "":
         raise HTTPException(status_code=400, detail="Model name and project name cannot be empty")
 
-    row = cursor.execute(model_queries.get_model_id_and_path, (project_name, model_name, user_name)).fetchone()
-    if row:
-        return row[0], row[1]
-    return None, None
+    row = cursor.execute(model_queries.get_model_details, (project_name, model_name, user_name)).fetchone()
+    if not row:
+        return None
+
+    field_names = [
+        "model_id",
+        "model_path",
+        "db_type",
+        "owner_email",
+        "template_name",
+        "access_level",
+        "is_running",
+    ]
+    return SimpleNamespace(**dict(zip(field_names, row)))
 
 
 def get_template_sql_file(cursor, user_email: str, template_name: str, with_data: bool = False):
@@ -589,9 +635,12 @@ def get_table_groups(cursor, user_email: str, model_name: str, project_name: str
     Raises:
         HTTPException: Raised with status_code=404 when the specified model cannot be found.
     """
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
+
+    model_id = model.model_id
+    model_path = model.model_path
 
     with sql_connection(model_id, model_path) as model_cursor:
         table_groups = _get_table_groups(model_cursor)
@@ -600,11 +649,13 @@ def get_table_groups(cursor, user_email: str, model_name: str, project_name: str
 
 
 def vacuum_model(cursor, user_email: str, model_name: str, project_name: str):
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    access_level, is_running = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()
+    model_path = model.model_path
+    access_level = model.access_level
+    is_running = model.is_running
 
     if access_level != "owner":
         raise HTTPException(status_code=403, detail="Only owner can vacuum the model")
@@ -619,13 +670,15 @@ def vacuum_model(cursor, user_email: str, model_name: str, project_name: str):
 
 
 def get_model_info(cursor, user_email: str, model_name: str, project_name: str):
-    model_id, _ = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    access_level = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()[0]
+    model_id = model.model_id
+    access_level = model.access_level
 
-    owner_email, template_name = cursor.execute(model_queries.get_model_info, (model_id,)).fetchone()
+    owner_email, template_name = model.owner_email, model.template_name
 
     owner_model_name, owner_project_name = cursor.execute(
         model_queries.get_model_name_and_project_name, (model_id, owner_email)
@@ -656,9 +709,11 @@ def get_model_info(cursor, user_email: str, model_name: str, project_name: str):
 
 
 def get_files_list(cursor, user_email: str, model_name: str, project_name: str):
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
+    model_id = model.model_id
+    model_path = model.model_path
 
     with sql_connection(model_id, model_path) as model_cursor:
         try:
@@ -682,11 +737,13 @@ def get_files_list(cursor, user_email: str, model_name: str, project_name: str):
 
 
 def delete_file(cursor, user_email: str, model_name: str, project_name: str, file_id: int):
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
+    model_id = model.model_id
+    model_path = model.model_path
 
-    access_level, is_running = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()
+    access_level, is_running = model.access_level, model.is_running
 
     if access_level in ("read", "reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
@@ -701,9 +758,11 @@ def delete_file(cursor, user_email: str, model_name: str, project_name: str, fil
 
 
 def download_file(cursor, user_email: str, model_name: str, project_name: str, file_id: int):
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
+    model_id = model.model_id
+    model_path = model.model_path
 
     with sql_connection(model_id, model_path) as model_cursor:
         row = model_cursor.execute(model_queries.get_file_blob_and_name, (file_id,)).fetchone()
@@ -731,14 +790,16 @@ def download_file(cursor, user_email: str, model_name: str, project_name: str, f
 def upload_file(
     cursor, user_email: str, model_name: str, project_name: str, file_id: int, file_name: str, file: UploadFile
 ):
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(
             status_code=404,
             detail=f"Model not found for model_name: {model_name}, project_name: {project_name}, user_email: {user_email}",
         )
-
-    access_level, is_running = cursor.execute(model_queries.get_access_level, (model_id, user_email)).fetchone()
+    model_id = model.model_id
+    model_path = model.model_path
+    access_level = model.access_level
+    is_running = model.is_running
 
     if access_level in ("read", "reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")

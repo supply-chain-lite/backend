@@ -1,13 +1,5 @@
 get_project_id = "SELECT ProjectId FROM S_Projects WHERE UserEmail=? AND ProjectName=?"
 
-get_model_id_and_path = """SELECT S_Models.ModelId, S_Models.ModelPath
-                            FROM S_UserModels, S_Projects, S_Models
-                            WHERE S_UserModels.ProjectId = S_Projects.ProjectId
-                                AND S_UserModels.ModelId  = S_Models.ModelId
-                                AND S_Projects.UserEmail  = S_UserModels.UserEmail
-                                AND S_Projects.ProjectName = ?
-                                AND S_UserModels.ModelName = ?
-                                AND S_UserModels.UserEmail    = ?"""
 
 get_model_name_and_project_name = """SELECT S_UserModels.ModelName, S_Projects.ProjectName
                             FROM S_UserModels, S_Projects, S_Models
@@ -90,6 +82,19 @@ add_user_notifications = """INSERT INTO S_UserNotifications (
                                     )
                                     VALUES (?, ?, ?, ?, ?, ?, 0,0)
                                     RETURNING NotificationId"""
+
+get_model_details = """SELECT S_Models.ModelId, S_Models.ModelPath,
+                            ifnull(json_extract(ifnull(S_Models.JsonData, '{}'), '$.db_type'), 'sqlite') as db_type,
+                            S_Models.OwnerEmail, S_Models.TemplateName,
+                            lower(S_UserModels.AccessLevel) as AccessLevel,
+                            ifnull(json_extract(ifnull(S_Models.JsonData, '{}'), '$.IsLocked'), 0) as IsRunning
+                            FROM S_UserModels, S_Projects, S_Models
+                            WHERE S_UserModels.ProjectId = S_Projects.ProjectId
+                                AND S_UserModels.ModelId  = S_Models.ModelId
+                                AND S_Projects.UserEmail  = S_UserModels.UserEmail
+                                AND S_Projects.ProjectName = ?
+                                AND S_UserModels.ModelName = ?
+                                AND S_UserModels.UserEmail    = ?"""
 
 
 get_model_info = """select OwnerEmail, TemplateName from S_Models

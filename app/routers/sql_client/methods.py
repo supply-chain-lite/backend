@@ -1,18 +1,19 @@
 from fastapi import HTTPException
 
 from app.connections.connection import sql_connection
-from app.routers.models.methods import get_model_id_and_path
-from app.routers.tables.queries import get_access_level as get_access_level_query
+from app.routers.models.methods import get_model_details
 
 from . import queries as sql_client_queries
 
 
 def get_sql_objects(cursor, user_email: str, model_name: str, project_name: str):
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    access_level, _ = cursor.execute(get_access_level_query, (model_id, user_email)).fetchone()
+    model_id = model.model_id
+    model_path = model.model_path
+    access_level = model.access_level
     if access_level not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="User does not have permission to get SQL objects")
     with sql_connection(model_id, model_path) as model_cursor:
@@ -28,11 +29,13 @@ def get_sql_objects(cursor, user_email: str, model_name: str, project_name: str)
 
 
 def get_object_ddl(cursor, user_email: str, model_name: str, project_name: str, object_name: str):
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
+    model_id = model.model_id
+    model_path = model.model_path
 
-    access_level, _ = cursor.execute(get_access_level_query, (model_id, user_email)).fetchone()
+    access_level = model.access_level
     if access_level not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="User does not have permission to get object DDL")
     with sql_connection(model_id, model_path) as model_cursor:
@@ -43,11 +46,13 @@ def get_object_ddl(cursor, user_email: str, model_name: str, project_name: str, 
 
 
 def execute_sql_query(cursor, user_email: str, model_name: str, project_name: str, query: str):
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
+    model_id = model.model_id
+    model_path = model.model_path
 
-    access_level, is_running = cursor.execute(get_access_level_query, (model_id, user_email)).fetchone()
+    access_level, is_running = model.access_level, model.is_running
     if access_level not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="User does not have permission to execute SQL queries")
 
@@ -85,11 +90,12 @@ def mask_blob_values(row):
 
 
 def get_sql_history(cursor, user_email: str, model_name: str, project_name: str):
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
+    model_id = model.model_id
 
-    access_level, _ = cursor.execute(get_access_level_query, (model_id, user_email)).fetchone()
+    access_level = model.access_level
     if access_level not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="User does not have permission to get SQL history")
     history_rows = cursor.execute(sql_client_queries.get_sql_history, (model_id, user_email)).fetchall()
@@ -102,11 +108,11 @@ def get_sql_history(cursor, user_email: str, model_name: str, project_name: str)
 def add_sql_history(
     cursor, user_email: str, model_name: str, project_name: str, query: str, is_errored: bool, status: str
 ):
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
-
-    access_level, _ = cursor.execute(get_access_level_query, (model_id, user_email)).fetchone()
+    model_id = model.model_id
+    access_level = model.access_level
     if access_level not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="User does not have permission to add SQL history")
     cursor.execute(
