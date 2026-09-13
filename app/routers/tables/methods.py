@@ -65,7 +65,7 @@ def get_table_headers(
     return table_headers
 
 
-def _get_table_headers_with_types(cursor, table_name: str, get_all_columns=False) -> list[tuple[str, str]]:
+def _get_table_headers_with_types(model_cursor, table_name: str, get_all_columns=False) -> list[tuple[str, str]]:
     """
     Return the table's column headers with their SQL types, using a persisted column order when available.
 
@@ -76,13 +76,13 @@ def _get_table_headers_with_types(cursor, table_name: str, get_all_columns=False
     Returns:
         list[tuple[str, str]]: List of (column_name, column_type) tuples in the chosen order.
     """
-    all_rows = cursor.get_table_columns(table_name)
+    all_rows = model_cursor.get_table_columns(table_name)
     all_rows = [(name, col_type) for name, col_type, _, _ in all_rows]
 
     if get_all_columns:
         return all_rows
     try:
-        column_order_row = cursor.execute(table_queries.get_column_order, (table_name,)).fetchone()
+        column_order_row = model_cursor.execute(table_queries.get_column_order, (table_name,)).fetchone()
         decoded = json.loads(column_order_row[0]) if column_order_row else []
         column_order = decoded if isinstance(decoded, list) else []
     except Exception:  # cathed broadly to avoid any issues even if S_TableGroup doesnt exists
@@ -545,17 +545,17 @@ def update_row(
         model_cursor.execute(query, values)
 
 
-def _get_generated_columns(cursor, table_name: str) -> list[str]:
+def _get_generated_columns(model_cursor, table_name: str) -> list[str]:
     """
     Retrieve the list of generated columns for a given table.
 
     Parameters:
-        cursor: Database cursor to execute the query.
+        model_cursor: Database cursor to execute the query.
         table_name (str): Name of the table to check for generated columns.
     Returns:
         list[str]: A list of generated column names for the specified table.
     """
-    all_rows = cursor.get_table_columns(table_name)
+    all_rows = model_cursor.get_table_columns(table_name)
     generated_columns = [row[0].lower() for row in all_rows if row[3] in (2, 3)]
     return generated_columns
 
@@ -620,7 +620,7 @@ def update_rows(
         return model_cursor.rowcount()
 
 
-def _validate_table_and_column_names(cursor, table_name: str, column_names: list[str]) -> str:
+def _validate_table_and_column_names(model_cursor, table_name: str, column_names: list[str]) -> str:
     """
     Confirm the table exists, validate that each name in `column_names` exists on that table, and return the table's object type.
 
@@ -631,11 +631,11 @@ def _validate_table_and_column_names(cursor, table_name: str, column_names: list
         fastapi.HTTPException: 404 if the table is not found (detail="Table not found: {table_name}").
         fastapi.HTTPException: 404 if any column is not found (detail="Column not found: {column_name} for table: {table_name}").
     """
-    row = cursor.check_if_table_exists(table_name)
+    row = model_cursor.check_if_table_exists(table_name)
     if not row:
         raise HTTPException(status_code=404, detail=f"Table not found: {table_name}")
     object_type = row[0].lower()
-    all_rows = cursor.get_table_columns(table_name)
+    all_rows = model_cursor.get_table_columns(table_name)
     for column_name in column_names:
         if not any(col_name.lower() == column_name.lower() for col_name, _, _, _ in all_rows):
             raise HTTPException(status_code=404, detail=f"Column not found: {column_name} for table: {table_name}")
