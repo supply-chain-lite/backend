@@ -60,8 +60,9 @@ def get_table_headers(
         raise HTTPException(status_code=404, detail="Model not found")
     model_id = model.model_id
     model_path = model.model_path
+    db_type = model.db_type
 
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_type=db_type) as model_cursor:
         _validate_table_and_column_names(model_cursor, table_name, [])
         table_headers = _get_table_headers_with_types(model_cursor, table_name)
     return table_headers
@@ -144,6 +145,7 @@ def get_table_data(
 
     model_id = model.model_id
     model_path = model.model_path
+    db_type = model.db_type
 
     if len(column_names) == 0:
         raise HTTPException(status_code=400, detail="At least one column must be selected")
@@ -154,7 +156,7 @@ def get_table_data(
     query_columns.extend([col for col, _ in sort_columns])
     query_columns.extend([col for col, _, _ in numeric_filters])
 
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_type=db_type) as model_cursor:
         object_type = _validate_table_and_column_names(model_cursor, table_name, query_columns)
         access_level, is_running = model.access_level, model.is_running
         if access_level in ("read", "reader", "readonly") or is_running:
@@ -210,6 +212,7 @@ def get_distinct_column_values(
         raise HTTPException(status_code=404, detail="Model not found")
     model_id = model.model_id
     model_path = model.model_path
+    db_type = model.db_type
     query, params = table_queries.get_distinct_column_values_query(
         table_name, column_name, select_filters, text_filters, date_columns, numeric_filters, page_size
     )
@@ -218,7 +221,7 @@ def get_distinct_column_values(
     column_names.extend(select_filters.keys())
     column_names.extend(text_filters.keys())
     column_names.extend([col for col, _, _ in numeric_filters])
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_type=db_type) as model_cursor:
         _validate_table_and_column_names(model_cursor, table_name, column_names)
         values = model_cursor.execute(query, params).fetchall()
         return [row[0] for row in values]
@@ -258,6 +261,7 @@ def get_row_count(
         raise HTTPException(status_code=404, detail="Model not found")
     model_id = model.model_id
     model_path = model.model_path
+    db_type = model.db_type
 
     query, params = table_queries.get_row_count_query(
         table_name, select_filters, text_filters, date_columns, numeric_filters
@@ -266,7 +270,7 @@ def get_row_count(
     column_names = list(select_filters.keys())
     column_names.extend(text_filters.keys())
     column_names.extend([col for col, _, _ in numeric_filters])
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_type=db_type) as model_cursor:
         _validate_table_and_column_names(model_cursor, table_name, column_names)
         row = model_cursor.execute(query, params).fetchone()
         return row[0] if row else 0
@@ -289,8 +293,9 @@ def get_table_columns_all(cursor, user_email: str, model_name: str, project_name
         raise HTTPException(status_code=404, detail="Model not found")
     model_id = model.model_id
     model_path = model.model_path
+    db_type = model.db_type
 
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_type=db_type) as model_cursor:
         _validate_table_and_column_names(model_cursor, table_name, [])
         all_rows = model_cursor.get_table_columns(table_name)
 
@@ -324,6 +329,7 @@ def set_columns_order(
         raise HTTPException(status_code=404, detail="Model not found")
     model_id = model.model_id
     model_path = model.model_path
+    db_type = model.db_type
 
     access_level, is_running = model.access_level, model.is_running
     if access_level not in ("admin", "owner"):
@@ -334,7 +340,7 @@ def set_columns_order(
             status_code=403, detail="Cannot modify column order while a task using the model is running"
         )
 
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_type=db_type, db_access=1) as model_cursor:
         _validate_table_and_column_names(model_cursor, table_name, column_names)
         row = model_cursor.check_if_table_exists("S_TableGroup")
         if not row:
@@ -368,6 +374,7 @@ def add_new_column(
         raise HTTPException(status_code=404, detail="Model not found")
     model_id = model.model_id
     model_path = model.model_path
+    db_type = model.db_type
 
     access_level, is_running = model.access_level, model.is_running
     if access_level not in ("admin", "owner"):
@@ -379,7 +386,7 @@ def add_new_column(
     if not SQLITE_IDENTIFIER_RE.fullmatch(column_name):
         raise HTTPException(status_code=400, detail="Invalid characters in column name")
 
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_type=db_type, db_access=1) as model_cursor:
         object_type = _validate_table_and_column_names(model_cursor, table_name, [])
         if object_type != "table":
             raise HTTPException(status_code=404, detail=f"Cannot add column to view:{table_name}")
@@ -429,6 +436,7 @@ def set_column_formatting(
         raise HTTPException(status_code=404, detail="Model not found")
     model_id = model.model_id
     model_path = model.model_path
+    db_type = model.db_type
 
     access_level, is_running = model.access_level, model.is_running
     if access_level not in ("admin", "owner"):
@@ -437,7 +445,7 @@ def set_column_formatting(
         raise HTTPException(
             status_code=403, detail="Cannot modify column formatting while a task using the model is running"
         )
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_type=db_type, db_access=1) as model_cursor:
         _validate_table_and_column_names(model_cursor, table_name, [column_name])
         status = _set_column_formatting(model_cursor, table_name, column_name, column_type, column_formatting)
         if status == 0:
@@ -481,7 +489,8 @@ def get_column_formatting(
         raise HTTPException(status_code=404, detail="Model not found")
     model_id = model.model_id
     model_path = model.model_path
-    with sql_connection(model_id, model_path) as model_cursor:
+    db_type = model.db_type
+    with sql_connection(model_id, model_path, db_type=db_type) as model_cursor:
         result = _get_column_formatting(model_cursor, table_name)
         return result
 
@@ -546,12 +555,13 @@ def update_row(
         raise HTTPException(status_code=404, detail="Model not found")
     model_id = model.model_id
     model_path = model.model_path
+    db_type = model.db_type
     access_level, is_running = model.access_level, model.is_running
     if access_level in ("read", "reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     if is_running:
         raise HTTPException(status_code=403, detail="Cannot modify the model while a task using the model is running")
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_type=db_type, db_access=1) as model_cursor:
         column_names = list(updates.keys())
         generated_columns = _get_generated_columns(model_cursor, table_name)
         common_columns = [col for col in column_names if col.lower() in generated_columns]
@@ -621,11 +631,12 @@ def update_rows(
     model_id = model.model_id
     model_path = model.model_path
     access_level, is_running = model.access_level, model.is_running
+    db_type = model.db_type
     if access_level in ("read", "reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     if is_running:
         raise HTTPException(status_code=403, detail="Cannot modify the model while a task using the model is running")
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_type=db_type, db_access=1) as model_cursor:
         generated_columns = _get_generated_columns(model_cursor, table_name)
         if column_name.lower() in generated_columns:
             raise HTTPException(status_code=400, detail=f"Cannot update generated column: {column_name}")
@@ -701,12 +712,13 @@ def delete_rows(
         raise HTTPException(status_code=404, detail="Model not found")
     model_id = model.model_id
     model_path = model.model_path
+    db_type = model.db_type
     access_level, is_running = model.access_level, model.is_running
     if access_level in ("read", "reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     if is_running:
         raise HTTPException(status_code=403, detail="Cannot modify the model while a task using the model is running")
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_type=db_type, db_access=1) as model_cursor:
         column_names = list(select_filters.keys())
         column_names.extend(text_filters.keys())
         column_names.extend([col for col, _, _ in numeric_filters])
@@ -754,7 +766,8 @@ def get_summary_stats(
         raise HTTPException(status_code=404, detail="Model not found")
     model_id = model.model_id
     model_path = model.model_path
-    with sql_connection(model_id, model_path) as model_cursor:
+    db_type = model.db_type
+    with sql_connection(model_id, model_path, db_type=db_type) as model_cursor:
         column_names_list = list(column_names.keys())
         column_names_list.extend(select_filters.keys())
         column_names_list.extend(text_filters.keys())
@@ -805,12 +818,13 @@ def add_row(
         raise HTTPException(status_code=404, detail="Model not found")
     model_id = model.model_id
     model_path = model.model_path
+    db_type = model.db_type
     access_level, is_running = model.access_level, model.is_running
     if access_level in ("read", "reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     if is_running:
         raise HTTPException(status_code=403, detail="Cannot modify the model while a task using the model is running")
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_type=db_type, db_access=1) as model_cursor:
         column_names = list(values.keys())
         object_type = _validate_table_and_column_names(model_cursor, table_name, column_names)
         generated_columns = _get_generated_columns(model_cursor, table_name)
@@ -847,6 +861,7 @@ def export_tables_to_excel(cursor, user_email: str, model_name: str, project_nam
         raise HTTPException(status_code=404, detail="Model not found")
     model_id = model.model_id
     model_path = model.model_path
+    db_type = model.db_type
     excel_file = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
     excel_file.close()  # Close the file so that xlsxwriter can write to it on Windows
     excel_file_name = excel_file.name
@@ -858,7 +873,7 @@ def export_tables_to_excel(cursor, user_email: str, model_name: str, project_nam
     else:
         safe_base = re.sub(r'[\\/:*?"<>|]', "_", model_name) or "export"
         this_file_name = f"{safe_base}.xlsx"
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_type=db_type) as model_cursor:
         with xw.Workbook(excel_file_name, {"constant_memory": True}) as wb:
             used_table_names = set()
             for table_name in table_names:
@@ -1020,12 +1035,13 @@ def upload_excel(
         raise HTTPException(status_code=404, detail="Model not found")
     model_id = model.model_id
     model_path = model.model_path
+    db_type = model.db_type
     access_level, is_running = model.access_level, model.is_running
     if access_level in ("read", "reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     if is_running:
         raise HTTPException(status_code=403, detail="Cannot modify the model while a task using the model is running")
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_type=db_type, db_access=1) as model_cursor:
         workbook = CalamineWorkbook.from_object(file.file)
         response_status = {}
         for table_name, action in sheet_actions.items():
@@ -1285,7 +1301,8 @@ def check_excel_sheets_exist(cursor, user_email: str, model_name: str, project_n
         return {}
     model_id = model.model_id
     model_path = model.model_path
-    with sql_connection(model_id, model_path) as model_cursor:
+    db_type = model.db_type
+    with sql_connection(model_id, model_path, db_type=db_type) as model_cursor:
         query = table_queries.get_object_types.format(placeholders=",".join(["(?)"] * len(sheet_names)))
         object_types = {}
         for name, obj_type in model_cursor.execute(query, sheet_names).fetchall():

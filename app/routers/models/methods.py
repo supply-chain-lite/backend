@@ -641,8 +641,9 @@ def get_table_groups(cursor, user_email: str, model_name: str, project_name: str
 
     model_id = model.model_id
     model_path = model.model_path
+    db_type = model.db_type
 
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_type=db_type) as model_cursor:
         table_groups = _get_table_groups(model_cursor)
 
     return table_groups
@@ -714,8 +715,9 @@ def get_files_list(cursor, user_email: str, model_name: str, project_name: str):
         raise HTTPException(status_code=404, detail="Model not found")
     model_id = model.model_id
     model_path = model.model_path
+    db_type = model.db_type
 
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_type=db_type) as model_cursor:
         try:
             rows = model_cursor.execute(model_queries.get_data_files).fetchall()
         except Exception:
@@ -742,6 +744,7 @@ def delete_file(cursor, user_email: str, model_name: str, project_name: str, fil
         raise HTTPException(status_code=404, detail="Model not found")
     model_id = model.model_id
     model_path = model.model_path
+    db_type = model.db_type
 
     access_level, is_running = model.access_level, model.is_running
 
@@ -751,7 +754,7 @@ def delete_file(cursor, user_email: str, model_name: str, project_name: str, fil
     if is_running:
         raise HTTPException(status_code=400, detail="Cannot delete file while a task using the model is running")
 
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_type=db_type, db_access=1) as model_cursor:
         rows = model_cursor.execute(model_queries.update_file_blob, (None, None, file_id)).fetchall()
         if len(rows) == 0:
             raise HTTPException(status_code=400, detail="Failed to delete the file")
@@ -763,8 +766,9 @@ def download_file(cursor, user_email: str, model_name: str, project_name: str, f
         raise HTTPException(status_code=404, detail="Model not found")
     model_id = model.model_id
     model_path = model.model_path
+    db_type = model.db_type
 
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_type=db_type) as model_cursor:
         row = model_cursor.execute(model_queries.get_file_blob_and_name, (file_id,)).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="File not found")
@@ -798,6 +802,7 @@ def upload_file(
         )
     model_id = model.model_id
     model_path = model.model_path
+    db_type = model.db_type
     access_level = model.access_level
     is_running = model.is_running
 
@@ -809,7 +814,7 @@ def upload_file(
 
     file_content = file.file.read()
 
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_type=db_type, db_access=1) as model_cursor:
         rows = model_cursor.execute(model_queries.update_file_blob, (file_content, file_name, file_id)).fetchall()
         if len(rows) == 0:
             raise HTTPException(status_code=400, detail="Failed to upload the file")
