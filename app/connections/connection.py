@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 
 
 class sql_connection:
-    def __init__(self, db_id, db_path, db_access = None, db_type = "SQLITE"):
+    def __init__(self, db_id, db_path, db_access=None, db_type="SQLITE"):
         if not db_access:
             if db_type.upper() == "SQLITE":
                 db_access = 1
@@ -70,16 +70,15 @@ def get_cursor(db_id, db_path, db_access):
     if db_id == "master":
         thread_id = f"master-{thread_id}"
     with _pool_lock:
-        if db_path in connection_pool and thread_id in connection_pool[db_path]:
-            connection = connection_pool[db_path][thread_id]
+        db_pool = connection_pool.setdefault(db_path, {})
+        access_pool = db_pool.setdefault(db_access, {})
+
+        if thread_id in access_pool:
+            connection = access_pool[thread_id]
             return connection, connection.cursor()
 
         connection = init_db(db_path, db_access)
-        if db_path in connection_pool:
-            connection_pool[db_path][thread_id] = connection
-        else:
-            connection_pool[db_path] = {thread_id: connection}
-
+        access_pool[thread_id] = connection
         return connection, connection.cursor()
 
 
@@ -210,7 +209,10 @@ class this_cursor:
 
 def close_all_conn():
     with _pool_lock:
-        conns = list(conn for by_thread in connection_pool.values() for conn in by_thread.values())
+        conns = []
+        for by_access in connection_pool.values():
+            for by_thread in by_access.values():
+                conns.extend(by_thread.values())
 
         connection_pool.clear()
     for conn in conns:
@@ -220,9 +222,9 @@ def close_all_conn():
 def remove_connection_object(id):
     with _pool_lock:
         if id in connection_pool:
-            for thread_id in connection_pool[id]:
-                conn = connection_pool[id][thread_id]
-                conn.close()
+            for by_access in connection_pool[id].values():
+                for conn in by_access.values():
+                    conn.close()
             del connection_pool[id]
 
 

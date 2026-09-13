@@ -28,8 +28,8 @@ from app.config import (
 )
 from app.connections.connection import master_connection, sql_connection
 from app.logging_config import get_logger
-from app.routers.models.methods import get_model_id_and_path
-from app.routers.models.queries import get_access_level, get_model_name_and_project_name, get_template_name
+from app.routers.models.methods import get_model_details
+from app.routers.models.queries import get_model_name_and_project_name
 
 from . import queries as run_queries
 
@@ -37,9 +37,11 @@ logger = get_logger(__name__)
 
 
 def list_model_tasks(cursor, user_email: str, model_name: str, project_name: str):
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
+    model_id = model.model_id
+    model_path = model.model_path
     with sql_connection(model_id, model_path) as model_cursor:
         try:
             all_rows = model_cursor.execute(run_queries.list_task_query, silent=True).fetchall()
@@ -68,12 +70,14 @@ def run_task_by_model_id(cursor, user_email: str, model_id: int, task_code: int,
 def run_model_task(
     cursor, user_email: str, model_name: str, project_name: str, task_code: int, task_param_values: list
 ):
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
-    access_level = cursor.execute(get_access_level, (model_id, user_email)).fetchone()
+    model_id = model.model_id
+    model_path = model.model_path
+    access_level = model.access_level
 
-    if access_level is None or access_level[0] in ("read", "reader", "readonly"):
+    if access_level is None or access_level in ("read", "reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to run the model")
 
     current_running_instances = cursor.execute(run_queries.get_current_running_tasks, (model_id,)).fetchone()[0]
@@ -95,7 +99,7 @@ def run_model_task(
             "Please wait for one of your running tasks to finish before starting a new one.",
         )
 
-    template_name = cursor.execute(get_template_name, (model_id,)).fetchone()[0]
+    template_name = model.template_name
 
     with sql_connection(model_id, model_path) as model_cursor:
         task_name, task_display_name = update_task_param_values(model_cursor, task_code, task_param_values)
@@ -436,9 +440,11 @@ def update_task_log(cursor, task_id, forced_cancel=False):
 
 
 def get_task_details(cursor, task_id: int, user_email: str, model_name: str, project_name: str):
-    model_id, _ = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
+    model_id = model.model_id
     task_details = cursor.execute(run_queries.get_task_details, (task_id, model_id)).fetchone()
     if not task_details:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -523,9 +529,12 @@ def restore_db(cursor, task_id: int, user_email: str, model_name: str, project_n
             status_code=400,
             detail=f"Task did not succeed and cannot be used to restore the database. Current status: {task_status}",
         )
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
+    model_id = model.model_id
+    model_path = model.model_path
     if model_id != this_model_id or model_name != this_model_name or project_name != this_project_name:
         raise HTTPException(
             status_code=400,
@@ -537,7 +546,7 @@ def restore_db(cursor, task_id: int, user_email: str, model_name: str, project_n
             status_code=500,
             detail=f"Output model file for task {task_id} does not exist at {output_model_path}.",
         )
-    access_level, is_running = cursor.execute(get_access_level, (model_id, user_email)).fetchone()
+    access_level, is_running = model.access_level, model.is_running
 
     if access_level != "owner":
         raise HTTPException(status_code=403, detail="Only owner can restore")
@@ -565,9 +574,11 @@ def get_diff(cursor, task_id: int, user_email: str, model_name: str, project_nam
         raise HTTPException(status_code=404, detail="Task not found")
     this_model_name, this_project_name, this_model_id, _task_status, task_model_path = task_row
 
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
+    model_id = model.model_id
+    model_path = model.model_path
     if model_id != this_model_id or model_name != this_model_name or project_name != this_project_name:
         raise HTTPException(
             status_code=400,

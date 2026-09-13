@@ -9,7 +9,7 @@ from fastapi import HTTPException, UploadFile, responses
 from python_calamine import CalamineWorkbook
 
 from app.connections.connection import sql_connection
-from app.routers.models.methods import get_model_id_and_path
+from app.routers.models.methods import get_model_details
 
 from . import queries as table_queries
 
@@ -55,9 +55,11 @@ def get_table_headers(
     Raises:
         HTTPException(404): If the model cannot be resolved or the table does not exist.
     """
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
+    model_id = model.model_id
+    model_path = model.model_path
 
     with sql_connection(model_id, model_path) as model_cursor:
         _validate_table_and_column_names(model_cursor, table_name, [])
@@ -136,9 +138,12 @@ def get_table_data(
         HTTPException: 404 if the model cannot be resolved for the given user/model/project.
         HTTPException: 400 if `column_names` is empty.
     """
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
+
+    model_id = model.model_id
+    model_path = model.model_path
 
     if len(column_names) == 0:
         raise HTTPException(status_code=400, detail="At least one column must be selected")
@@ -151,7 +156,7 @@ def get_table_data(
 
     with sql_connection(model_id, model_path) as model_cursor:
         object_type = _validate_table_and_column_names(model_cursor, table_name, query_columns)
-        access_level, is_running = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
+        access_level, is_running = model.access_level, model.is_running
         if access_level in ("read", "reader", "readonly") or is_running:
             object_type = "read_only_object"
         select_columns = ["rowid", *column_names] if object_type == "table" else list(column_names or [])
@@ -199,10 +204,12 @@ def get_distinct_column_values(
     Raises:
         HTTPException: Raised with status_code 404 and detail "Model not found" when the model cannot be resolved for the given user.
     """
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
-        raise HTTPException(status_code=404, detail="Model not found")
+    model = get_model_details(cursor, model_name, project_name, user_email)
 
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+    model_id = model.model_id
+    model_path = model.model_path
     query, params = table_queries.get_distinct_column_values_query(
         table_name, column_name, select_filters, text_filters, date_columns, numeric_filters, page_size
     )
@@ -246,9 +253,11 @@ def get_row_count(
     Raises:
         HTTPException: Raised with status_code 404 and detail "Model not found" when the model cannot be resolved for the given user.
     """
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
+    model_id = model.model_id
+    model_path = model.model_path
 
     query, params = table_queries.get_row_count_query(
         table_name, select_filters, text_filters, date_columns, numeric_filters
@@ -275,9 +284,11 @@ def get_table_columns_all(cursor, user_email: str, model_name: str, project_name
     Raises:
         HTTPException(404): If the model cannot be resolved or the table does not exist.
     """
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
+    model_id = model.model_id
+    model_path = model.model_path
 
     with sql_connection(model_id, model_path) as model_cursor:
         _validate_table_and_column_names(model_cursor, table_name, [])
@@ -308,11 +319,13 @@ def set_columns_order(
         HTTPException: status_code=403, detail="User does not have permission to modify the model" when the user lacks required access.
         HTTPException: status_code=404, detail="Cannot set column order: Table not found: S_TableGroup" when the required metadata table is missing.
     """
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
+    model_id = model.model_id
+    model_path = model.model_path
 
-    access_level, is_running = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
+    access_level, is_running = model.access_level, model.is_running
     if access_level not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
 
@@ -350,11 +363,13 @@ def add_new_column(
         fastapi.HTTPException: 400 if a column with the given name already exists on the table.
         fastapi.HTTPException: 400 if the provided `column_type` is not one of the allowed values.
     """
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
+    model_id = model.model_id
+    model_path = model.model_path
 
-    access_level, is_running = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
+    access_level, is_running = model.access_level, model.is_running
     if access_level not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
 
@@ -409,11 +424,13 @@ def set_column_formatting(
         fastapi.HTTPException: 403 if the user lacks permission to modify the model.
         fastapi.HTTPException: 404 if the metadata table `S_TableParameters` is not present.
     """
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
+    model_id = model.model_id
+    model_path = model.model_path
 
-    access_level, is_running = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
+    access_level, is_running = model.access_level, model.is_running
     if access_level not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     if is_running:
@@ -459,9 +476,11 @@ def get_column_formatting(
     Returns:
         dict[str, dict[str, str | int | float | bool | None]]: Mapping of column name to its formatting dictionary, where each dictionary includes a `"column_type"` key.
     """
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
+    model_id = model.model_id
+    model_path = model.model_path
     with sql_connection(model_id, model_path) as model_cursor:
         result = _get_column_formatting(model_cursor, table_name)
         return result
@@ -522,10 +541,12 @@ def update_row(
         HTTPException(status_code=404): "View: {table_name} is not updatable" when the target is a view, or "Table not found" when the table does not exist.
         HTTPException(status_code=400): "No valid columns provided for update" when `updates` contains no updatable columns.
     """
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
-    access_level, is_running = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
+    model_id = model.model_id
+    model_path = model.model_path
+    access_level, is_running = model.access_level, model.is_running
     if access_level in ("read", "reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     if is_running:
@@ -594,10 +615,12 @@ def update_rows(
         HTTPException(403): If the user does not have permission to modify the model.
         HTTPException(400): If attempting to update a generated column or if provided filters/values are invalid.
     """
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
-    access_level, is_running = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
+    model_id = model.model_id
+    model_path = model.model_path
+    access_level, is_running = model.access_level, model.is_running
     if access_level in ("read", "reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     if is_running:
@@ -673,10 +696,12 @@ def delete_rows(
             - 404 if the model is not found, the target is a view (not updatable), or a referenced table/column is missing.
             - 403 if the user does not have permission to modify the model.
     """
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
-    access_level, is_running = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
+    model_id = model.model_id
+    model_path = model.model_path
+    access_level, is_running = model.access_level, model.is_running
     if access_level in ("read", "reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     if is_running:
@@ -723,10 +748,12 @@ def get_summary_stats(
     Raises:
         fastapi.HTTPException: 404 if the model, table, or any referenced column is not found; 400 if no valid aggregate functions are provided.
     """
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
-        raise HTTPException(status_code=404, detail="Model not found")
+    model = get_model_details(cursor, model_name, project_name, user_email)
 
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+    model_id = model.model_id
+    model_path = model.model_path
     with sql_connection(model_id, model_path) as model_cursor:
         column_names_list = list(column_names.keys())
         column_names_list.extend(select_filters.keys())
@@ -773,10 +800,12 @@ def add_row(
         fastapi.HTTPException: 403 if the user does not have permission to modify the model.
         fastapi.HTTPException: 403 if a task using the model is currently running.
     """
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
-    access_level, is_running = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
+    model_id = model.model_id
+    model_path = model.model_path
+    access_level, is_running = model.access_level, model.is_running
     if access_level in ("read", "reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     if is_running:
@@ -813,9 +842,11 @@ def export_tables_to_excel(cursor, user_email: str, model_name: str, project_nam
         - Each table is written to its own worksheet; worksheet names are sanitized, limited to 31 characters, and made unique by appending a numeric suffix when necessary.
         - The export reads up to 1,000,000 rows per table and applies any per-column formatting metadata found in the model.
     """
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
+    model_id = model.model_id
+    model_path = model.model_path
     excel_file = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
     excel_file.close()  # Close the file so that xlsxwriter can write to it on Windows
     excel_file_name = excel_file.name
@@ -983,10 +1014,13 @@ def upload_excel(
                        403 if the user lacks modification permission;
                        400 if the Excel file does not contain at least a header row or other input validation fails.
     """
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
-    access_level, is_running = cursor.execute(table_queries.get_access_level, (model_id, user_email)).fetchone()
+    model_id = model.model_id
+    model_path = model.model_path
+    access_level, is_running = model.access_level, model.is_running
     if access_level in ("read", "reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
     if is_running:
@@ -1242,13 +1276,15 @@ def _datetime_to_excel_float(dt):
 
 
 def check_excel_sheets_exist(cursor, user_email: str, model_name: str, project_name: str, sheet_names: list[str]):
-    model_id, model_path = get_model_id_and_path(cursor, model_name, project_name, user_email)
-    if not model_id:
+    model = get_model_details(cursor, model_name, project_name, user_email)
+
+    if not model:
         raise HTTPException(status_code=404, detail="Model not found")
 
     if len(sheet_names) == 0:
         return {}
-
+    model_id = model.model_id
+    model_path = model.model_path
     with sql_connection(model_id, model_path) as model_cursor:
         query = table_queries.get_object_types.format(placeholders=",".join(["(?)"] * len(sheet_names)))
         object_types = {}

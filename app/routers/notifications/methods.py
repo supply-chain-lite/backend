@@ -2,7 +2,7 @@ import json
 
 from fastapi import HTTPException
 
-from app.routers.models.methods import get_model_id_and_path, get_project_id, save_as_model
+from app.routers.models.methods import get_model_details, get_project_id, save_as_model
 from app.routers.models.queries import get_access_level, insert_user_models
 
 from . import queries as notification_queries
@@ -101,15 +101,16 @@ def accept_model_share(
     project_name = notification_params.get("project_name")
     access_level = notification_params.get("access_level")
 
-    old_model_id, _ = get_model_id_and_path(cursor, model_name, project_name, from_user_email)
+    old_model = get_model_details(cursor, model_name, project_name, from_user_email)
 
-    if not old_model_id:
+    if not old_model:
         raise HTTPException(status_code=404, detail="Model not found for sharing")
 
-    _, is_running = cursor.execute(get_access_level, (old_model_id, from_user_email)).fetchone()
+    is_running = old_model.is_running
     if is_running:
         raise HTTPException(status_code=400, detail="Cannot accept a shared model while a task using it is running")
 
+    old_model_id = old_model.model_id
     if old_model_id != model_id:
         raise HTTPException(status_code=400, detail="Model ID mismatch")
 
@@ -129,8 +130,9 @@ def accept_model_share(
         )
     else:
         project_id = get_project_id(cursor, user_email, new_project_name)
-        new_model_id, _ = get_model_id_and_path(cursor, new_model_name, new_project_name, user_email)
-        if new_model_id:
+        new_model = get_model_details(cursor, new_model_name, new_project_name, user_email)
+
+        if new_model:
             raise HTTPException(status_code=400, detail="User already has a model with the same name in the project")
         cursor.execute(
             insert_user_models,
