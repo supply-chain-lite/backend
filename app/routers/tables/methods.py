@@ -1303,19 +1303,25 @@ def check_excel_sheets_exist(cursor, user_email: str, model_name: str, project_n
     model_path = model.model_path
     db_type = model.db_type
     with sql_connection(model_id, model_path, db_type=db_type) as model_cursor:
-        query = table_queries.get_object_types.format(placeholders=",".join(["(?)"] * len(sheet_names)))
+        requested_names = {name.casefold(): name for name in sheet_names}
         object_types = {}
-        for name, obj_type in model_cursor.execute(query, sheet_names).fetchall():
-            object_types[name] = obj_type
-            if obj_type != "table":
-                object_types[name] = "not a table"
+        for obj_type, object_name in model_cursor.get_all_objects():
+            sheet_name = requested_names.get(object_name.casefold())
+            if sheet_name is not None:
+                object_types[sheet_name] = "table" if obj_type.casefold() == "table" else "not a table"
+
         row = model_cursor.check_if_table_exists("S_TableGroup")
         if not row:
             return object_types
-        query = table_queries.get_table_types.format(placeholders=",".join(["(?)"] * len(sheet_names)))
-        for name, obj_type in model_cursor.execute(query, sheet_names).fetchall():
-            if object_types.get(name) == "table":
-                object_types[name] = obj_type
+        table_types = {
+            name.casefold(): obj_type
+            for name, obj_type in model_cursor.execute(
+                "SELECT TableName, ifnull(TableType, 'table') FROM S_TableGroup"
+            ).fetchall()
+        }
+        for name in list(object_types):
+            if object_types[name] == "table":
+                object_types[name] = table_types.get(name.casefold(), "table")
 
     return object_types
 

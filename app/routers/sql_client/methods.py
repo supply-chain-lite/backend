@@ -59,12 +59,15 @@ def execute_sql_query(cursor, user_email: str, model_name: str, project_name: st
     if access_level not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="User does not have permission to execute SQL queries")
 
-    if is_running and query.strip().lower().startswith(("insert", "update", "delete", "create", "alter", "drop")):
+    write_mode = 0
+    if query.strip().lower().startswith(("insert", "update", "delete", "create", "alter", "drop")):
+        write_mode = 1
+    if is_running and write_mode:
         raise HTTPException(
             status_code=403, detail="Cannot execute modifying SQL query while a task using the model is running"
         )
 
-    with sql_connection(model_id, model_path, db_type=db_type, db_access=1) as model_cursor:
+    with sql_connection(model_id, model_path, db_type=db_type, db_access=write_mode) as model_cursor:
         desc = ()
         try:
             desc = model_cursor.get_description(query)  # Check if query is valid and get column info
