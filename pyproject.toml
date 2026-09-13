@@ -9,6 +9,7 @@ dependencies = [
     "uvicorn[standard]",
     "pydantic-settings",
     "apsw>=3.53.0.0",
+    "duckdb==1.5.5",
     "python-dotenv>=1.2.2",
     "pydantic[email]>=2.12.5",
     "pyjwt>=2.13.0",

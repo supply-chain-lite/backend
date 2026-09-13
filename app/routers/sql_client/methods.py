@@ -1,6 +1,6 @@
 from fastapi import HTTPException
 
-from app.connections.connection import sql_connection
+from app.connections.connection import query_requires_write_access, sql_connection
 from app.routers.models.methods import get_model_details
 
 from . import queries as sql_client_queries
@@ -13,10 +13,11 @@ def get_sql_objects(cursor, user_email: str, model_name: str, project_name: str)
 
     model_id = model.model_id
     model_path = model.model_path
+    db_type = model.db_type
     access_level = model.access_level
     if access_level not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="User does not have permission to get SQL objects")
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_type=db_type) as model_cursor:
         tables = []
         views = []
         all_rows = model_cursor.get_all_objects()
@@ -34,11 +35,12 @@ def get_object_ddl(cursor, user_email: str, model_name: str, project_name: str, 
         raise HTTPException(status_code=404, detail="Model not found")
     model_id = model.model_id
     model_path = model.model_path
+    db_type = model.db_type
 
     access_level = model.access_level
     if access_level not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="User does not have permission to get object DDL")
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_type=db_type) as model_cursor:
         ddl = model_cursor.get_object_ddl(object_name)
         if ddl is None:
             raise HTTPException(status_code=404, detail="Object not found")
@@ -51,17 +53,19 @@ def execute_sql_query(cursor, user_email: str, model_name: str, project_name: st
         raise HTTPException(status_code=404, detail="Model not found")
     model_id = model.model_id
     model_path = model.model_path
+    db_type = model.db_type
 
     access_level, is_running = model.access_level, model.is_running
     if access_level not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="User does not have permission to execute SQL queries")
 
-    if is_running and query.strip().lower().startswith(("insert", "update", "delete", "create", "alter", "drop")):
+    write_mode = int(query_requires_write_access(query, db_type))
+    if is_running and write_mode:
         raise HTTPException(
             status_code=403, detail="Cannot execute modifying SQL query while a task using the model is running"
         )
 
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_type=db_type, db_access=write_mode) as model_cursor:
         desc = ()
         try:
             desc = model_cursor.get_description(query)  # Check if query is valid and get column info

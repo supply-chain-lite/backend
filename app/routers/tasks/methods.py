@@ -42,7 +42,8 @@ def list_model_tasks(cursor, user_email: str, model_name: str, project_name: str
         raise HTTPException(status_code=404, detail="Model not found")
     model_id = model.model_id
     model_path = model.model_path
-    with sql_connection(model_id, model_path) as model_cursor:
+    db_type = model.db_type
+    with sql_connection(model_id, model_path, db_type=db_type) as model_cursor:
         try:
             all_rows = model_cursor.execute(run_queries.list_task_query, silent=True).fetchall()
         except Exception:
@@ -76,6 +77,7 @@ def run_model_task(
     model_id = model.model_id
     model_path = model.model_path
     access_level = model.access_level
+    db_type = model.db_type
 
     if access_level is None or access_level in ("read", "reader", "readonly"):
         raise HTTPException(status_code=403, detail="User does not have permission to run the model")
@@ -101,7 +103,7 @@ def run_model_task(
 
     template_name = model.template_name
 
-    with sql_connection(model_id, model_path) as model_cursor:
+    with sql_connection(model_id, model_path, db_type=db_type, db_access=1) as model_cursor:
         task_name, task_display_name = update_task_param_values(model_cursor, task_code, task_param_values)
         if not task_name:
             raise HTTPException(status_code=404, detail=f"Task: {task_display_name} not found")
