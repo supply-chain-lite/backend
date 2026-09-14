@@ -26,7 +26,11 @@ class duckdb_connection:
         self.connection = duckdb.connect(
             database=self.db_path,
             read_only=self.db_access == 0,
-            config={"enable_external_access": False},
+            config={
+                "enable_external_access": True,
+                "autoinstall_known_extensions": True,
+                "autoload_known_extensions": True,
+            },
         )
         # DuckDB's cursor() creates another connection. Use this connection itself
         # for both execution and transactions so they always share one session.
