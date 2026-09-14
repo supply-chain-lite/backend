@@ -9,9 +9,13 @@ get_model_name_and_project_name = """SELECT S_UserModels.ModelName, S_Projects.P
                                 AND S_UserModels.ModelId = ?
                                 AND S_UserModels.UserEmail = ?"""
 
+get_template_db_type = """select ifnull(json_extract(ifnull(JsonData, '{}'), '$.db_type'), 'SQLITE')
+                            from S_ModelTemplates
+                            WHERE TemplateName = ?"""
+
 insert_models = """INSERT INTO S_Models (
-                    ModelUID, ModelPath, OwnerEmail, TemplateName)
-                    VALUES (?, ?, ?, ?)
+                    ModelUID, ModelPath, OwnerEmail, TemplateName, JsonData)
+                    VALUES (?, ?, ?, ?, ?)
                     RETURNING ModelId"""
 
 insert_user_models = """INSERT INTO S_UserModels (
@@ -147,7 +151,7 @@ get_file_blob_and_name = "SELECT FileBlob, ifnull(UploadedFileName, FileName) FR
 
 update_file_blob = """UPDATE S_DataFiles SET FileBlob = ?,
                     UploadedFileName = ?,
-                    LastUpdated = datetime('now')
+                    LastUpdated = CURRENT_TIMESTAMP
                     WHERE FileId = ?
                     RETURNING 1"""
 

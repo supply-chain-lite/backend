@@ -1,6 +1,12 @@
 """Entry point for master SQLite and database-specific model connections."""
 
+import os
 import re
+import shutil
+
+import apsw
+import duckdb
+from fastapi import HTTPException
 
 from ..config import master_db
 from .connection_sqlite import close_all_conn as close_all_conn
@@ -57,6 +63,25 @@ def _remove_sql_comments_and_literals(query):
     return "".join(output)
 
 
+def _duckdb_explained_query(query):
+    """Unwrap EXPLAIN, including ANALYZE and parenthesized options."""
+    import duckdb
+
+    # DuckDB token offsets are UTF-8 byte offsets; comments are omitted.
+    encoded = query.encode("utf-8")
+    offsets = [offset for offset, _ in duckdb.tokenize(query)]
+    tokens = [re.match(rb"[A-Za-z_]+|.", encoded[offset:]).group().upper() for offset in offsets]
+    index = 1  # Skip EXPLAIN.
+    if tokens[index] == b"ANALYZE":
+        index += 1
+    elif tokens[index] == b"(":
+        index += 1
+        while tokens[index] != b")":
+            index += 1
+        index += 1
+    return encoded[offsets[index] :].decode("utf-8")
+
+
 def query_requires_write_access(query, db_type="SQLITE"):
     """Return whether executing *query* requires a writable model connection.
 
@@ -77,6 +102,11 @@ def query_requires_write_access(query, db_type="SQLITE"):
                 return False
             for statement in statements:
                 statement_type = statement.type.name
+                if statement_type == "EXPLAIN":
+                    # DuckDB requires write access for explained writes even
+                    # without ANALYZE; ANALYZE additionally executes the write.
+                    if query_requires_write_access(_duckdb_explained_query(statement.query), db_type):
+                        return True
                 if statement_type == "COPY":
                     return bool(re.search(r"\bFROM\b", statement.query, re.IGNORECASE))
                 if statement_type in {
@@ -147,3 +177,63 @@ class sql_connection:
 
 def master_connection():
     return sql_connection("master", master_db, db_type="SQLITE", db_access=1)
+
+
+def create_database(db_path, db_type, db_file):
+    if db_type.upper() == "SQLITE":
+        connection = apsw.Connection(db_path)
+        with open(db_file, "r") as f:
+            connection.execute(f.read())
+        connection.close()
+    elif db_type.upper() == "DUCKDB":
+        con = duckdb.connect(db_path)
+        with open(db_file, "r") as f:
+            con.execute(f.read())
+        con.close()
+    else:
+        raise ValueError(f"Unsupported database type: {db_type}")
+
+
+def vacuum_model(db_path, db_type):
+    if db_type.upper() == "SQLITE":
+        connection = apsw.Connection(db_path)
+        connection.execute("VACUUM")
+        connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        connection.close()
+    elif db_type.upper() == "DUCKDB":
+        con = duckdb.connect(db_path)
+        con.execute("CHECKPOINT")
+        con.close()
+    else:
+        raise ValueError(f"Unsupported database type: {db_type}")
+
+
+def copy_database(src_db_path, dest_db_path, db_type):
+    if not os.path.exists(src_db_path):
+        raise FileNotFoundError(f"Source database does not exist: {src_db_path}")
+    restore = False
+    if os.path.exists(dest_db_path):
+        restore = True
+    if db_type.upper() == "SQLITE":
+        if restore:
+            backup_connection = apsw.Connection(src_db_path)
+            this_connection = apsw.Connection(dest_db_path)
+            try:
+                with this_connection.backup("main", backup_connection, "main") as backup:
+                    backup.step()  # copy entire database in one step
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to restore backup: {str(e)}")
+            finally:
+                this_connection.close()
+                backup_connection.close()
+        else:
+            connection = apsw.Connection(src_db_path)
+            connection.execute(f"VACUUM INTO '{dest_db_path}'")
+            connection.close()
+    elif db_type.upper() == "DUCKDB":
+        conn = duckdb.connect(dest_db_path)
+        conn.execute("CHECKPOINT")
+        conn.close()
+        shutil.copy(src_db_path, dest_db_path)
+    else:
+        raise ValueError(f"Unsupported database type: {db_type}")

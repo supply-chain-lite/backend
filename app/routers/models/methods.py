@@ -6,11 +6,10 @@ import tempfile
 import uuid
 from types import SimpleNamespace
 
-import apsw
 from fastapi import File, HTTPException, UploadFile, responses
 
 from app.config import BACKUP_FOLDER, DATA_FOLDER, MAX_BACKUPS, TEMP_FOLDER
-from app.connections.connection import remove_connection_object, sql_connection
+from app.connections import connection
 
 from . import queries as model_queries
 
@@ -26,17 +25,28 @@ def add_new_model(
     if model:
         raise HTTPException(status_code=400, detail="Model already exists in project for user")
     template_sql_file = get_template_sql_file(cursor, user_name, template_name, with_sample_data)
+    db_type = cursor.execute(model_queries.get_template_db_type, (template_name,)).fetchone()[0]
 
     db_uid = str(uuid.uuid4())
-    db_path = os.path.join(DATA_FOLDER, f"{db_uid}.sqlite3")
+
+    if db_type.upper() == "SQLITE":
+        file_ext = ".sqlite3"
+    elif db_type.upper() == "DUCKDB":
+        file_ext = ".duckdb"
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported database type: {db_type}")
+
+    db_path = os.path.join(DATA_FOLDER, f"{db_uid}{file_ext}")
     if os.path.exists(db_path):
         raise HTTPException(status_code=400, detail="Model with same UID already exists")
-    with sqlite3.connect(db_path) as model_db:
-        with open(template_sql_file, "r") as f:
-            model_db.executescript(f.read())
+    connection.create_database(db_path, db_type, template_sql_file)
+
+    json_data = json.dumps({"db_type": db_type})
 
     role = "owner"
-    model_id = cursor.execute(model_queries.insert_models, (db_uid, db_path, user_name, template_name)).fetchone()[0]
+    model_id = cursor.execute(
+        model_queries.insert_models, (db_uid, db_path, user_name, template_name, json_data)
+    ).fetchone()[0]
     cursor.execute(
         model_queries.insert_user_models,
         (model_id, user_name, project_id, role, model_name),
@@ -107,7 +117,8 @@ def save_as_model(
     if not old_model:
         raise HTTPException(status_code=404, detail="Model not found in the old project")
 
-    old_model_path = old_model.model_path if old_model else None
+    old_model_path = old_model.model_path
+    db_type = old_model.db_type
 
     new_model = get_model_details(cursor, new_model_name, new_project_name, new_user_email)
     if new_model:
@@ -115,8 +126,15 @@ def save_as_model(
 
     template_name = old_model.template_name
 
+    if db_type.upper() == "SQLITE":
+        file_ext = ".sqlite3"
+    elif db_type.upper() == "DUCKDB":
+        file_ext = ".duckdb"
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported database type: {db_type}")
+
     db_uid = str(uuid.uuid4())
-    new_model_path = os.path.join(DATA_FOLDER, f"{db_uid}.sqlite3")
+    new_model_path = os.path.join(DATA_FOLDER, f"{db_uid}{file_ext}")
     if os.path.exists(new_model_path):
         raise HTTPException(status_code=400, detail="Model with same UID already exists")
 
@@ -125,7 +143,7 @@ def save_as_model(
     role = "owner"
     model_id = cursor.execute(
         model_queries.insert_models,
-        (db_uid, new_model_path, new_user_email, template_name),
+        (db_uid, new_model_path, new_user_email, template_name, json.dumps({"db_type": db_type})),
     ).fetchone()[0]
     cursor.execute(
         model_queries.insert_user_models,
@@ -133,13 +151,7 @@ def save_as_model(
     )
 
     if model_id:
-        connection = apsw.Connection(old_model_path)
-        try:
-            connection.execute(f"VACUUM INTO '{new_model_path}'")
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to copy model database: {str(e)}")
-        finally:
-            connection.close()
+        connection.copy_database(old_model_path, new_model_path, db_type)
         return 1
     raise HTTPException(status_code=500, detail="Failed to create new model")
 
@@ -182,6 +194,7 @@ def delete_model(cursor, user_email: str, model_name: str, project_name: str):
 
     model_id = model.model_id
     model_path = model.model_path
+    model_db_type = model.db_type
 
     access_level, is_running = model.access_level, model.is_running
     if is_running:
@@ -204,7 +217,8 @@ def delete_model(cursor, user_email: str, model_name: str, project_name: str):
         if os.path.exists(backup_path):
             os.remove(backup_path)
     cursor.execute(model_queries.delete_model_backup, (model_id, "NA"))
-    remove_connection_object(model_id)
+    if model_db_type.upper() == "SQLITE":
+        connection.remove_connection_object(model_id)
 
     return 1
 
@@ -245,13 +259,7 @@ def create_model_backup(cursor, user_email: str, model_name: str, project_name: 
     if os.path.exists(backup_path):
         raise HTTPException(status_code=500, detail="Backup with same UID already exists")
 
-    connection = apsw.Connection(model_path)
-    try:
-        connection.execute(f"VACUUM INTO '{backup_path}'")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create backup: {str(e)}")
-    finally:
-        connection.close()
+    connection.copy_database(model_path, backup_path, model.db_type)
 
     cursor.execute(
         "INSERT INTO S_ModelBackups (ModelId, BackupPath, BackupText) VALUES (?, ?, ?)",
@@ -285,6 +293,7 @@ def restore_model_from_backup(cursor, user_email: str, model_name: str, project_
     model_path = model.model_path
     access_level = model.access_level
     is_running = model.is_running
+    db_type = model.db_type
 
     if is_running:
         raise HTTPException(
@@ -303,17 +312,7 @@ def restore_model_from_backup(cursor, user_email: str, model_name: str, project_
     if not os.path.exists(backup_path):
         raise HTTPException(status_code=404, detail="Backup file not found on disk")
 
-    backup_connection = apsw.Connection(backup_path)
-    this_connection = apsw.Connection(model_path)
-
-    try:
-        with this_connection.backup("main", backup_connection, "main") as backup:
-            backup.step()  # copy entire database in one step
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to restore backup: {str(e)}")
-    finally:
-        this_connection.close()
-        backup_connection.close()
+    connection.copy_database(backup_path, model_path, db_type)
 
 
 def share_model(
@@ -410,13 +409,7 @@ def download_model(cursor, user_email: str, model_name: str, project_name: str):
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db", dir=TEMP_FOLDER)
     tmp.close()  # Close the file so that it can be used by other processes
 
-    connection = apsw.Connection(model_path)
-    try:
-        connection.execute(f"VACUUM INTO '{tmp.name}'")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create a copy of the model for download: {str(e)}")
-    finally:
-        connection.close()
+    connection.copy_database(model_path, tmp.name, model.db_type)
 
     # 3. Return file
     return responses.FileResponse(
@@ -441,6 +434,7 @@ def upload_model(
     model_path = model.model_path
     access_level = model.access_level
     is_running = model.is_running
+    db_type = model.db_type
 
     if access_level not in ["owner", "editor"]:
         raise HTTPException(status_code=403, detail="Only owner and editor can upload the model")
@@ -454,15 +448,7 @@ def upload_model(
     with open(tmp.name, "wb") as buffer:
         shutil.copyfileobj(model_file.file, buffer)
 
-    backup_connection = apsw.Connection(tmp.name)
-    this_connection = apsw.Connection(model_path)
-
-    try:
-        with this_connection.backup("main", backup_connection, "main") as backup:
-            backup.step()  # copy entire database in one step
-    finally:
-        this_connection.close()
-        backup_connection.close()
+    connection.copy_database(tmp.name, model_path, db_type)
 
 
 def update_model_access_level(cursor, user_email: str, model_name: str, project_name: str, access_list: list):
@@ -643,7 +629,7 @@ def get_table_groups(cursor, user_email: str, model_name: str, project_name: str
     model_path = model.model_path
     db_type = model.db_type
 
-    with sql_connection(model_id, model_path, db_type=db_type) as model_cursor:
+    with connection.sql_connection(model_id, model_path, db_type=db_type) as model_cursor:
         table_groups = _get_table_groups(model_cursor)
 
     return table_groups
@@ -657,6 +643,7 @@ def vacuum_model(cursor, user_email: str, model_name: str, project_name: str):
     model_path = model.model_path
     access_level = model.access_level
     is_running = model.is_running
+    db_type = model.db_type
 
     if access_level != "owner":
         raise HTTPException(status_code=403, detail="Only owner can vacuum the model")
@@ -664,10 +651,7 @@ def vacuum_model(cursor, user_email: str, model_name: str, project_name: str):
     if is_running:
         raise HTTPException(status_code=400, detail="Cannot vacuum model while a task using it is running")
 
-    connection = apsw.Connection(model_path)
-    connection.execute("VACUUM")
-    connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-    connection.close()
+    connection.vacuum_model(model_path, db_type)
 
 
 def get_model_info(cursor, user_email: str, model_name: str, project_name: str):
@@ -717,7 +701,7 @@ def get_files_list(cursor, user_email: str, model_name: str, project_name: str):
     model_path = model.model_path
     db_type = model.db_type
 
-    with sql_connection(model_id, model_path, db_type=db_type) as model_cursor:
+    with connection.sql_connection(model_id, model_path, db_type=db_type) as model_cursor:
         try:
             rows = model_cursor.execute(model_queries.get_data_files).fetchall()
         except Exception:
@@ -754,7 +738,7 @@ def delete_file(cursor, user_email: str, model_name: str, project_name: str, fil
     if is_running:
         raise HTTPException(status_code=400, detail="Cannot delete file while a task using the model is running")
 
-    with sql_connection(model_id, model_path, db_type=db_type, db_access=1) as model_cursor:
+    with connection.sql_connection(model_id, model_path, db_type=db_type, db_access=1) as model_cursor:
         rows = model_cursor.execute(model_queries.update_file_blob, (None, None, file_id)).fetchall()
         if len(rows) == 0:
             raise HTTPException(status_code=400, detail="Failed to delete the file")
@@ -768,7 +752,7 @@ def download_file(cursor, user_email: str, model_name: str, project_name: str, f
     model_path = model.model_path
     db_type = model.db_type
 
-    with sql_connection(model_id, model_path, db_type=db_type) as model_cursor:
+    with connection.sql_connection(model_id, model_path, db_type=db_type) as model_cursor:
         row = model_cursor.execute(model_queries.get_file_blob_and_name, (file_id,)).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="File not found")
@@ -814,7 +798,7 @@ def upload_file(
 
     file_content = file.file.read()
 
-    with sql_connection(model_id, model_path, db_type=db_type, db_access=1) as model_cursor:
+    with connection.sql_connection(model_id, model_path, db_type=db_type, db_access=1) as model_cursor:
         rows = model_cursor.execute(model_queries.update_file_blob, (file_content, file_name, file_id)).fetchall()
         if len(rows) == 0:
             raise HTTPException(status_code=400, detail="Failed to upload the file")

@@ -7,7 +7,6 @@ import time
 from contextlib import nullcontext
 from uuid import uuid4
 
-import apsw
 import boto3
 import redis
 from botocore.exceptions import BotoCoreError, ClientError
@@ -26,7 +25,7 @@ from app.config import (
     SQLITE_DIFF_TOOL,
     TEMP_FOLDER,
 )
-from app.connections.connection import master_connection, sql_connection
+from app.connections import connection
 from app.logging_config import get_logger
 from app.routers.models.methods import get_model_details
 from app.routers.models.queries import get_model_name_and_project_name
@@ -43,7 +42,7 @@ def list_model_tasks(cursor, user_email: str, model_name: str, project_name: str
     model_id = model.model_id
     model_path = model.model_path
     db_type = model.db_type
-    with sql_connection(model_id, model_path, db_type=db_type) as model_cursor:
+    with connection.sql_connection(model_id, model_path, db_type=db_type) as model_cursor:
         try:
             all_rows = model_cursor.execute(run_queries.list_task_query, silent=True).fetchall()
         except Exception:
@@ -103,7 +102,7 @@ def run_model_task(
 
     template_name = model.template_name
 
-    with sql_connection(model_id, model_path, db_type=db_type, db_access=1) as model_cursor:
+    with connection.sql_connection(model_id, model_path, db_type=db_type, db_access=1) as model_cursor:
         task_name, task_display_name = update_task_param_values(model_cursor, task_code, task_param_values)
         if not task_name:
             raise HTTPException(status_code=404, detail=f"Task: {task_display_name} not found")
@@ -128,7 +127,7 @@ def run_model_task(
     cursor.intermediate_commit()
 
     try:
-        file_url = _copy_db_and_upload_to_broker(model_path)
+        file_url = _copy_db_and_upload_to_broker(model_path, db_type)
     except Exception as e:
         cursor.execute(run_queries.update_model_lock, (0, model_id))
         cursor.intermediate_commit()
@@ -209,17 +208,11 @@ def update_task_param_values(model_cursor, task_code: int, new_param_values: lis
     return task_name, task_display_name
 
 
-def _copy_db_and_upload_to_broker(model_path: str):
+def _copy_db_and_upload_to_broker(model_path: str, db_type: str):
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db", dir=TEMP_FOLDER)
     tmp.close()  # Close the file so that it can be used by other processes
 
-    connection = apsw.Connection(model_path)
-    try:
-        connection.execute(f"VACUUM INTO '{tmp.name}'")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create a copy of the model for upload: {str(e)}")
-    finally:
-        connection.close()
+    connection.copy_database(model_path, tmp.name, db_type=db_type)
 
     tmp_path = tmp.name
 
@@ -384,30 +377,25 @@ def add_error_notification(cursor, task_id: int, task_status: str, error_message
 
 
 def update_task_output_and_logs(this_cursor, task_id: int, forced_cancel: bool = False):
-    cm = master_connection() if this_cursor is None else nullcontext(this_cursor)
+    cm = connection.master_connection() if this_cursor is None else nullcontext(this_cursor)
     with cm as cursor:
         model_id = None
         try:
-            task_status, output_model_path, model_id, model_path = cursor.execute(
+            task_status, output_model_path, model_id, model_path, db_type = cursor.execute(
                 run_queries.get_task_file, (task_id,)
             ).fetchone()
 
             update_task_log(cursor, task_id, forced_cancel=forced_cancel)
             # s3 is not implemented for task output yet, so we only handle local file output for now
             if os.path.exists(output_model_path) and task_status in ("SUCCESS", "COMPLETED"):
-                backup_connection = apsw.Connection(output_model_path)
-                this_connection = apsw.Connection(model_path)
                 try:
-                    with this_connection.backup("main", backup_connection, "main") as backup:
-                        backup.step()  # copy entire database in one step
+                    connection.copy_database(output_model_path, model_path, db_type=db_type)
                 except Exception as e:
                     logger.error(f"Failed to update model with task output: {str(e)}")
                     add_error_notification(
                         cursor, task_id, task_status, f"Failed to update model with task output: {str(e)}"
                     )
                 finally:
-                    backup_connection.close()
-                    this_connection.close()
                     cursor.execute(run_queries.update_model_lock, (0, model_id))
             else:
                 cursor.execute(run_queries.update_model_lock, (0, model_id))
@@ -555,17 +543,7 @@ def restore_db(cursor, task_id: int, user_email: str, model_name: str, project_n
     if is_running:
         raise HTTPException(status_code=400, detail="Cannot restore while a task using the model is running")
 
-    backup_connection = apsw.Connection(output_model_path)
-    this_connection = apsw.Connection(model_path)
-
-    try:
-        with this_connection.backup("main", backup_connection, "main") as backup:
-            backup.step()  # copy entire database in one step
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to restore backup: {str(e)}")
-    finally:
-        this_connection.close()
-        backup_connection.close()
+    connection.copy_database(output_model_path, model_path, model.db_type)
 
     return f"Model {model_name} in project {project_name} restored successfully from task {task_id}"
 

@@ -242,6 +242,32 @@ class ConnectionTests(unittest.TestCase):
             self.assertEqual([column[0] for column in description], ["explain_key", "explain_value"])
             self.assertTrue(cursor.fetchall())
 
+    def test_duckdb_explain_analyze_uses_wrapped_statement_access(self):
+        with self.connect("DUCKDB", 1) as cursor:
+            cursor.execute("CREATE TABLE items (id INTEGER)")
+            cursor.execute("INSERT INTO items VALUES (1)")
+
+        cases = (
+            ("EXPLAIN UPDATE items SET id = id + 1", True, 1),
+            ("EXPLAIN (FORMAT JSON) UPDATE items SET id = id + 1", True, 1),
+            ("EXPLAIN ANALYZE UPDATE items SET id = id + 1", True, 2),
+            ("EXPLAIN (ANALYZE, FORMAT JSON) UPDATE items SET id = id + 1", True, 3),
+            ("EXPLAIN (ANALYZE FALSE) UPDATE items SET id = id + 1", True, 4),
+            ("EXPLAIN ANALYZE SELECT * FROM items", False, 4),
+            ("EXPLAIN SELECT * FROM items", False, 4),
+        )
+        for query, expected_access, expected_id in cases:
+            with self.subTest(query=query):
+                access = connection.query_requires_write_access(query, "DUCKDB")
+                self.assertEqual(access, expected_access)
+                with self.connect("DUCKDB", int(access)) as cursor:
+                    description = cursor.get_description(query)
+                    cursor.execute(query)
+                    self.assertEqual([column[0] for column in description], ["explain_key", "explain_value"])
+                    self.assertTrue(cursor.fetchall())
+                with self.connect("DUCKDB") as cursor:
+                    self.assertEqual(cursor.execute("SELECT id FROM items").fetchall(), [(expected_id,)])
+
     def test_scripts_and_statement_restrictions(self):
         for engine in ("SQLITE", "DUCKDB"):
             with self.subTest(engine=engine):
@@ -273,7 +299,16 @@ class ConnectionTests(unittest.TestCase):
             ("COPY items TO 'out.csv'", "DUCKDB", False),
             ("COPY items FROM 'in.csv'", "DUCKDB", True),
             ("VACUUM", "DUCKDB", True),
-            ("EXPLAIN INSERT INTO items VALUES (1)", "DUCKDB", False),
+            ("EXPLAIN INSERT INTO items VALUES (1)", "DUCKDB", True),
+            ("EXPLAIN ANALYZE UPDATE items SET id = 1", "DUCKDB", True),
+            ("EXPLAIN ANALYZE INSERT INTO items VALUES (1)", "DUCKDB", True),
+            ("EXPLAIN ANALYZE DELETE FROM items", "DUCKDB", True),
+            ("EXPLAIN ANALYZE WITH x AS (SELECT 1) UPDATE items SET id = 1", "DUCKDB", True),
+            ("/* \u00e9 */ EXPLAIN /* comment */ ANALYZE -- comment\nUPDATE items SET id = 1", "DUCKDB", True),
+            ("EXPLAIN (FORMAT JSON, ANALYZE) UPDATE items SET id = 1", "DUCKDB", True),
+            ("EXPLAIN (FORMAT JSON) UPDATE items SET id = 1", "DUCKDB", True),
+            ("EXPLAIN ANALYZE SELECT 'UPDATE'", "DUCKDB", False),
+            ("EXPLAIN SELECT 'ANALYZE UPDATE'", "DUCKDB", False),
             ("/* DROP */ SELECT 1", "SQLITE", False),
             ("-- DELETE\nUPDATE items SET id = 1", "SQLITE", True),
             ("WITH x AS (SELECT 1) DELETE FROM items", "SQLITE", True),

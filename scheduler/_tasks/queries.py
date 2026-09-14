@@ -1,5 +1,6 @@
 get_model_id_and_paths = """SELECT modelid, modelpath,
-        json_extract(ifnull(JsonData, '{}'), '$.last_vacuum_date') as last_vacuum_date
+        json_extract(ifnull(JsonData, '{}'), '$.last_vacuum_date') as last_vacuum_date,
+        ifnull(json_extract(ifnull(JsonData, '{}'), '$.db_type'), 'SQLITE') as db_type
         FROM S_Models
         WHERE ifnull(json_extract(ifnull(S_Models.JsonData, '{}'), '$.IsLocked'), 0) = 0;"""
 
