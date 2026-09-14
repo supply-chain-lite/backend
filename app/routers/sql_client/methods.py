@@ -65,6 +65,12 @@ def execute_sql_query(cursor, user_email: str, model_name: str, project_name: st
             status_code=403, detail="Cannot execute modifying SQL query while a task using the model is running"
         )
 
+    if write_mode and db_type.lower() == "duckdb":
+        raise HTTPException(status_code=403, detail="Cannot execute modifying SQL query on DuckDB in write mode")
+
+    if db_type.lower() == "duckdb":
+        write_mode = 0
+
     with sql_connection(model_id, model_path, db_type=db_type, db_access=write_mode) as model_cursor:
         desc = ()
         try:

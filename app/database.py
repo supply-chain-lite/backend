@@ -126,8 +126,8 @@ create_model_templates_table = """ CREATE TABLE IF NOT EXISTS S_ModelTemplates (
                                             CreatedAt    TEXT NOT NULL DEFAULT (datetime('now'))
                                         )  """
 
-insert_model_template = """INSERT INTO S_ModelTemplates (TemplateName, TemplateSQL, TemplateWithDataSQL)
-                            SELECT ?, ?, ?
+insert_model_template = """INSERT INTO S_ModelTemplates (TemplateName, TemplateSQL, TemplateWithDataSQL, JsonData)
+                            SELECT ?, ?, ?, ?
                             WHERE NOT EXISTS (
                                 SELECT 1 FROM S_ModelTemplates WHERE TemplateName = ?
                             )"""
@@ -261,7 +261,18 @@ def init_db() -> None:
                 "Generic Data Model",
                 "generic_model.sql",
                 "generic_model.sql",
+                json.dumps({"db_type": "SQLITE"}),
                 "Generic Data Model",
+            ),
+        )
+        cursor.execute(
+            insert_model_template,
+            (
+                "Generic DuckDB Model",
+                "generic_duckdb_model.sql",
+                "generic_duckdb_model.sql",
+                json.dumps({"db_type": "DUCKDB"}),
+                "Generic DuckDB Model",
             ),
         )
         cursor.execute(create_user_notifications_table)

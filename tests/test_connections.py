@@ -167,6 +167,20 @@ class ConnectionTests(unittest.TestCase):
             self.assertEqual(first.execute("SELECT 1").fetchall(), [(1,)])
             self.assertEqual(second.execute("SELECT 2").fetchall(), [(2,)])
 
+    def test_duckdb_local_csv_access_is_disabled(self):
+        csv_path = self.folder / "population.csv"
+        csv_path.write_text("city,population\nExample,42\n", encoding="utf-8")
+        query = f"SELECT * FROM '{csv_path.as_posix()}';;"
+        try:
+            with self.connect("DUCKDB") as cursor:
+                self.assertFalse(cursor.execute("SELECT current_setting('enable_external_access')").fetchone()[0])
+                self.assertFalse(cursor.execute("SELECT current_setting('autoinstall_known_extensions')").fetchone()[0])
+                self.assertFalse(cursor.execute("SELECT current_setting('autoload_known_extensions')").fetchone()[0])
+                with self.assertRaises(duckdb.PermissionException):
+                    cursor.get_description(query)
+        finally:
+            csv_path.unlink()
+
     def test_duckdb_closes_when_begin_or_commit_fails(self):
         for failing_statement in ("BEGIN", "COMMIT"):
             with self.subTest(statement=failing_statement):
