@@ -69,7 +69,8 @@ update_task_status = """UPDATE ST_TaskRecords SET Status = ?,
 get_task_file = """select Status,
                             ifnull(json_extract(ifnull(ST_TaskRecords.JsonData, '{}'), '$.db'), '') as output_model_path,
                             S_Models.ModelId,
-                            S_Models.ModelPath
+                            S_Models.ModelPath,
+                            ifnull(json_extract(ifnull(S_Models.JsonData, '{}'), '$.db_type'), 'SQLITE') as db_type
                             from ST_TaskRecords, S_Models
                             WHERE ST_TaskRecords.ModelId = S_Models.ModelId
                             AND   ST_TaskRecords.TaskId = ?;"""

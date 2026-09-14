@@ -6,8 +6,6 @@ import time
 import uuid
 from datetime import datetime, timezone
 
-import apsw
-
 from app.config import (
     BACKUP_FOLDER,
     CELERY_LOG_FOLDER,
@@ -17,7 +15,7 @@ from app.config import (
     TEMP_FOLDER,
     master_db,
 )
-from app.connections.connection import master_connection
+from app.connections.connection import master_connection, vacuum_model
 from app.logging_config import get_logger
 from scheduler._tasks import queries as cleanup_queries
 
@@ -64,7 +62,7 @@ async def main(params: dict | None = None) -> dict:
         "celery_model_files": _cleanup_folder(CELERY_MODELS_FOLDER, CELERY_MODEL_RETENTION_DAYS * 86400),
     }
 
-    master_vacuumed = await asyncio.to_thread(_query, master_db)
+    master_vacuumed = await asyncio.to_thread(_query, master_db, db_type="SQLITE")
     user_models_vacuum = await vacuum_user_models({})
     db_cleanup_results = await asyncio.to_thread(db_cleanup)
     return {
@@ -75,12 +73,10 @@ async def main(params: dict | None = None) -> dict:
     }
 
 
-def _query(db_path):
+def _query(db_path, db_type: str):
     connection = None
     try:
-        connection = apsw.Connection(db_path)
-        connection.execute("VACUUM")
-        connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        vacuum_model(db_path, db_type=db_type)
         return 1
     except Exception as e:
         logger.error(f"Error during database cleanup: {e}")
@@ -115,7 +111,7 @@ async def vacuum_user_models(params: dict | None = None) -> dict:
     vacuumed_count = 0
     failed_count = 0
 
-    for model_id, model_path, last_vacuum_date in models:
+    for model_id, model_path, last_vacuum_date, db_type in models:
         checked_count += 1
         do_vacuum = False
         if not model_path or not os.path.isfile(model_path):
@@ -142,7 +138,7 @@ async def vacuum_user_models(params: dict | None = None) -> dict:
         else:
             do_vacuum = True  # No record of vacuuming, so proceed
         if do_vacuum:
-            status_dict = await asyncio.to_thread(create_system_backup, model_id, model_path)
+            status_dict = await asyncio.to_thread(create_system_backup, model_id, model_path, db_type=db_type)
             if status_dict["status"] == "success":
                 vacuumed_count += 1
             elif status_dict["status"] == "skipped":
@@ -191,7 +187,7 @@ def db_cleanup():
     }
 
 
-def create_system_backup(model_id, model_path):
+def create_system_backup(model_id, model_path, db_type):
     backup_name = "SYSTEM GENERATED BACKUP"
     backup_uid = str(uuid.uuid4())
     backup_path = os.path.join(BACKUP_FOLDER, f"{backup_uid}.sqlite3")
@@ -211,7 +207,7 @@ def create_system_backup(model_id, model_path):
             old_backup_id, old_backup_path = get_existing_backup
 
     if old_backup_path and os.path.isfile(old_backup_path):
-        if os.path.isfile(SQLITE_DIFF_TOOL):
+        if os.path.isfile(SQLITE_DIFF_TOOL) and db_type == "SQLITE":
             try:
                 result = subprocess.run(
                     [SQLITE_DIFF_TOOL, old_backup_path, model_path],
@@ -239,18 +235,14 @@ def create_system_backup(model_id, model_path):
                         )
                     return {"status": "skipped", "message": "Model unchanged since last backup."}
         else:
-            logger.warning("sqldiff tool not found; creating backup without diff check.")
+            if db_type == "SQLITE":
+                logger.warning("sqldiff tool not found; creating backup without diff check.")
 
-    # Create the new backup.
-    connection = apsw.Connection(model_path)
     try:
-        connection.execute("VACUUM")
-        connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        vacuum_model(model_path, db_type=db_type)
     except Exception as e:
         logger.error(f"Failed to create system backup for model {model_id}: {e}")
         return {"status": "error", "message": "Failed to create system backup."}
-    finally:
-        connection.close()
 
     try:
         shutil.copy2(model_path, backup_path)

@@ -19,7 +19,7 @@ This plan covers the work remaining after introducing database-specific connecti
 - [x] Keep master connections on SQLite with write access.
 - [x] Add connection tests for pooling, connection closure, transactions, metadata, and the SQL client's description/execution sequence.
 - [x] Declare `duckdb==1.5.5` in `pyproject.toml` (present when this plan was written).
-- [ ] Synchronize `uv.lock`; it currently has no DuckDB entry. Verify a clean environment can install and run the backend and workers.
+- [x] Synchronize `uv.lock`: it contains DuckDB 1.5.5. Verified with `uv lock --check --offline` and `uv sync --check --offline`; the current environment needs no changes.
 
 ## 1. Engine metadata and shared lifecycle operations
 
@@ -91,13 +91,16 @@ These functions are in `scheduler/_tasks/clean_up.py`.
 
 Primary location: `app/routers/tables/queries.py`, plus related table/model/task methods and templates.
 
-- [ ] Replace engine-specific `RETURNING rowid` in column-order and formatting writes with a suitable result contract for each engine. DuckDB rejects the existing implicit-rowid usage.
-- [ ] Give `VALUES` tables explicit column aliases instead of relying on SQLite's `column1` name; check Excel sheet-existence and table-type queries.
-- [ ] Implement engine-specific Excel serial-date filters instead of sending SQLite `julianday` expressions to DuckDB.
-- [ ] Audit generated SQL and templates for other SQLite-only types, functions, pragmas, conflict handling, case-insensitive comparisons, and schema assumptions.
-- [ ] Check that DuckDB types/defaults/generated-column metadata work with table editing, Excel import/export, and value conversion.
-- [ ] Exercise existing SQL-client callers against DuckDB SELECT, DDL, DML, `RETURNING`, empty results, and affected-row counts. Preserve the current no-double-execution behavior when retrieving descriptions.
-- [ ] Preserve explicit `db_access=1` for all model mutations as these callers are adapted.
+- [x] Replace engine-specific `RETURNING rowid` in column-order and formatting writes. Updates now use `RETURNING 1`; inserts no longer require the implicit row ID.
+- [x] Remove dependence on SQLite's `column1` name in Excel sheet checks. `check_excel_sheets_exist` uses `get_all_objects()` and reads `S_TableGroup` directly; the former `VALUES` queries have been removed.
+- [x] Implement engine-specific Excel serial-date filters. All six date-filter query builders accept `db_type` (default SQLITE), and their callers pass the model engine. SQLite retains its existing expression; DuckDB converts whole serial days from 1899-12-30 into ISO date text. Verified reads, counts, distinct values, summaries, updates, and deletes against both engines, including fractional/negative serials and nulls.
+- [ ] Complete SQL/template compatibility beyond the corrected table queries. `app/schemas/generic_model.sql` still contains `AUTOINCREMENT`, `VARDATE`, and SQLite `datetime(...)` defaults. Executing this template against DuckDB fails at `AUTOINCREMENT`. Provide engine-specific templates as part of model creation; master-only SQLite SQL should remain SQLite.
+- [ ] Complete DuckDB type handling in Excel import/export. Generated-column/default metadata has connection-test coverage, but `_get_cell_value` does not recognize `DOUBLE` or `DECIMAL(...)` as numeric. Verified that importing a Python Excel date into a DuckDB `DOUBLE` or `NUMERIC` column (reported as `DECIMAL(18,3)`) returns a date string and fails insertion instead of converting to an Excel serial. `_write_to_worksheet` also omits these types from default numeric formatting. Add type normalization and import/export round-trip coverage.
+- [x] Exercise the existing SQL-client method against DuckDB SELECT, CREATE TABLE, INSERT, UPDATE/DELETE, `RETURNING`, empty results, and affected-row counts. Verified its description-then-execute sequence against an in-memory DuckDB cursor without executing writes twice. This covers the listed statement forms, not every possible DuckDB statement.
+- [x] Fix EXPLAIN write-access classification for the SQL client. `query_requires_write_access` now unwraps DuckDB EXPLAIN/EXPLAIN ANALYZE (including parenthesized options) and classifies the underlying statement. Explained writes select `db_access=1`; explained SELECTs remain read-only. DuckDB also requires write access for plain EXPLAIN of a write, although it does not execute that write. Regression coverage verifies that the description-then-execute flow applies analyzed updates exactly once and plain EXPLAIN leaves data unchanged.
+- [ ] Audit remaining engine-specific statements before treating SQL-client write-access classification as exhaustive. Table/file/task mutation paths already pass `db_access=1`.
+
+Section 5 verification: all 24 tests pass after the EXPLAIN access fix, including classification cases for comments, Unicode, CTE writes, and parenthesized options. Earlier isolated checks confirmed the SQL-client cases above and reproduced the still-open template and Excel date-import failures. The broader statement audit remains a follow-up.
 
 ## 6. Verification and implementation order
 

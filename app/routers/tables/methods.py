@@ -172,6 +172,7 @@ def get_table_data(
             sort_columns,
             page_number,
             page_size,
+            db_type=db_type,
         )
         data = model_cursor.execute(query, params).fetchall()
         return _mask_blob_values(data)
@@ -214,7 +215,7 @@ def get_distinct_column_values(
     model_path = model.model_path
     db_type = model.db_type
     query, params = table_queries.get_distinct_column_values_query(
-        table_name, column_name, select_filters, text_filters, date_columns, numeric_filters, page_size
+        table_name, column_name, select_filters, text_filters, date_columns, numeric_filters, page_size, db_type=db_type
     )
 
     column_names = [column_name]
@@ -248,7 +249,7 @@ def get_row_count(
         table_name (str): Table to query.
         select_filters (dict[str, list[str | int | float | bool | None]]): Exact-match filters keyed by column name; each key maps to allowed values for that column.
         text_filters (dict[str, str]): Text filters keyed by column name. Filters for columns listed in `date_columns` are applied against converted date strings.
-        date_columns (list[str]): Columns from `text_filters` that should be matched as dates after converting Excel-style serial values to SQLite dates.
+        date_columns (list[str]): Columns from `text_filters` containing Excel-style serial values to match as dates using the model's database engine.
 
     Returns:
         int: Count of rows matching the filters.
@@ -264,7 +265,7 @@ def get_row_count(
     db_type = model.db_type
 
     query, params = table_queries.get_row_count_query(
-        table_name, select_filters, text_filters, date_columns, numeric_filters
+        table_name, select_filters, text_filters, date_columns, numeric_filters, db_type=db_type
     )
 
     column_names = list(select_filters.keys())
@@ -648,7 +649,15 @@ def update_rows(
         if object_type != "table":
             raise HTTPException(status_code=404, detail=f"View: {table_name} is not updatable")
         query, values = table_queries.update_rows(
-            table_name, row_ids, column_name, column_value, select_filters, text_filters, date_columns, numeric_filters
+            table_name,
+            row_ids,
+            column_name,
+            column_value,
+            select_filters,
+            text_filters,
+            date_columns,
+            numeric_filters,
+            db_type=db_type,
         )
         model_cursor.execute(query, values)
         return model_cursor.rowcount()
@@ -726,7 +735,7 @@ def delete_rows(
         if object_type != "table":
             raise HTTPException(status_code=404, detail=f"View: {table_name} is not updatable")
         query, values = table_queries.delete_rows(
-            table_name, row_ids, select_filters, text_filters, date_columns, numeric_filters
+            table_name, row_ids, select_filters, text_filters, date_columns, numeric_filters, db_type=db_type
         )
         model_cursor.execute(query, values)
         return model_cursor.rowcount()
@@ -782,7 +791,7 @@ def get_summary_stats(
         if not validated_columns:
             raise HTTPException(status_code=400, detail="No valid summary functions provided")
         query, values = table_queries.get_summary_stats_query(
-            table_name, validated_columns, select_filters, text_filters, date_columns, numeric_filters
+            table_name, validated_columns, select_filters, text_filters, date_columns, numeric_filters, db_type=db_type
         )
         result = model_cursor.execute(query, values).fetchone()
         summary_stats = {}
@@ -884,7 +893,7 @@ def export_tables_to_excel(cursor, user_email: str, model_name: str, project_nam
                 column_formatting = _get_column_formatting(model_cursor, table_name)
                 select_columns = [col for col, _ in table_headers]
                 query, params = table_queries.get_table_query(
-                    table_name, select_columns, {}, {}, [], [], [], 1, 1000000
+                    table_name, select_columns, {}, {}, [], [], [], 1, 1000000, db_type=db_type
                 )
                 data = model_cursor.execute(query, params).fetchall()
                 sheet_name = re.sub(r"[\[\]:*?/\\]", "_", table_name)
@@ -1083,7 +1092,7 @@ def upload_excel(
                 response_status[table_name] = {"status": "failed", "reason": "not a table"}
                 continue
             if action == "delete":
-                delete_query, _ = table_queries.delete_rows(table_name, [], {}, {}, [], [])
+                delete_query, _ = table_queries.delete_rows(table_name, [], {}, {}, [], [], db_type=db_type)
                 model_cursor.execute(delete_query)
                 rows_deleted = model_cursor.rowcount()
                 model_cursor.intermediate_commit()
@@ -1186,6 +1195,31 @@ def _import_excel_to_table(model_cursor, all_rows, table_name, table_headers, co
     return rows_inserted
 
 
+def _normalize_numeric_type(data_type: str) -> str | None:
+    """
+    Normalize DuckDB-specific and parameterized numeric SQL types to a canonical name.
+
+    Strips precision/scale parameters (e.g. ``DECIMAL(18,3)`` -> ``DECIMAL``) and maps
+    type aliases so that ``DOUBLE`` and ``DECIMAL`` are recognized alongside existing
+    numeric types.
+
+    Returns:
+        str | None: ``"NUMERIC"`` or ``"FLOAT"`` for recognized numeric types, or None
+        if the type is not numeric.
+    """
+    base = data_type.split("(")[0].strip().upper()
+    numeric_aliases = {
+        "NUMERIC": "NUMERIC",
+        "FLOAT": "FLOAT",
+        "REAL": "REAL",
+        "NUMBER": "NUMBER",
+        "NUMDATE": "NUMDATE",
+        "DOUBLE": "FLOAT",
+        "DECIMAL": "NUMERIC",
+    }
+    return numeric_aliases.get(base)
+
+
 def _get_cell_value(value, data_type, column_type, row_idx, col_idx, table_name):
     """
     Convert an Excel cell value into a database-storable value based on the column's SQL type and optional formatting.
@@ -1256,7 +1290,8 @@ def _get_cell_value(value, data_type, column_type, row_idx, col_idx, table_name)
             raise Exception(
                 f"Invalid integer value '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': {str(ex)}"
             )
-    if data_type.upper() in ("NUMERIC", "FLOAT", "REAL", "NUMBER", "NUMDATE"):
+    normalized_numeric = _normalize_numeric_type(data_type)
+    if normalized_numeric is not None:
         if isinstance(value, (datetime.datetime, datetime.date)):
             return _datetime_to_excel_float(value)
         try:
