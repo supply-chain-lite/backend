@@ -1195,6 +1195,31 @@ def _import_excel_to_table(model_cursor, all_rows, table_name, table_headers, co
     return rows_inserted
 
 
+def _normalize_numeric_type(data_type: str) -> str | None:
+    """
+    Normalize DuckDB-specific and parameterized numeric SQL types to a canonical name.
+
+    Strips precision/scale parameters (e.g. ``DECIMAL(18,3)`` -> ``DECIMAL``) and maps
+    type aliases so that ``DOUBLE`` and ``DECIMAL`` are recognized alongside existing
+    numeric types.
+
+    Returns:
+        str | None: ``"NUMERIC"`` or ``"FLOAT"`` for recognized numeric types, or None
+        if the type is not numeric.
+    """
+    base = data_type.split("(")[0].strip().upper()
+    numeric_aliases = {
+        "NUMERIC": "NUMERIC",
+        "FLOAT": "FLOAT",
+        "REAL": "REAL",
+        "NUMBER": "NUMBER",
+        "NUMDATE": "NUMDATE",
+        "DOUBLE": "FLOAT",
+        "DECIMAL": "NUMERIC",
+    }
+    return numeric_aliases.get(base)
+
+
 def _get_cell_value(value, data_type, column_type, row_idx, col_idx, table_name):
     """
     Convert an Excel cell value into a database-storable value based on the column's SQL type and optional formatting.
@@ -1265,7 +1290,8 @@ def _get_cell_value(value, data_type, column_type, row_idx, col_idx, table_name)
             raise Exception(
                 f"Invalid integer value '{value}' at row {row_idx + 1}, column {col_idx + 1} in table '{table_name}': {str(ex)}"
             )
-    if data_type.upper() in ("NUMERIC", "FLOAT", "REAL", "NUMBER", "NUMDATE"):
+    normalized_numeric = _normalize_numeric_type(data_type)
+    if normalized_numeric is not None:
         if isinstance(value, (datetime.datetime, datetime.date)):
             return _datetime_to_excel_float(value)
         try:

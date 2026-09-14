@@ -209,7 +209,7 @@ def update_task_param_values(model_cursor, task_code: int, new_param_values: lis
 
 
 def _copy_db_and_upload_to_broker(model_path: str, db_type: str):
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db", dir=TEMP_FOLDER)
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix="", dir=TEMP_FOLDER)
     tmp.close()  # Close the file so that it can be used by other processes
 
     connection.copy_database(model_path, tmp.name, db_type=db_type)

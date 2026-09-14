@@ -1,7 +1,6 @@
 import json
 import os
 import shutil
-import sqlite3
 import tempfile
 import uuid
 from types import SimpleNamespace
@@ -100,6 +99,17 @@ def get_user_models_by_project(cursor, user_email: str):
         if model_name is not None:
             models_by_project[project_name][model_name] = access_level
     return models_by_project
+
+
+def detect_db_type(db_path):
+    """Identify an existing database by its file signature, never its extension."""
+    with open(db_path, "rb") as database_file:
+        header = database_file.read(16)
+    if header == b"SQLite format 3\x00":
+        return "SQLITE"
+    if header[8:12] == b"DUCK":
+        return "DUCKDB"
+    raise ValueError(f"Unrecognized database file format: {db_path}")
 
 
 def save_as_model(
@@ -205,9 +215,8 @@ def delete_model(cursor, user_email: str, model_name: str, project_name: str):
 
     cursor.executescript(model_queries.delete_model_for_all_users, (model_id, model_id))
 
-    conn = sqlite3.connect(model_path)
-    conn.close()
-
+    if model_db_type.upper() == "SQLITE":
+        connection.remove_connection_object(model_path)
     if os.path.exists(model_path):
         os.remove(model_path)
 
@@ -217,8 +226,6 @@ def delete_model(cursor, user_email: str, model_name: str, project_name: str):
         if os.path.exists(backup_path):
             os.remove(backup_path)
     cursor.execute(model_queries.delete_model_backup, (model_id, "NA"))
-    if model_db_type.upper() == "SQLITE":
-        connection.remove_connection_object(model_path)
 
     return 1
 
@@ -239,6 +246,14 @@ def create_model_backup(cursor, user_email: str, model_name: str, project_name: 
     model_path = model.model_path
     access_level = model.access_level
     is_running = model.is_running
+    db_type = model.db_type
+
+    if db_type.upper() == "SQLITE":
+        file_suffix = ".db"
+    elif db_type.upper() == "DUCKDB":
+        file_suffix = ".duckdb"
+    else:
+        file_suffix = ""
 
     if is_running:
         raise HTTPException(status_code=400, detail="Cannot create backup while a task using the model is running")
@@ -255,7 +270,7 @@ def create_model_backup(cursor, user_email: str, model_name: str, project_name: 
         cursor.execute(model_queries.delete_model_backup, ("NA", oldest_backup_path))
 
     backup_uid = str(uuid.uuid4())
-    backup_path = os.path.join(BACKUP_FOLDER, f"{backup_uid}.sqlite3")
+    backup_path = os.path.join(BACKUP_FOLDER, f"{backup_uid}{file_suffix}")
     if os.path.exists(backup_path):
         raise HTTPException(status_code=500, detail="Backup with same UID already exists")
 
@@ -399,6 +414,14 @@ def download_model(cursor, user_email: str, model_name: str, project_name: str):
 
     model_path = model.model_path
     access_level = model.access_level
+    db_type = model.db_type
+
+    if db_type.upper() == "SQLITE":
+        file_suffix = ".db"
+    elif db_type.upper() == "DUCKDB":
+        file_suffix = ".duckdb"
+    else:
+        file_suffix = ""
 
     if access_level not in ["owner", "editor"]:
         raise HTTPException(status_code=403, detail="Only owner and editor can download the model")
@@ -406,15 +429,15 @@ def download_model(cursor, user_email: str, model_name: str, project_name: str):
     if not os.path.exists(model_path):
         raise HTTPException(status_code=404, detail="Model file not found on disk")
 
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db", dir=TEMP_FOLDER)
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=file_suffix, dir=TEMP_FOLDER)
     tmp.close()  # Close the file so that it can be used by other processes
 
-    connection.copy_database(model_path, tmp.name, model.db_type)
+    connection.copy_database(model_path, tmp.name, db_type)
 
     # 3. Return file
     return responses.FileResponse(
         path=tmp.name,
-        filename=f"{model_name}.db",
+        filename=f"{model_name}{file_suffix}",
         media_type="application/octet-stream",
     )
 
@@ -442,11 +465,18 @@ def upload_model(
     if is_running:
         raise HTTPException(status_code=400, detail="Cannot upload model while a task using it is running")
 
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db", dir=TEMP_FOLDER)
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix="", dir=TEMP_FOLDER)
     tmp.close()
 
     with open(tmp.name, "wb") as buffer:
         shutil.copyfileobj(model_file.file, buffer)
+
+    upload_file_type = detect_db_type(tmp.name)
+    if upload_file_type != db_type.upper():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Uploaded file type {upload_file_type} does not match model database type {db_type.upper()}",
+        )
 
     connection.copy_database(tmp.name, model_path, db_type, restore=True)
 

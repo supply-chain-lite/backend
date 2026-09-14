@@ -210,7 +210,7 @@ def vacuum_model(db_path, db_type):
         raise ValueError(f"Unsupported database type: {db_type}")
 
 
-def copy_database(src_db_path, dest_db_path, db_type, restore = False):
+def copy_database(src_db_path, dest_db_path, db_type, restore=False):
     if not os.path.exists(src_db_path):
         raise FileNotFoundError(f"Source database does not exist: {src_db_path}")
     if db_type.upper() == "SQLITE":
@@ -227,7 +227,7 @@ def copy_database(src_db_path, dest_db_path, db_type, restore = False):
                 backup_connection.close()
         else:
             connection = apsw.Connection(src_db_path)
-            connection.execute(f"VACUUM INTO '{dest_db_path}'")
+            connection.execute("VACUUM INTO ?", (dest_db_path,))
             connection.close()
     elif db_type.upper() == "DUCKDB":
         conn = duckdb.connect(src_db_path)
