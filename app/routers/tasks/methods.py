@@ -559,6 +559,11 @@ def get_diff(cursor, task_id: int, user_email: str, model_name: str, project_nam
         raise HTTPException(status_code=404, detail="Model not found")
     model_id = model.model_id
     model_path = model.model_path
+    db_type = model.db_type
+
+    if db_type.upper() != "SQLITE":
+        raise HTTPException(status_code=400, detail="Diff operation is only supported for SQLITE databases")
+
     if model_id != this_model_id or model_name != this_model_name or project_name != this_project_name:
         raise HTTPException(
             status_code=400,
