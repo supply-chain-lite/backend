@@ -3,6 +3,7 @@
 import os
 import re
 import shutil
+import sqlite3
 
 import apsw
 import duckdb
@@ -183,10 +184,9 @@ def master_connection():
 
 def create_database(db_path, db_type, db_file):
     if db_type.upper() == "SQLITE":
-        connection = apsw.Connection(db_path)
-        with open(db_file, "r") as f:
-            connection.execute(f.read())
-        connection.close()
+        with sqlite3.connect(db_path) as model_db:
+            with open(db_file, "r") as f:
+                model_db.executescript(f.read())
     elif db_type.upper() == "DUCKDB":
         con = duckdb.connect(db_path)
         with open(db_file, "r") as f:
@@ -234,8 +234,8 @@ def copy_database(src_db_path, dest_db_path, db_type, restore=False):
         conn.execute("CHECKPOINT")
         conn.close()
         dest_wal = f"{dest_db_path}.wal"
+        shutil.copy(src_db_path, dest_db_path)
         if os.path.exists(dest_wal):
             os.remove(dest_wal)
-        shutil.copy(src_db_path, dest_db_path)
     else:
         raise ValueError(f"Unsupported database type: {db_type}")

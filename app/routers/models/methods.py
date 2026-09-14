@@ -109,7 +109,7 @@ def detect_db_type(db_path):
         return "SQLITE"
     if header[8:12] == b"DUCK":
         return "DUCKDB"
-    raise ValueError(f"Unrecognized database file format: {db_path}")
+    raise HTTPException(status_code=400, detail=f"Unrecognized database file format: {db_path}")
 
 
 def save_as_model(
