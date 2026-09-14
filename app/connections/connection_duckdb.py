@@ -10,6 +10,14 @@ from ..logging_config import get_logger
 logger = get_logger(__name__)
 
 
+def _allowed_directories_sql():
+    """Render the configured remote prefixes as a DuckDB list literal."""
+    raw_value = os.getenv("DUCKDB_ALLOWED_DIRECTORIES", "")
+    directories = [part.strip() for part in raw_value.split(",") if part.strip()]
+    quoted = ("'" + directory.replace("'", "''") + "'" for directory in directories)
+    return "[" + ", ".join(quoted) + "]"
+
+
 class duckdb_connection:
     def __init__(self, db_id, db_path, db_access=0):
         self.db_id = db_id
@@ -23,15 +31,22 @@ class duckdb_connection:
             raise RuntimeError("This DuckDB connection context is already open")
         if not os.path.isfile(self.db_path):
             raise FileNotFoundError(f"DBFile Doesn't exists in system, {self.db_path}")
-        self.connection = duckdb.connect(
-            database=self.db_path,
-            read_only=self.db_access == 0,
-            config={
-                "enable_external_access": True,
-                "autoinstall_known_extensions": True,
-                "autoload_known_extensions": True,
-            },
-        )
+        self.connection = duckdb.connect(database=self.db_path, read_only=self.db_access == 0)
+        lock_result = self.connection.execute("SELECT current_setting('lock_configuration')")
+        configuration_locked = bool(lock_result.fetchone()[0]) if lock_result is not None else False
+        if not configuration_locked:
+            self.connection.execute("LOAD httpfs;")
+            self.connection.execute(f"SET allowed_directories = {_allowed_directories_sql()};")
+            self.connection.execute("SET autoinstall_known_extensions = false;")
+            self.connection.execute("SET autoload_known_extensions = false;")
+            self.connection.execute("SET allow_persistent_secrets = false;")
+            self.connection.execute("SET enable_external_access = false;")
+            self.connection.execute("SET lock_configuration = true;")
+        elif self.db_access == 0:
+            # Another reader may have initialized and locked the shared
+            # database configuration while this connection was opening.
+            self.connection.execute("LOAD httpfs;")
+
         # DuckDB's cursor() creates another connection. Use this connection itself
         # for both execution and transactions so they always share one session.
         self.cursor = self.connection

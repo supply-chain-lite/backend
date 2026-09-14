@@ -167,19 +167,17 @@ class ConnectionTests(unittest.TestCase):
             self.assertEqual(first.execute("SELECT 1").fetchall(), [(1,)])
             self.assertEqual(second.execute("SELECT 2").fetchall(), [(2,)])
 
-    def test_duckdb_external_csv_validation_and_execution(self):
+    def test_duckdb_local_csv_access_is_disabled(self):
         csv_path = self.folder / "population.csv"
         csv_path.write_text("city,population\nExample,42\n", encoding="utf-8")
         query = f"SELECT * FROM '{csv_path.as_posix()}';;"
         try:
             with self.connect("DUCKDB") as cursor:
-                self.assertTrue(cursor.execute("SELECT current_setting('enable_external_access')").fetchone()[0])
-                self.assertTrue(cursor.execute("SELECT current_setting('autoinstall_known_extensions')").fetchone()[0])
-                self.assertTrue(cursor.execute("SELECT current_setting('autoload_known_extensions')").fetchone()[0])
-                description = cursor.get_description(query)
-                cursor.execute(query)
-                self.assertEqual([column[0] for column in description], ["city", "population"])
-                self.assertEqual(cursor.fetchall(), [("Example", 42)])
+                self.assertFalse(cursor.execute("SELECT current_setting('enable_external_access')").fetchone()[0])
+                self.assertFalse(cursor.execute("SELECT current_setting('autoinstall_known_extensions')").fetchone()[0])
+                self.assertFalse(cursor.execute("SELECT current_setting('autoload_known_extensions')").fetchone()[0])
+                with self.assertRaises(duckdb.PermissionException):
+                    cursor.get_description(query)
         finally:
             csv_path.unlink()
 
