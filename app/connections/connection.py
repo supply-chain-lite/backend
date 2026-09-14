@@ -108,7 +108,9 @@ def query_requires_write_access(query, db_type="SQLITE"):
                     if query_requires_write_access(_duckdb_explained_query(statement.query), db_type):
                         return True
                 if statement_type == "COPY":
-                    return bool(re.search(r"\bFROM\b", statement.query, re.IGNORECASE))
+                    if re.search(r"\bFROM\b", statement.query, re.IGNORECASE):
+                        return True
+                    continue
                 if statement_type in {
                     "ALTER",
                     "CREATE",
@@ -208,12 +210,9 @@ def vacuum_model(db_path, db_type):
         raise ValueError(f"Unsupported database type: {db_type}")
 
 
-def copy_database(src_db_path, dest_db_path, db_type):
+def copy_database(src_db_path, dest_db_path, db_type, restore = False):
     if not os.path.exists(src_db_path):
         raise FileNotFoundError(f"Source database does not exist: {src_db_path}")
-    restore = False
-    if os.path.exists(dest_db_path):
-        restore = True
     if db_type.upper() == "SQLITE":
         if restore:
             backup_connection = apsw.Connection(src_db_path)
@@ -231,9 +230,12 @@ def copy_database(src_db_path, dest_db_path, db_type):
             connection.execute(f"VACUUM INTO '{dest_db_path}'")
             connection.close()
     elif db_type.upper() == "DUCKDB":
-        conn = duckdb.connect(dest_db_path)
+        conn = duckdb.connect(src_db_path)
         conn.execute("CHECKPOINT")
         conn.close()
+        dest_wal = f"{dest_db_path}.wal"
+        if os.path.exists(dest_wal):
+            os.remove(dest_wal)
         shutil.copy(src_db_path, dest_db_path)
     else:
         raise ValueError(f"Unsupported database type: {db_type}")

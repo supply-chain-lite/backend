@@ -389,7 +389,7 @@ def update_task_output_and_logs(this_cursor, task_id: int, forced_cancel: bool =
             # s3 is not implemented for task output yet, so we only handle local file output for now
             if os.path.exists(output_model_path) and task_status in ("SUCCESS", "COMPLETED"):
                 try:
-                    connection.copy_database(output_model_path, model_path, db_type=db_type)
+                    connection.copy_database(output_model_path, model_path, db_type=db_type, restore=True)
                 except Exception as e:
                     logger.error(f"Failed to update model with task output: {str(e)}")
                     add_error_notification(
@@ -543,7 +543,7 @@ def restore_db(cursor, task_id: int, user_email: str, model_name: str, project_n
     if is_running:
         raise HTTPException(status_code=400, detail="Cannot restore while a task using the model is running")
 
-    connection.copy_database(output_model_path, model_path, model.db_type)
+    connection.copy_database(output_model_path, model_path, model.db_type, restore=True)
 
     return f"Model {model_name} in project {project_name} restored successfully from task {task_id}"
 

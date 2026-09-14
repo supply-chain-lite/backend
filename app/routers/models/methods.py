@@ -218,7 +218,7 @@ def delete_model(cursor, user_email: str, model_name: str, project_name: str):
             os.remove(backup_path)
     cursor.execute(model_queries.delete_model_backup, (model_id, "NA"))
     if model_db_type.upper() == "SQLITE":
-        connection.remove_connection_object(model_id)
+        connection.remove_connection_object(model_path)
 
     return 1
 
@@ -312,7 +312,7 @@ def restore_model_from_backup(cursor, user_email: str, model_name: str, project_
     if not os.path.exists(backup_path):
         raise HTTPException(status_code=404, detail="Backup file not found on disk")
 
-    connection.copy_database(backup_path, model_path, db_type)
+    connection.copy_database(backup_path, model_path, db_type, restore=True)
 
 
 def share_model(
@@ -448,7 +448,7 @@ def upload_model(
     with open(tmp.name, "wb") as buffer:
         shutil.copyfileobj(model_file.file, buffer)
 
-    connection.copy_database(tmp.name, model_path, db_type)
+    connection.copy_database(tmp.name, model_path, db_type, restore=True)
 
 
 def update_model_access_level(cursor, user_email: str, model_name: str, project_name: str, access_list: list):

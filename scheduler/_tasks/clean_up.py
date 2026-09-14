@@ -15,7 +15,7 @@ from app.config import (
     TEMP_FOLDER,
     master_db,
 )
-from app.connections.connection import master_connection, vacuum_database
+from app.connections.connection import master_connection, vacuum_model
 from app.logging_config import get_logger
 from scheduler._tasks import queries as cleanup_queries
 
@@ -76,7 +76,7 @@ async def main(params: dict | None = None) -> dict:
 def _query(db_path, db_type: str):
     connection = None
     try:
-        vacuum_database(db_path, db_type=db_type)
+        vacuum_model(db_path, db_type=db_type)
         return 1
     except Exception as e:
         logger.error(f"Error during database cleanup: {e}")
@@ -239,7 +239,7 @@ def create_system_backup(model_id, model_path, db_type):
                 logger.warning("sqldiff tool not found; creating backup without diff check.")
 
     try:
-        vacuum_database(model_path, db_type=db_type)
+        vacuum_model(model_path, db_type=db_type)
     except Exception as e:
         logger.error(f"Failed to create system backup for model {model_id}: {e}")
         return {"status": "error", "message": "Failed to create system backup."}

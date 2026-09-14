@@ -208,8 +208,8 @@ def close_all_conn():
         conn.close()
 
 
-def remove_connection_object(id):
+def remove_connection_object(db_path):
     with _pool_lock:
-        by_thread = connection_pool.pop(id, {})
+        by_thread = connection_pool.pop(db_path, {})
         for conn in by_thread.values():
             conn.close()
