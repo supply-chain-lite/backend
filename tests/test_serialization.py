@@ -2,6 +2,7 @@
 
 import datetime
 import json
+import math
 import unittest
 from decimal import Decimal
 
@@ -45,6 +46,30 @@ class DatabaseSerializationTests(unittest.TestCase):
         self.assertIsInstance(value["nested"], tuple)
         self.assertEqual(value["nested"][0], bytearray(b"secret"))
         self.assertEqual(json.loads(serialize_database_cell([Decimal("1.23")])), ["1.23"])
+
+    def test_map_key_collisions_preserve_all_entries(self):
+        value = {"1": "string", 1: "number"}
+        self.assertEqual(
+            json.loads(serialize_database_cell(value)),
+            [["1", "string"], ["1", "number"]],
+        )
+
+    def test_nonfinite_float_values_are_normalized_recursively(self):
+        value = {
+            "nested": [math.nan, math.inf, -math.inf],
+            "inner": {"nan": math.nan, "pos": math.inf, "neg": -math.inf, "ok": 3.5},
+        }
+        self.assertEqual(
+            json.loads(serialize_database_cell(value)),
+            {
+                "nested": [None, None, None],
+                "inner": {"nan": None, "pos": None, "neg": None, "ok": 3.5},
+            },
+        )
+        self.assertIsNone(serialize_database_cell(math.nan))
+        self.assertIsNone(serialize_database_cell(float("inf")))
+        self.assertIsNone(serialize_database_cell(float("-inf")))
+        self.assertEqual(serialize_database_cell(1.25), 1.25)
 
     def test_duckdb_dates_and_timestamps_use_display_format(self):
         with duckdb.connect(":memory:") as connection:

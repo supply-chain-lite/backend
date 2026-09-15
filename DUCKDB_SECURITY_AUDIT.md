@@ -16,7 +16,7 @@ The implementation does **not** set `lock_configuration=true`. Disabling externa
 
 ## Current connection lifecycle
 
-Source: [connection_duckdb.py](C:/Users/akhil/code/AK/supply-chain-lite/backend/app/connections/connection_duckdb.py).
+Source: [connection_duckdb.py](app/connections/connection_duckdb.py).
 
 Each context opens a fresh connection to an existing database file. DuckDB connections are not retained in the application's SQLite connection pool. `sql_connection` defaults DuckDB access to `db_access=0` (read-only); `db_access=1` opens the file writable.
 
@@ -64,11 +64,11 @@ The code uses `CREATE OR REPLACE SECRET`, without `PERSISTENT`, and disables per
 
 An unavailable `aws` extension produces a warning, after which secret creation is still attempted. A DuckDB error during secret creation is logged and does not stop connection setup. On a fresh database instance, failed creation leaves remote reads unsigned; authenticated S3 access can consequently fail while local queries remain usable. When database state is shared with another open connection, this handler does not inspect whether an existing secret remains available.
 
-[install_duckdb_extensions()](C:/Users/akhil/code/AK/supply-chain-lite/backend/app/database.py) installs both `httpfs` and `aws` from the `core` repository during API database initialization, reusing existing installations. Startup installation still includes `aws` even when per-connection discovery is disabled. Installation failure raises an explanatory error and stops initialization.
+[install_duckdb_extensions()](app/database.py) installs both `httpfs` and `aws` from the `core` repository during API database initialization, reusing existing installations. Startup installation still includes `aws` even when per-connection discovery is disabled. Installation failure raises an explanatory error and stops initialization.
 
 ## SQL-client statement controls
 
-Sources: [SQL-client methods](C:/Users/akhil/code/AK/supply-chain-lite/backend/app/routers/sql_client/methods.py) and [connection routing](C:/Users/akhil/code/AK/supply-chain-lite/backend/app/connections/connection.py).
+Sources: [SQL-client methods](app/routers/sql_client/methods.py) and [connection routing](app/connections/connection.py).
 
 - SQL-client execution requires model access level `admin` or `owner`.
 - `query_requires_write_access()` recognizes ordinary catalog writes, including `CREATE`, `INSERT`, `UPDATE`, `DELETE`, `ALTER`, `DROP`, `MERGE`, and `VACUUM`. It also examines statements wrapped by `EXPLAIN`, including `ANALYZE` and parenthesized options.

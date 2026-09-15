@@ -62,21 +62,21 @@ class duckdb_connection:
             raise FileNotFoundError(f"DBFile Doesn't exists in system, {self.db_path}")
         self.connection = duckdb.connect(database=self.db_path, read_only=self.db_access == 0)
 
-        self.connection.execute("LOAD httpfs;")
-        # Secret manager settings are rejected once a secret exists, and secrets
-        # must exist before external access is disabled, so order matters here.
-        self._apply_settings(
-            f"SET allowed_directories = {_allowed_directories_sql()};",
-            "SET autoinstall_known_extensions = false;",
-            "SET autoload_known_extensions = false;",
-            "SET allow_persistent_secrets = false;",
-        )
-        self._create_s3_secret()
-        self._apply_settings("SET enable_external_access = false;")
-        # DuckDB's cursor() creates another connection. Use this connection itself
-        # for both execution and transactions so they always share one session.
-        self.cursor = self.connection
         try:
+            self.connection.execute("LOAD httpfs;")
+            # Secret manager settings are rejected once a secret exists, and secrets
+            # must exist before external access is disabled, so order matters here.
+            self._apply_settings(
+                f"SET allowed_directories = {_allowed_directories_sql()};",
+                "SET autoinstall_known_extensions = false;",
+                "SET autoload_known_extensions = false;",
+                "SET allow_persistent_secrets = false;",
+            )
+            self._create_s3_secret()
+            self._apply_settings("SET enable_external_access = false;")
+            # DuckDB's cursor() creates another connection. Use this connection itself
+            # for both execution and transactions so they always share one session.
+            self.cursor = self.connection
             self.cursor.execute("BEGIN")
             return this_cursor(self.connection, self.cursor, self.db_id)
         except BaseException:

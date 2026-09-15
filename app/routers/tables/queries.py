@@ -387,7 +387,7 @@ def update_rows(
         if filter_col in date_columns:
             update_query += f"AND {_excel_serial_date_expression(filter_col, db_type)} LIKE ? "
         else:
-            update_query += f"AND {quote_identifier(filter_col)} LIKE ? COLLATE NOCASE "
+            update_query += f"AND CAST({quote_identifier(filter_col)} AS VARCHAR) LIKE ? COLLATE NOCASE "
         params.append(f"%{text}%")
 
     for column_name, operator, value in numeric_filters:
@@ -448,7 +448,7 @@ def delete_rows(
         if filter_col in date_columns:
             delete_query += f"AND {_excel_serial_date_expression(filter_col, db_type)} LIKE ? "
         else:
-            delete_query += f"AND {quote_identifier(filter_col)} LIKE ? COLLATE NOCASE "
+            delete_query += f"AND CAST({quote_identifier(filter_col)} AS VARCHAR) LIKE ? COLLATE NOCASE "
         params.append(f"%{text}%")
 
     for column_name, operator, value in numeric_filters:
