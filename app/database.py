@@ -1,4 +1,6 @@
 import json
+import random
+import time
 
 import duckdb
 
@@ -264,6 +266,13 @@ def init_db() -> None:
 
     Creates all required tables (users, roles, projects, errors, models, backups, templates, notifications) if they do not exist and inserts the default user roles and model templates using guarded inserts to avoid duplicates. It also runs a migration to backfill missing user end_date values and set SUPER_ADMIN users to never expire. This function does not handle database errors; any exceptions from the underlying DB operations will propagate to the caller.
     """
+    # Multiple workers can initialize at the same time. A short randomized
+    # delay spreads extension installation and schema writes to reduce startup
+    # contention on the shared database and DuckDB extension directory.
+    startup_delay = random.uniform(0, 1)
+    logger.debug("Delaying database initialization by %.3f seconds", startup_delay)
+    time.sleep(startup_delay)
+
     install_duckdb_extensions()
     logger.info("Initializing database schema")
     with master_connection() as cursor:
