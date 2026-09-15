@@ -1,4 +1,5 @@
 import json
+import os
 import random
 import time
 
@@ -244,10 +245,22 @@ def migrate_user_end_dates(cursor):
     cursor.execute(set_super_admin_end_date)
 
 
+def _duckdb_extensions():
+    """Return unique, normalized DuckDB extensions configured for installation."""
+    configured = os.getenv("DUCKDB_EXTENSIONS", "httpfs")
+    extensions = tuple(
+        dict.fromkeys(extension.strip().lower() for extension in configured.split(",") if extension.strip())
+    )
+    if not extensions:
+        raise ValueError("DUCKDB_EXTENSIONS must contain at least one extension")
+    return extensions
+
+
 def install_duckdb_extensions() -> None:
     """Install trusted extensions for this DuckDB version and service account."""
+    extensions = _duckdb_extensions()
     with duckdb.connect(":memory:") as connection:
-        for extension in ("httpfs", "aws"):
+        for extension in extensions:
             try:
                 # INSTALL reuses an existing installation; do not force updates.
                 connection.install_extension(extension, repository="core")
@@ -257,7 +270,7 @@ def install_duckdb_extensions() -> None:
                     "Check access to the core extension repository and permissions "
                     "on the service account's DuckDB extension directory."
                 ) from exc
-    logger.info("DuckDB httpfs and aws extensions are installed")
+    logger.info("DuckDB extensions are installed: %s", ", ".join(extensions))
 
 
 def init_db() -> None:

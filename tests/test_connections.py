@@ -76,6 +76,11 @@ class DuckDBS3SetupTests(unittest.TestCase):
         self.assertLess(statements.index("LOAD aws;"), statements.index(secret))
         self.assertLess(statements.index(secret), statements.index("SET enable_external_access = false;"))
 
+    def test_configured_extensions_are_loaded_once_in_order(self):
+        statements = self.open_connection({"DUCKDB_EXTENSIONS": "json, httpfs, json, excel"})
+        loads = [statement for statement in statements if statement.startswith("LOAD ")]
+        self.assertEqual(loads, ["LOAD json;", "LOAD httpfs;", "LOAD excel;"])
+
 
 class ConnectionTests(unittest.TestCase):
     def setUp(self):

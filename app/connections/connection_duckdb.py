@@ -10,6 +10,17 @@ from ..logging_config import get_logger
 logger = get_logger(__name__)
 
 
+def _duckdb_extensions():
+    """Return unique, normalized DuckDB extensions configured for loading."""
+    configured = os.getenv("DUCKDB_EXTENSIONS", "httpfs")
+    extensions = tuple(
+        dict.fromkeys(extension.strip().lower() for extension in configured.split(",") if extension.strip())
+    )
+    if not extensions:
+        raise ValueError("DUCKDB_EXTENSIONS must contain at least one extension")
+    return extensions
+
+
 def _quoted(value):
     return "'" + str(value).replace("'", "''") + "'"
 
@@ -63,7 +74,10 @@ class duckdb_connection:
         self.connection = duckdb.connect(database=self.db_path, read_only=self.db_access == 0)
 
         try:
-            self.connection.execute("LOAD httpfs;")
+            self._loaded_extensions = set()
+            for extension in _duckdb_extensions():
+                self.connection.execute(f"LOAD {extension};")
+                self._loaded_extensions.add(extension)
             # Secret manager settings are rejected once a secret exists, and secrets
             # must exist before external access is disabled, so order matters here.
             self._apply_settings(
@@ -89,11 +103,13 @@ class duckdb_connection:
         if secret_sql is None:
             return
         if not (os.getenv("S3_ACCESS_KEY") and os.getenv("S3_SECRET_KEY")):
-            try:
-                # credential_chain lives in the aws extension; explicit keys do not need it.
-                self.connection.execute("LOAD aws;")
-            except duckdb.Error:
-                logger.warning("DuckDB 'aws' extension is unavailable; S3 access needs configured keys")
+            if "aws" not in self._loaded_extensions:
+                try:
+                    # credential_chain lives in the aws extension; explicit keys do not need it.
+                    self.connection.execute("LOAD aws;")
+                    self._loaded_extensions.add("aws")
+                except duckdb.Error:
+                    logger.warning("DuckDB 'aws' extension is unavailable; S3 access needs configured keys")
         try:
             self.connection.execute(secret_sql)
         except duckdb.Error:

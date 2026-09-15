@@ -23,7 +23,8 @@ Each context opens a fresh connection to an existing database file. DuckDB conne
 Initialization runs in this order:
 
 1. Check that the context is not already open and the database file exists, then call `duckdb.connect()` with the selected access mode.
-2. Execute `LOAD httpfs`.
+2. Execute `LOAD <extension>;` for each unique, nonempty extension in `DUCKDB_EXTENSIONS`.
+   The default is `httpfs`; the repository `.env` sets `httpfs,aws,json,excel`.
 3. Apply the following settings, in order:
 
    ```sql
@@ -53,6 +54,13 @@ On normal context exit, the transaction commits. A body exception or failed comm
 
 `DUCKDB_S3_CREDENTIAL_CHAIN` defaults to `false`. After trimming whitespace and lowercasing, `1`, `true`, `yes`, and `on` enable it. AWS environment variables, a region, an endpoint, or a profile alone do not opt in to discovery.
 
+`DUCKDB_EXTENSIONS` is parsed as a comma-separated list, with whitespace removed,
+names lowercased, and duplicates removed while preserving order. It defaults to
+`httpfs`; an empty value is rejected. `install_duckdb_extensions()` installs exactly
+that list from the `core` repository, and each model connection loads exactly that list.
+If credential-chain S3 access is enabled while `aws` is absent from the configured list,
+the connection makes an additional best-effort `LOAD aws` before creating the secret.
+
 Additional secret fields:
 
 - Region comes from the first nonempty value of `S3_REGION`, `AWS_REGION`, or `AWS_DEFAULT_REGION`.
@@ -64,7 +72,7 @@ The code uses `CREATE OR REPLACE SECRET`, without `PERSISTENT`, and disables per
 
 An unavailable `aws` extension produces a warning, after which secret creation is still attempted. A DuckDB error during secret creation is logged and does not stop connection setup. On a fresh database instance, failed creation leaves remote reads unsigned; authenticated S3 access can consequently fail while local queries remain usable. When database state is shared with another open connection, this handler does not inspect whether an existing secret remains available.
 
-[install_duckdb_extensions()](app/database.py) installs both `httpfs` and `aws` from the `core` repository during API database initialization, reusing existing installations. Startup installation still includes `aws` even when per-connection discovery is disabled. Installation failure raises an explanatory error and stops initialization.
+[install_duckdb_extensions()](app/database.py) installs exactly the comma-separated `DUCKDB_EXTENSIONS` list from the `core` repository during API database initialization, reusing existing installations. The default is `httpfs`; the repository `.env` configures `httpfs,aws,json,excel`. Installation failure raises an explanatory error and stops initialization. Per-connection loading follows the same list, with a best-effort additional `aws` load only when credential-chain S3 access is enabled and `aws` was omitted from the list.
 
 ## SQL-client statement controls
 
@@ -87,8 +95,8 @@ The write classifier is not a general statement allowlist. For example, it does 
 | **High - prior observation** | The filesystem boundary includes DuckDB's temporary directory | The 2026-09-14 audit reported that a marker under `<database>.tmp/` was readable while a sibling file was denied. This specific probe was not repeated for this update; keep temporary-directory contents within the trust boundary until revalidated. |
 | **High** | Direct maintenance connections bypass the model connection policy | `create_database()`, `vacuum_model()`, and `copy_database()` call `duckdb.connect()` directly. This is a policy gap if a database, template, or path becomes attacker-controlled. |
 | **Medium** | Initialization does not verify the complete shared configuration | `_apply_settings()` suppresses an `InvalidInputException` when external access is already disabled, without checking the allowlist or each extension/secret setting. It can skip remaining settings. The previous lock-check implementation has been replaced, but complete initialization under concurrency is not established. |
-| **Medium** | Early initialization failures lack explicit cleanup | `LOAD httpfs`, settings application, and S3 setup occur before the `try` covering `BEGIN`. A failure escaping those steps can leave an opened connection without an explicit close; `sql_connection.__enter__()` only delegates and adds no cleanup. |
-| **Medium** | Extension trust restrictions are not all explicit | Startup installation names the `core` repository and setup disables automatic installation/loading. The wrapper does not explicitly set `allow_community_extensions=false` or `allow_unsigned_extensions=false`; extension-file permissions remain part of deployment trust. |
+| **Medium** | Early initialization failures lack explicit cleanup | Extension loading, settings application, and S3 setup occur before the `try` covering `BEGIN`. A failure escaping those steps can leave an opened connection without an explicit close; `sql_connection.__enter__()` only delegates and adds no cleanup. |
+| **Medium** | Extension trust restrictions are not all explicit | Startup installation names the `core` repository and setup disables automatic installation/loading. The configured `DUCKDB_EXTENSIONS` list is operator-controlled, and the wrapper does not explicitly set `allow_community_extensions=false` or `allow_unsigned_extensions=false`; extension-file permissions remain part of deployment trust. |
 | **Medium** | S3 credentials are not scoped per model or bucket | Connections use the same environment-supplied credentials, and secret SQL has no `SCOPE`. Review remote prefixes and credential permissions together. |
 | **Medium** | Untrusted workloads have no complete resource boundary | The reviewed connection and SQL-client code sets no execution deadline or explicit memory, CPU, disk, or network egress quota. Expensive queries can exhaust resources despite the returned-row limit. |
 | **Low/Medium** | Query text and engine errors can expose sensitive details | Failed SQL is logged in full, secret-creation failures include exception details, and raw engine errors are returned in SQL-client HTTP errors. SQL containing credentials, internal paths, or private URLs may reach logs or clients. |
@@ -110,7 +118,7 @@ Verification available from the 2026-09-15 connection implementation update:
 - `python -m unittest discover -s tests -p test_connections.py`: 22 tests passed.
 - Ruff checks passed for `connection_duckdb.py` and `tests/test_connections.py`.
 - Existing integration tests cover native read-only behavior, transaction cleanup, separate overlapping reader connections, local CSV denial, statement restrictions, and metadata handling.
-- Three added S3 tests use mocked connections to check repeated unconfigured setup skips secret SQL and `LOAD aws`, explicit keys take precedence without AWS discovery, and credential-chain opt-in preserves setup order and `REFRESH auto`.
+- Four added connection tests use mocked connections to check repeated unconfigured setup skips secret SQL and unnecessary `LOAD aws`, explicit keys take precedence without AWS discovery, credential-chain opt-in preserves setup order and `REFRESH auto`, and configured extensions load once in order.
 
 This document update was checked against the current source. SQL-client route behavior was reviewed in code; the connection suite does not constitute an end-to-end HTTP authorization test. The S3 setup tests do not exercise live credentials, refresh, or authenticated remote access.
 
