@@ -65,6 +65,32 @@ uv run uvicorn app.main:app --reload
 
 The API will be available at `http://127.0.0.1:8000`. Interactive docs at `http://127.0.0.1:8000/docs`.
 
+API startup installs DuckDB's `httpfs` and `aws` extensions from the official core repository
+through `app.database.init_db()`. Existing installations are reused. The first startup
+for each DuckDB version and platform requires network access and permission to write
+the service account's extension directory (normally `~/.duckdb/extensions/`). Installation
+failure stops startup with an explanatory error. Extensions must be installed for the
+account and filesystem used by each deployment; loading them remains part of connection setup.
+
+DuckDB skips S3 secret setup when `S3_ACCESS_KEY` and `S3_SECRET_KEY` are not both set.
+To use AWS environment credentials, profiles, or instance roles instead, set
+`DUCKDB_S3_CREDENTIAL_CHAIN=true`. Discovery is off by default to avoid repeated
+credential lookup delays on local machines. Configured S3 keys take precedence;
+only credential-chain connections load the `aws` extension.
+
+DuckDB model connections coordinate access per database file within one process.
+Readers can run together; an update waits for readers to close, and new readers wait
+until an active update completes. This preserves native read-only connections and
+avoids opening the same file with conflicting access modes. Initialization failures
+close the connection and release waiting operations. Maintenance and backup helpers
+use the same coordination. Close an existing context before opening the same file
+in another access mode on the same thread.
+
+This coordination does not extend across API workers, Celery, or the scheduler.
+Use a single process to own access to each writable DuckDB file, or add coordination
+between processes before allowing them to open the same model concurrently. See
+[DuckDB concurrency](https://duckdb.org/docs/current/connect/concurrency).
+
 Logs are written to the console and, by default, to `./data/logs/app.log` with log rotation enabled.
 
 ### Celery Worker
@@ -303,6 +329,7 @@ Defined in `.env` (see `.env.example`). Variables marked **Required** must be se
 | `S3_SECRET_KEY` | — | S3 secret key |
 | `S3_BUCKET_NAME` | — | S3 bucket name |
 | `S3_URL` | — | S3-compatible endpoint URL |
+| `DUCKDB_S3_CREDENTIAL_CHAIN` | `false` | Enable AWS credential discovery for DuckDB when explicit S3 keys are absent |
 | `SETUP_S3` | `0` | Set to `1` to enable S3-backed storage setup |
 
 ### Logging & Cleanup

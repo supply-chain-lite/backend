@@ -126,7 +126,7 @@ def get_table_query(
         if column_name in date_columns:
             select_query += f"AND {_excel_serial_date_expression(column_name, db_type)} LIKE ? "
         else:
-            select_query += f"AND {quote_identifier(column_name)} LIKE ? COLLATE NOCASE "
+            select_query += f"AND CAST({quote_identifier(column_name)} AS VARCHAR) LIKE ? COLLATE NOCASE "
         params.append(f"%{text}%")
 
     for column_name, operator, value in numeric_filters:
@@ -216,7 +216,7 @@ def get_distinct_column_values_query(
         if filter_col in date_columns:
             query += f"AND {_excel_serial_date_expression(filter_col, db_type)} LIKE ? "
         else:
-            query += f"AND {quote_identifier(filter_col)} LIKE ? COLLATE NOCASE "
+            query += f"AND CAST({quote_identifier(filter_col)} AS VARCHAR) LIKE ? COLLATE NOCASE "
         params.append(f"%{text}%")
 
     for column_name, operator, value in numeric_filters:
@@ -228,7 +228,7 @@ def get_distinct_column_values_query(
         query += f"AND {quote_identifier(column_name)} {sql_operator} ? "
         params.append(value)
 
-    query += " ORDER BY 1 COLLATE NOCASE"
+    query += f" ORDER BY CAST({quote_identifier(column_name)} AS VARCHAR) COLLATE NOCASE"
     query += " LIMIT ?"
     params.append(page_size)
 
@@ -290,7 +290,7 @@ def get_row_count_query(
         if filter_col in date_columns:
             query += f"AND {_excel_serial_date_expression(filter_col, db_type)} LIKE ? "
         else:
-            query += f"AND {quote_identifier(filter_col)} LIKE ? COLLATE NOCASE "
+            query += f"AND CAST({quote_identifier(filter_col)} AS VARCHAR) LIKE ? COLLATE NOCASE "
         params.append(f"%{text}%")
 
     for column_name, operator, value in numeric_filters:
@@ -518,7 +518,7 @@ def get_summary_stats_query(
         if filter_col in date_columns:
             stats_query += f"AND {_excel_serial_date_expression(filter_col, db_type)} LIKE ? "
         else:
-            stats_query += f"AND {quote_identifier(filter_col)} LIKE ? COLLATE NOCASE "
+            stats_query += f"AND CAST({quote_identifier(filter_col)} AS VARCHAR) LIKE ? COLLATE NOCASE "
         params.append(f"%{text}%")
 
     for column_name, operator, value in numeric_filters:

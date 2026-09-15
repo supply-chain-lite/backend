@@ -1,5 +1,7 @@
 import json
 
+import duckdb
+
 from .connections.connection import master_connection
 from .logging_config import get_logger
 
@@ -240,12 +242,29 @@ def migrate_user_end_dates(cursor):
     cursor.execute(set_super_admin_end_date)
 
 
+def install_duckdb_extensions() -> None:
+    """Install trusted extensions for this DuckDB version and service account."""
+    with duckdb.connect(":memory:") as connection:
+        for extension in ("httpfs", "aws"):
+            try:
+                # INSTALL reuses an existing installation; do not force updates.
+                connection.install_extension(extension, repository="core")
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Failed to install DuckDB extension '{extension}'. "
+                    "Check access to the core extension repository and permissions "
+                    "on the service account's DuckDB extension directory."
+                ) from exc
+    logger.info("DuckDB httpfs and aws extensions are installed")
+
+
 def init_db() -> None:
     """
-    Initialize the application's database schema and seed default user roles and model templates.
+    Install DuckDB extensions, initialize the schema, and seed roles and templates.
 
     Creates all required tables (users, roles, projects, errors, models, backups, templates, notifications) if they do not exist and inserts the default user roles and model templates using guarded inserts to avoid duplicates. It also runs a migration to backfill missing user end_date values and set SUPER_ADMIN users to never expire. This function does not handle database errors; any exceptions from the underlying DB operations will propagate to the caller.
     """
+    install_duckdb_extensions()
     logger.info("Initializing database schema")
     with master_connection() as cursor:
         cursor.execute(create_user_table)
