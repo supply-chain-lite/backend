@@ -2,6 +2,7 @@ from fastapi import HTTPException
 
 from app.connections.connection import query_requires_write_access, sql_connection
 from app.routers.models.methods import get_model_details
+from app.serialization import serialize_database_cell
 
 from . import queries as sql_client_queries
 
@@ -96,7 +97,7 @@ def execute_sql_query(cursor, user_email: str, model_name: str, project_name: st
 
 
 def mask_blob_values(row):
-    return tuple("<BLOB_DATA>" if isinstance(value, (bytes, bytearray, memoryview)) else value for value in row)
+    return tuple(serialize_database_cell(value) for value in row)
 
 
 def get_sql_history(cursor, user_email: str, model_name: str, project_name: str):

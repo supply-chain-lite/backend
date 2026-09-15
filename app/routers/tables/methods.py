@@ -10,6 +10,7 @@ from python_calamine import CalamineWorkbook
 
 from app.connections.connection import sql_connection
 from app.routers.models.methods import get_model_details
+from app.serialization import serialize_database_cell
 
 from . import queries as table_queries
 
@@ -19,26 +20,12 @@ SQLITE_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_ ]*$")
 def _mask_blob_values(
     rows: list[tuple],
 ) -> list[tuple[str | int | float | bool | None, ...]]:
+    """Mask BLOBs and serialize list/tuple/dict cells as JSON strings.
+
+    Nested binary values are masked before serialization. Row and column
+    boundaries remain unchanged for the scalar-valued table response schema.
     """
-    Replace BLOB column values with a placeholder so rows stay JSON-serializable.
-
-    SQLite returns BLOB columns as bytes, which cannot be represented by the API
-    response schema. Any bytes-like value is substituted with `BLOB_PLACEHOLDER`;
-    all other values are returned unchanged.
-
-    Returns:
-        list[tuple[str | int | float | bool | None, ...]]: Rows with blob values masked.
-    """
-    BLOB_PLACEHOLDER = "<BLOB_DATA>"
-    BLOB_TYPES = (bytes, bytearray, memoryview)
-
-    masked_rows = []
-    for row in rows:
-        if any(isinstance(value, BLOB_TYPES) for value in row):
-            masked_rows.append(tuple(BLOB_PLACEHOLDER if isinstance(value, BLOB_TYPES) else value for value in row))
-        else:
-            masked_rows.append(tuple(row))
-    return masked_rows
+    return [tuple(serialize_database_cell(value) for value in row) for row in rows]
 
 
 def get_table_headers(

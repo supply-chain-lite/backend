@@ -10,12 +10,41 @@ from ..logging_config import get_logger
 logger = get_logger(__name__)
 
 
+def _quoted(value):
+    return "'" + str(value).replace("'", "''") + "'"
+
+
 def _allowed_directories_sql():
     """Render the configured remote prefixes as a DuckDB list literal."""
     raw_value = os.getenv("DUCKDB_ALLOWED_DIRECTORIES", "")
     directories = [part.strip() for part in raw_value.split(",") if part.strip()]
-    quoted = ("'" + directory.replace("'", "''") + "'" for directory in directories)
-    return "[" + ", ".join(quoted) + "]"
+    return "[" + ", ".join(_quoted(directory) for directory in directories) + "]"
+
+
+def _s3_secret_sql():
+    """Build the session-scoped S3 secret that lets httpfs sign its requests.
+
+    Configured keys win. Ambient credential discovery (environment, profile,
+    instance role) requires an explicit opt-in so local connections do not pay
+    for unsuccessful credential lookups. Return None when S3 is unconfigured.
+    """
+    fields = ["TYPE s3"]
+    key_id = os.getenv("S3_ACCESS_KEY")
+    secret = os.getenv("S3_SECRET_KEY")
+    if key_id and secret:
+        fields += [f"KEY_ID {_quoted(key_id)}", f"SECRET {_quoted(secret)}"]
+    elif os.getenv("DUCKDB_S3_CREDENTIAL_CHAIN", "false").strip().lower() in ("1", "true", "yes", "on"):
+        fields += ["PROVIDER credential_chain", "REFRESH auto"]
+    else:
+        return None
+    region = os.getenv("S3_REGION") or os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION")
+    if region:
+        fields.append(f"REGION {_quoted(region)}")
+    endpoint = os.getenv("S3_URL")
+    if endpoint:
+        scheme, _, host = endpoint.rpartition("://")
+        fields += [f"ENDPOINT {_quoted(host)}", f"USE_SSL {_quoted(scheme != 'http')}", "URL_STYLE 'path'"]
+    return "CREATE OR REPLACE SECRET model_s3 (" + ", ".join(fields) + ");"
 
 
 class duckdb_connection:
@@ -32,30 +61,54 @@ class duckdb_connection:
         if not os.path.isfile(self.db_path):
             raise FileNotFoundError(f"DBFile Doesn't exists in system, {self.db_path}")
         self.connection = duckdb.connect(database=self.db_path, read_only=self.db_access == 0)
-        lock_result = self.connection.execute("SELECT current_setting('lock_configuration')")
-        configuration_locked = bool(lock_result.fetchone()[0]) if lock_result is not None else False
-        if not configuration_locked:
-            self.connection.execute("LOAD httpfs;")
-            self.connection.execute(f"SET allowed_directories = {_allowed_directories_sql()};")
-            self.connection.execute("SET autoinstall_known_extensions = false;")
-            self.connection.execute("SET autoload_known_extensions = false;")
-            self.connection.execute("SET allow_persistent_secrets = false;")
-            self.connection.execute("SET enable_external_access = false;")
-            self.connection.execute("SET lock_configuration = true;")
-        elif self.db_access == 0:
-            # Another reader may have initialized and locked the shared
-            # database configuration while this connection was opening.
-            self.connection.execute("LOAD httpfs;")
 
-        # DuckDB's cursor() creates another connection. Use this connection itself
-        # for both execution and transactions so they always share one session.
-        self.cursor = self.connection
         try:
+            self.connection.execute("LOAD httpfs;")
+            # Secret manager settings are rejected once a secret exists, and secrets
+            # must exist before external access is disabled, so order matters here.
+            self._apply_settings(
+                f"SET allowed_directories = {_allowed_directories_sql()};",
+                "SET autoinstall_known_extensions = false;",
+                "SET autoload_known_extensions = false;",
+                "SET allow_persistent_secrets = false;",
+            )
+            self._create_s3_secret()
+            self._apply_settings("SET enable_external_access = false;")
+            # DuckDB's cursor() creates another connection. Use this connection itself
+            # for both execution and transactions so they always share one session.
+            self.cursor = self.connection
             self.cursor.execute("BEGIN")
             return this_cursor(self.connection, self.cursor, self.db_id)
         except BaseException:
             self._close()
             raise
+
+    def _create_s3_secret(self):
+        """Leave remote reads unsigned unless S3 credentials are configured."""
+        secret_sql = _s3_secret_sql()
+        if secret_sql is None:
+            return
+        if not (os.getenv("S3_ACCESS_KEY") and os.getenv("S3_SECRET_KEY")):
+            try:
+                # credential_chain lives in the aws extension; explicit keys do not need it.
+                self.connection.execute("LOAD aws;")
+            except duckdb.Error:
+                logger.warning("DuckDB 'aws' extension is unavailable; S3 access needs configured keys")
+        try:
+            self.connection.execute(secret_sql)
+        except duckdb.Error:
+            logger.warning("Could not configure DuckDB S3 credentials; remote reads stay unsigned", exc_info=True)
+
+    def _apply_settings(self, *statements):
+        try:
+            for statement in statements:
+                self.connection.execute(statement)
+        except duckdb.InvalidInputException:
+            # These settings belong to the database instance, which DuckDB shares
+            # between connections to the same file and locks once external access
+            # is disabled. Tolerate that only when the lock came from this policy.
+            if self.connection.execute("SELECT current_setting('enable_external_access')").fetchone()[0]:
+                raise
 
     def __exit__(self, exception_type, exception_value, traceback_val):
         try:

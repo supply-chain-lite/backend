@@ -26,6 +26,57 @@ finally:
         sys.modules["app.config"] = previous_config
 
 
+class DuckDBS3SetupTests(unittest.TestCase):
+    def open_connection(self, env):
+        native = MagicMock()
+        with (
+            patch.dict(connection_duckdb.os.environ, env, clear=True),
+            patch.object(connection_duckdb.os.path, "isfile", return_value=True),
+            patch.object(connection_duckdb.duckdb, "connect", return_value=native),
+        ):
+            with connection_duckdb.duckdb_connection("model", "unused.db") as cursor:
+                self.assertIs(cursor.conn, native)
+        return [call.args[0] for call in native.execute.call_args_list if isinstance(call.args[0], str)]
+
+    def test_unconfigured_connections_skip_s3_setup_every_time(self):
+        for env in (
+            {},
+            {"S3_ACCESS_KEY": "partial"},
+            {"S3_REGION": "us-east-1"},
+            {"DUCKDB_S3_CREDENTIAL_CHAIN": "false"},
+        ):
+            with self.subTest(env=env):
+                for _ in range(2):
+                    statements = self.open_connection(env)
+                    self.assertNotIn("LOAD aws;", statements)
+                    self.assertFalse(any(sql.startswith("CREATE OR REPLACE SECRET") for sql in statements))
+                    self.assertIn("BEGIN", statements)
+                    self.assertIn("COMMIT", statements)
+
+    def test_explicit_keys_create_secret_without_aws_discovery(self):
+        statements = self.open_connection(
+            {
+                "S3_ACCESS_KEY": "test-key",
+                "S3_SECRET_KEY": "test-secret",
+                "DUCKDB_S3_CREDENTIAL_CHAIN": "true",
+            }
+        )
+        self.assertNotIn("LOAD aws;", statements)
+        secret = next(sql for sql in statements if sql.startswith("CREATE OR REPLACE SECRET"))
+        self.assertIn("KEY_ID 'test-key'", secret)
+        self.assertIn("SECRET 'test-secret'", secret)
+        self.assertNotIn("credential_chain", secret)
+        self.assertLess(statements.index(secret), statements.index("SET enable_external_access = false;"))
+
+    def test_credential_discovery_requires_opt_in(self):
+        statements = self.open_connection({"DUCKDB_S3_CREDENTIAL_CHAIN": "true"})
+        secret = next(sql for sql in statements if sql.startswith("CREATE OR REPLACE SECRET"))
+        self.assertIn("PROVIDER credential_chain", secret)
+        self.assertIn("REFRESH auto", secret)
+        self.assertLess(statements.index("LOAD aws;"), statements.index(secret))
+        self.assertLess(statements.index(secret), statements.index("SET enable_external_access = false;"))
+
+
 class ConnectionTests(unittest.TestCase):
     def setUp(self):
         self.test_root = Path(__file__).resolve().parent
