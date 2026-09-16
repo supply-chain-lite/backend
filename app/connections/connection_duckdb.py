@@ -75,16 +75,18 @@ class duckdb_connection:
 
         try:
             self._loaded_extensions = set()
+            # Secret-manager settings must precede any secret use (including shared
+            # instance state from another connection). Extensions load next, then
+            # the remaining sandbox settings, then the optional S3 secret, then
+            # external access is disabled.
+            self._apply_settings("SET allow_persistent_secrets = false;")
             for extension in _duckdb_extensions():
                 self.connection.execute(f"LOAD {extension};")
                 self._loaded_extensions.add(extension)
-            # Secret manager settings are rejected once a secret exists, and secrets
-            # must exist before external access is disabled, so order matters here.
             self._apply_settings(
                 f"SET allowed_directories = {_allowed_directories_sql()};",
                 "SET autoinstall_known_extensions = false;",
                 "SET autoload_known_extensions = false;",
-                "SET allow_persistent_secrets = false;",
             )
             self._create_s3_secret()
             self._apply_settings("SET enable_external_access = false;")
@@ -116,15 +118,24 @@ class duckdb_connection:
             logger.warning("Could not configure DuckDB S3 credentials; remote reads stay unsigned", exc_info=True)
 
     def _apply_settings(self, *statements):
-        try:
-            for statement in statements:
+        for statement in statements:
+            try:
                 self.connection.execute(statement)
-        except duckdb.InvalidInputException:
-            # These settings belong to the database instance, which DuckDB shares
-            # between connections to the same file and locks once external access
-            # is disabled. Tolerate that only when the lock came from this policy.
-            if self.connection.execute("SELECT current_setting('enable_external_access')").fetchone()[0]:
+            except duckdb.InvalidInputException:
+                # These settings belong to the database instance, which DuckDB shares
+                # between connections to the same file. Another connection may already
+                # have applied this policy (and may have initialized the secret manager
+                # before disabling external access). Tolerate only that shared state.
+                if self._setting_already_enforced(statement):
+                    continue
                 raise
+
+    def _setting_already_enforced(self, statement):
+        if not self.connection.execute("SELECT current_setting('enable_external_access')").fetchone()[0]:
+            return True
+        if "allow_persistent_secrets" in statement:
+            return not self.connection.execute("SELECT current_setting('allow_persistent_secrets')").fetchone()[0]
+        return False
 
     def __exit__(self, exception_type, exception_value, traceback_val):
         try:

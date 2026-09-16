@@ -1,8 +1,8 @@
 # DuckDB security audit
 
-Updated: 2026-09-15
+Updated: 2026-09-16
 Engine reviewed: DuckDB 1.5.5 (`pyproject.toml`)
-Scope: Current DuckDB connection setup, SQL-client execution, remote path allowlisting, S3 credentials, and direct maintenance connections.
+Scope: Current DuckDB connection setup, database-file upload/download behavior, SQL-client execution, remote path allowlisting, S3 credentials, and direct maintenance connections.
 
 ## Executive result
 
@@ -11,6 +11,8 @@ Model connections disable external access after trusted initialization, disable 
 The previous SQL-client write regression is resolved: recognized DuckDB writes receive HTTP 403, and every remaining DuckDB SQL-client query opens a native read-only connection. Other application callers can explicitly request writable connections.
 
 S3 credential discovery is now opt-in. With neither a complete pair of S3 keys nor `DUCKDB_S3_CREDENTIAL_CHAIN` enabled, setup skips secret creation and loading `aws`. This avoids repeated unsuccessful credential discovery on local machines.
+
+DuckDB configuration values such as `enable_external_access` and `allowed_directories` are global to the live database instance, but are not serialized into the `.duckdb` file. A database edited offline with external access enabled therefore reopens with the normal defaults, and each application connection reapplies the service policy before serving queries. Uploads can still preserve catalog objects such as views and macros, so the file itself must be treated as untrusted input.
 
 The implementation does **not** set `lock_configuration=true`. Disabling external access must not be described as a blanket lock on all settings. These controls do not provide process isolation or a complete resource boundary.
 
@@ -23,26 +25,37 @@ Each context opens a fresh connection to an existing database file. DuckDB conne
 Initialization runs in this order:
 
 1. Check that the context is not already open and the database file exists, then call `duckdb.connect()` with the selected access mode.
-2. Execute `LOAD <extension>;` for each unique, nonempty extension in `DUCKDB_EXTENSIONS`.
+2. Apply `SET allow_persistent_secrets = false;` before any secret-manager use.
+3. Execute `LOAD <extension>;` for each unique, nonempty extension in `DUCKDB_EXTENSIONS`.
    The default is `httpfs`; the repository `.env` sets `httpfs,aws,json,excel`.
-3. Apply the following settings, in order:
+4. Apply the following remaining settings, in order:
 
    ```sql
    SET allowed_directories = <escaped list from DUCKDB_ALLOWED_DIRECTORIES>;
    SET autoinstall_known_extensions = false;
    SET autoload_known_extensions = false;
-   SET allow_persistent_secrets = false;
    ```
 
-4. Configure the optional, non-persistent `model_s3` secret as described below.
-5. Apply `SET enable_external_access = false`.
-6. Use the same native connection for execution and transactions, execute `BEGIN`, and return the cursor wrapper.
+5. Configure the optional, non-persistent `model_s3` secret as described below.
+6. Apply `SET enable_external_access = false`.
+7. Use the same native connection for execution and transactions, execute `BEGIN`, and return the cursor wrapper.
 
 Secret-manager settings precede secret creation, and secret creation precedes disabling external access. `DUCKDB_ALLOWED_DIRECTORIES` is split on commas, trimmed, and SQL-escaped; an unset value produces `[]`. The code does not validate that entries are remote URLs, so configured local paths would also be passed through.
 
-`_apply_settings()` catches `duckdb.InvalidInputException`. It re-raises if `enable_external_access` is still true; otherwise it suppresses the exception to tolerate settings already restricted by another connection to the shared database instance. It does not verify every requested setting, and an exception skips the remaining statements in that invocation. There is no application-level initialization lock in this implementation.
+`_apply_settings()` catches `duckdb.InvalidInputException` per statement. It re-raises while `enable_external_access` is still true, and otherwise tolerates the error as shared state already restricted by another connection. For `allow_persistent_secrets`, it additionally checks that the setting is already false. Other settings are not individually verified when external access is already disabled, so complete effective-policy verification under concurrency is not established. There is no application-level initialization lock in this implementation.
 
-On normal context exit, the transaction commits. A body exception or failed commit triggers a rollback attempt, and exit always closes the connection. Failed `BEGIN` also closes it. Earlier initialization steps are outside that cleanup handler; see the remaining findings.
+On normal context exit, the transaction commits. A body exception or failed commit triggers a rollback attempt, and exit always closes the connection. Failed initialization, including extension loading, settings, secret setup, and `BEGIN`, also closes the connection.
+
+## Database-file upload and download behavior
+
+Sources: [model methods](app/routers/models/methods.py) and [connection lifecycle helpers](app/connections/connection.py).
+
+- Downloads create a temporary destination and call `copy_database()` before returning the file.
+- Uploads require `owner` or `editor` access, reject an active model task, write the multipart body to a temporary file, and identify the engine from the file signature rather than the filename.
+- DuckDB uploads are then opened with plain `duckdb.connect()`, checkpointed, closed, and copied byte-for-byte to the live model path. The `restore` flag does not create a sanitized or reconstructed database for DuckDB.
+- The upload path does not inspect or remove stored views, macros, persistent-secret metadata, extension references, or other catalog objects.
+
+An offline `SET enable_external_access = true` is not a persistent bypass: after the creating connection closes, the setting is not retained in the database file, and the next application connection applies `enable_external_access = false`. However, opening and checkpointing an untrusted DuckDB file in the application process remains a parser and resource-exhaustion trust boundary. A crafted catalog object can also cause external access to an allowlisted URL when the application later queries it; access outside the configured policy should remain blocked by the hardened model connection.
 
 ## S3 credentials and extension setup
 
@@ -93,33 +106,37 @@ The write classifier is not a general statement allowlist. For example, it does 
 | --- | --- | --- |
 | **Resolved** | SQL-client catalog writes previously received writable connections | The route now rejects recognized DuckDB writes and forces all remaining DuckDB SQL-client connections to read-only. Writable connections remain available to other application workflows. |
 | **High - prior observation** | The filesystem boundary includes DuckDB's temporary directory | The 2026-09-14 audit reported that a marker under `<database>.tmp/` was readable while a sibling file was denied. This specific probe was not repeated for this update; keep temporary-directory contents within the trust boundary until revalidated. |
+| **High when uploads are untrusted** | Uploaded DuckDB files are parsed and checkpointed through an unrestricted connection | `upload_model()` checks only the file signature before `copy_database()` opens the source with default DuckDB settings and executes `CHECKPOINT`; the resulting file is copied byte-for-byte. This is not evidence that `enable_external_access` persists, but it exposes the main process to malformed/pathological database files and preserves attacker-controlled catalog objects. |
 | **High** | Direct maintenance connections bypass the model connection policy | `create_database()`, `vacuum_model()`, and `copy_database()` call `duckdb.connect()` directly. This is a policy gap if a database, template, or path becomes attacker-controlled. |
 | **Medium** | Initialization does not verify the complete shared configuration | `_apply_settings()` suppresses an `InvalidInputException` when external access is already disabled, without checking the allowlist or each extension/secret setting. It can skip remaining settings. The previous lock-check implementation has been replaced, but complete initialization under concurrency is not established. |
-| **Medium** | Early initialization failures lack explicit cleanup | Extension loading, settings application, and S3 setup occur before the `try` covering `BEGIN`. A failure escaping those steps can leave an opened connection without an explicit close; `sql_connection.__enter__()` only delegates and adds no cleanup. |
+| **Resolved** | Initialization failures could leave native connections open | The current `duckdb_connection.__enter__()` wraps extension loading, settings, secret setup, and `BEGIN` in a cleanup handler; failures call `_close()`. |
 | **Medium** | Extension trust restrictions are not all explicit | Startup installation names the `core` repository and setup disables automatic installation/loading. The configured `DUCKDB_EXTENSIONS` list is operator-controlled, and the wrapper does not explicitly set `allow_community_extensions=false` or `allow_unsigned_extensions=false`; extension-file permissions remain part of deployment trust. |
 | **Medium** | S3 credentials are not scoped per model or bucket | Connections use the same environment-supplied credentials, and secret SQL has no `SCOPE`. Review remote prefixes and credential permissions together. |
+| **Medium** | Stored catalog objects can trigger configured external reads | Uploaded views or macros survive the byte-for-byte copy. When later queried, they execute under the application connection; `enable_external_access=false` blocks unallowlisted sources, but `DUCKDB_ALLOWED_DIRECTORIES` intentionally permits configured URL/path prefixes. |
 | **Medium** | Untrusted workloads have no complete resource boundary | The reviewed connection and SQL-client code sets no execution deadline or explicit memory, CPU, disk, or network egress quota. Expensive queries can exhaust resources despite the returned-row limit. |
 | **Low/Medium** | Query text and engine errors can expose sensitive details | Failed SQL is logged in full, secret-creation failures include exception details, and raw engine errors are returned in SQL-client HTTP errors. SQL containing credentials, internal paths, or private URLs may reach logs or clients. |
 
 ## Remaining remediation
 
-1. Keep database creation, checkpointing, and backup inputs trusted, or route them through a policy appropriate to those operations.
-2. Revalidate temporary-directory access on the deployed DuckDB build and keep application secrets out of allowed paths and spill directories.
-3. Validate allowed prefixes and S3 endpoint configuration, and scope credentials to required data. Review whether secrets also need an explicit `SCOPE`.
-4. Verify the complete effective policy when initialization encounters shared settings, and close the native connection on every initialization failure.
-5. Explicitly configure extension trust settings where required and restrict write access to installed extension files.
-6. Add query resource limits and process/network isolation appropriate to the trust level of SQL users.
-7. Redact sensitive SQL and engine details from logs and API responses.
+1. Validate uploaded DuckDB files with a hardened connection before replacement, or process them in a separate low-privilege process/container with no network access or application secrets. Prefer reconstructing trusted tables over accepting arbitrary catalog objects when uploads are untrusted.
+2. Keep database creation, checkpointing, and backup inputs trusted, or route them through a policy appropriate to those operations.
+3. Revalidate temporary-directory access on the deployed DuckDB build and keep application secrets out of allowed paths and spill directories.
+4. Validate allowed prefixes and S3 endpoint configuration, and scope credentials to required data. Review whether secrets also need an explicit `SCOPE`.
+5. Verify the complete effective policy when initialization encounters shared settings; consider setting `lock_configuration=true` after trusted initialization.
+6. Explicitly configure extension trust settings where required and restrict write access to installed extension files.
+7. Add query resource limits and process/network isolation appropriate to the trust level of SQL users.
+8. Redact sensitive SQL and engine details from logs and API responses.
 
 ## Verification and limits
 
-Verification available from the 2026-09-15 connection implementation update:
+Verification available from the 2026-09-16 review:
 
-- `python -m unittest discover -s tests -p test_connections.py`: 22 tests passed.
+- `python -m unittest discover -s tests -p test_connections.py`: 23 tests passed.
 - Ruff checks passed for `connection_duckdb.py` and `tests/test_connections.py`.
 - Existing integration tests cover native read-only behavior, transaction cleanup, separate overlapping reader connections, local CSV denial, statement restrictions, and metadata handling.
 - Four added connection tests use mocked connections to check repeated unconfigured setup skips secret SQL and unnecessary `LOAD aws`, explicit keys take precedence without AWS discovery, credential-chain opt-in preserves setup order and `REFRESH auto`, and configured extensions load once in order.
+- A live DuckDB 1.5.5 probe confirmed that `enable_external_access` and `allowed_directories` return to their defaults after closing and reopening the database file. The same probe confirmed that attempts to re-enable external access, change the allowlist, or change autoload settings after external access is disabled are rejected.
 
 This document update was checked against the current source. SQL-client route behavior was reviewed in code; the connection suite does not constitute an end-to-end HTTP authorization test. The S3 setup tests do not exercise live credentials, refresh, or authenticated remote access.
 
-The earlier audit also reported successful reads from a configured remote HTTP prefix and from DuckDB's temporary directory. Those are historical observations, not fresh verification of the current implementation. No new remote-access, concurrency stress, resource-exhaustion, or complete sandbox audit was performed for this documentation update.
+The earlier audit also reported successful reads from a configured remote HTTP prefix and from DuckDB's temporary directory. Those are historical observations, not fresh verification of the current implementation. No new remote-access, upload end-to-end, concurrency stress, resource-exhaustion, or complete sandbox audit was performed for this documentation update.
