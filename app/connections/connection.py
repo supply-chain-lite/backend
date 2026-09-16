@@ -67,7 +67,6 @@ def _remove_sql_comments_and_literals(query):
 
 def _duckdb_explained_query(query):
     """Unwrap EXPLAIN, including ANALYZE and parenthesized options."""
-    import duckdb
 
     # DuckDB token offsets are UTF-8 byte offsets; comments are omitted.
     encoded = query.encode("utf-8")
@@ -97,8 +96,6 @@ def query_requires_write_access(query, db_type="SQLITE"):
 
     if db_type.upper() == "DUCKDB":
         try:
-            import duckdb
-
             statements = duckdb.extract_statements(query)
             if not statements:
                 return False
