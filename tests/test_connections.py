@@ -81,6 +81,28 @@ class DuckDBS3SetupTests(unittest.TestCase):
         loads = [statement for statement in statements if statement.startswith("LOAD ")]
         self.assertEqual(loads, ["LOAD json;", "LOAD httpfs;", "LOAD excel;"])
 
+    def test_resource_limits_are_supplied_at_connection_start(self):
+        native = MagicMock()
+        with (
+            patch.dict(
+                connection_duckdb.os.environ,
+                {
+                    "DUCKDB_MEMORY_LIMIT": "256MB",
+                    "DUCKDB_THREADS": "3",
+                    "DUCKDB_MAX_TEMP_DIRECTORY_SIZE": "512MB",
+                },
+                clear=True,
+            ),
+            patch.object(connection_duckdb.os.path, "isfile", return_value=True),
+            patch.object(connection_duckdb.duckdb, "connect", return_value=native) as connect,
+        ):
+            with connection_duckdb.duckdb_connection("model", "unused.db"):
+                pass
+        self.assertEqual(
+            connect.call_args.kwargs["config"],
+            {"memory_limit": "256MB", "threads": 3, "max_temp_directory_size": "512MB"},
+        )
+
 
 class ConnectionTests(unittest.TestCase):
     def setUp(self):
@@ -236,6 +258,12 @@ class ConnectionTests(unittest.TestCase):
                     cursor.get_description(query)
         finally:
             csv_path.unlink()
+
+    def test_duckdb_query_timeout_interrupts_long_operation(self):
+        with patch.dict(connection_duckdb.os.environ, {"DUCKDB_QUERY_TIMEOUT_SECONDS": "0.05"}, clear=False):
+            with self.assertRaisesRegex(TimeoutError, "0.05-second time limit"):
+                with self.connect("DUCKDB") as cursor:
+                    cursor.execute("SELECT sum(i) FROM range(1000000000) AS values(i)")
 
     def test_duckdb_closes_when_begin_or_commit_fails(self):
         for failing_statement in ("BEGIN", "COMMIT"):
