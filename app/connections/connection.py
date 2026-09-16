@@ -188,10 +188,15 @@ def create_database(db_path, db_type, db_file):
             with open(db_file, "r") as f:
                 model_db.executescript(f.read())
     elif db_type.upper() == "DUCKDB":
-        con = duckdb.connect(db_path)
-        with open(db_file, "r") as f:
-            con.execute(f.read())
-        con.close()
+        from .connection_duckdb import duckdb_resource_config, run_duckdb_operation
+
+        con = duckdb.connect(db_path, config=duckdb_resource_config())
+        try:
+            with open(db_file, "r") as f:
+                script = f.read()
+            run_duckdb_operation(con, lambda: con.execute(script))
+        finally:
+            con.close()
     else:
         raise ValueError(f"Unsupported database type: {db_type}")
 
@@ -203,9 +208,13 @@ def vacuum_model(db_path, db_type):
         connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         connection.close()
     elif db_type.upper() == "DUCKDB":
-        con = duckdb.connect(db_path)
-        con.execute("CHECKPOINT")
-        con.close()
+        from .connection_duckdb import duckdb_resource_config, run_duckdb_operation
+
+        con = duckdb.connect(db_path, config=duckdb_resource_config())
+        try:
+            run_duckdb_operation(con, lambda: con.execute("CHECKPOINT"))
+        finally:
+            con.close()
     else:
         raise ValueError(f"Unsupported database type: {db_type}")
 
@@ -230,9 +239,13 @@ def copy_database(src_db_path, dest_db_path, db_type, restore=False):
             connection.execute("VACUUM INTO ?", (dest_db_path,))
             connection.close()
     elif db_type.upper() == "DUCKDB":
-        conn = duckdb.connect(src_db_path)
-        conn.execute("CHECKPOINT")
-        conn.close()
+        from .connection_duckdb import duckdb_resource_config, run_duckdb_operation
+
+        conn = duckdb.connect(src_db_path, config=duckdb_resource_config())
+        try:
+            run_duckdb_operation(conn, lambda: conn.execute("CHECKPOINT"))
+        finally:
+            conn.close()
         dest_wal = f"{dest_db_path}.wal"
         shutil.copy(src_db_path, dest_db_path)
         if os.path.exists(dest_wal):

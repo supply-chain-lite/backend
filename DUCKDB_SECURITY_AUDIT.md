@@ -14,6 +14,8 @@ S3 credential discovery is now opt-in. With neither a complete pair of S3 keys n
 
 DuckDB configuration values such as `enable_external_access` and `allowed_directories` are global to the live database instance, but are not serialized into the `.duckdb` file. A database edited offline with external access enabled therefore reopens with the normal defaults, and each application connection reapplies the service policy before serving queries. Uploads can still preserve catalog objects such as views and macros, so the file itself must be treated as untrusted input.
 
+DuckDB connections now apply resource limits at startup: `DUCKDB_MEMORY_LIMIT` defaults to `1GB`, `DUCKDB_THREADS` to `2`, and `DUCKDB_MAX_TEMP_DIRECTORY_SIZE` to `2GB`. Each wrapped DuckDB operation, including result fetching, has a `DUCKDB_QUERY_TIMEOUT_SECONDS` limit that defaults to `60` seconds and interrupts the connection when exceeded. The same limits and timeout apply to direct database creation, copy, and maintenance operations. These are defense-in-depth controls, not process-level CPU quotas or a substitute for isolation.
+
 The implementation does **not** set `lock_configuration=true`. Disabling external access must not be described as a blanket lock on all settings. These controls do not provide process isolation or a complete resource boundary.
 
 ## Current connection lifecycle
@@ -35,6 +37,8 @@ Initialization runs in this order:
    SET autoinstall_known_extensions = false;
    SET autoload_known_extensions = false;
    ```
+
+Resource limits are supplied as connection-start configuration before these settings are applied. Direct database creation, copy, and maintenance connections use the same resource configuration and timeout wrapper.
 
 5. Configure the optional, non-persistent `model_s3` secret as described below.
 6. Apply `SET enable_external_access = false`.
@@ -113,7 +117,7 @@ The write classifier is not a general statement allowlist. For example, it does 
 | **Medium** | Extension trust restrictions are not all explicit | Startup installation names the `core` repository and setup disables automatic installation/loading. The configured `DUCKDB_EXTENSIONS` list is operator-controlled, and the wrapper does not explicitly set `allow_community_extensions=false` or `allow_unsigned_extensions=false`; extension-file permissions remain part of deployment trust. |
 | **Medium** | S3 credentials are not scoped per model or bucket | Connections use the same environment-supplied credentials, and secret SQL has no `SCOPE`. Review remote prefixes and credential permissions together. |
 | **Medium** | Stored catalog objects can trigger configured external reads | Uploaded views or macros survive the byte-for-byte copy. When later queried, they execute under the application connection; `enable_external_access=false` blocks unallowlisted sources, but `DUCKDB_ALLOWED_DIRECTORIES` intentionally permits configured URL/path prefixes. |
-| **Medium** | Untrusted workloads have no complete resource boundary | The reviewed connection and SQL-client code sets no execution deadline or explicit memory, CPU, disk, or network egress quota. Expensive queries can exhaust resources despite the returned-row limit. |
+| **Medium** | Untrusted workloads are not fully isolated | Model connections now apply configurable memory, worker-thread, temporary-spill, and per-operation timeout limits. These do not impose a hard OS CPU quota, prevent all resource contention, or protect the process from malicious database-file/parser behavior; process/network isolation remains required for hostile input. |
 | **Low/Medium** | Query text and engine errors can expose sensitive details | Failed SQL is logged in full, secret-creation failures include exception details, and raw engine errors are returned in SQL-client HTTP errors. SQL containing credentials, internal paths, or private URLs may reach logs or clients. |
 
 ## Remaining remediation
@@ -124,7 +128,7 @@ The write classifier is not a general statement allowlist. For example, it does 
 4. Validate allowed prefixes and S3 endpoint configuration, and scope credentials to required data. Review whether secrets also need an explicit `SCOPE`.
 5. Verify the complete effective policy when initialization encounters shared settings; consider setting `lock_configuration=true` after trusted initialization.
 6. Explicitly configure extension trust settings where required and restrict write access to installed extension files.
-7. Add query resource limits and process/network isolation appropriate to the trust level of SQL users.
+7. Tune the DuckDB limits for deployment and add process/network isolation appropriate to the trust level of SQL users; application timeouts are not a hard CPU or memory sandbox.
 8. Redact sensitive SQL and engine details from logs and API responses.
 
 ## Verification and limits
@@ -136,6 +140,7 @@ Verification available from the 2026-09-16 review:
 - Existing integration tests cover native read-only behavior, transaction cleanup, separate overlapping reader connections, local CSV denial, statement restrictions, and metadata handling.
 - Four added connection tests use mocked connections to check repeated unconfigured setup skips secret SQL and unnecessary `LOAD aws`, explicit keys take precedence without AWS discovery, credential-chain opt-in preserves setup order and `REFRESH auto`, and configured extensions load once in order.
 - A live DuckDB 1.5.5 probe confirmed that `enable_external_access` and `allowed_directories` return to their defaults after closing and reopening the database file. The same probe confirmed that attempts to re-enable external access, change the allowlist, or change autoload settings after external access is disabled are rejected.
+- Connection tests verify that resource settings are passed at startup, and a live operation test verifies that a long-running DuckDB query is interrupted and reported as a timeout.
 
 This document update was checked against the current source. SQL-client route behavior was reviewed in code; the connection suite does not constitute an end-to-end HTTP authorization test. The S3 setup tests do not exercise live credentials, refresh, or authenticated remote access.
 

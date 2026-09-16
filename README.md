@@ -339,6 +339,17 @@ Defined in `.env` (see `.env.example`). Variables marked **Required** must be se
 |---|---|---|
 | `DUCKDB_EXTENSIONS` | `httpfs` | Comma-separated DuckDB extensions to install during startup and load for model connections |
 
+### DuckDB workload limits
+
+| Variable | Default | Description |
+|---|---|---|
+| `DUCKDB_MEMORY_LIMIT` | `1GB` | Maximum memory DuckDB may use for a model workload |
+| `DUCKDB_THREADS` | `2` | Maximum DuckDB execution worker threads for a model workload |
+| `DUCKDB_MAX_TEMP_DIRECTORY_SIZE` | `2GB` | Maximum disk space for DuckDB temporary spill files for a model workload |
+| `DUCKDB_QUERY_TIMEOUT_SECONDS` | `60` | Maximum duration of an individual DuckDB operation, including result fetching |
+
+The memory, thread, and temporary-spill limits are supplied when DuckDB connections open, including database creation, copy, and maintenance connections. The query timeout interrupts the active connection operation. These are application-level limits; process/container isolation is still required for hostile database files or fully untrusted SQL.
+
 ### Logging & Cleanup
 
 | Variable | Default | Description |
