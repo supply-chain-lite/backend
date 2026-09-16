@@ -104,6 +104,7 @@ def run_duckdb_operation(connection, operation, timeout_seconds=None):
         raise
     finally:
         timer.cancel()
+        timer.join()
 
 
 def _s3_secret_sql():

@@ -10,6 +10,7 @@ import duckdb
 from fastapi import HTTPException
 
 from ..config import master_db
+from .connection_duckdb import duckdb_connection, duckdb_resource_config, run_duckdb_operation
 from .connection_sqlite import close_all_conn as close_all_conn
 from .connection_sqlite import connection_pool as connection_pool
 from .connection_sqlite import remove_connection_object as remove_connection_object
@@ -159,7 +160,6 @@ class sql_connection:
                 raise ValueError("db_access must be 0 (read-only) or 1 (read-write)")
             self.db_access = db_access
             # SQLite installations do not need to import the optional DuckDB driver.
-            from .connection_duckdb import duckdb_connection
 
             self._context = duckdb_connection(db_id, db_path, db_access)
 
@@ -188,8 +188,6 @@ def create_database(db_path, db_type, db_file):
             with open(db_file, "r") as f:
                 model_db.executescript(f.read())
     elif db_type.upper() == "DUCKDB":
-        from .connection_duckdb import duckdb_resource_config, run_duckdb_operation
-
         con = duckdb.connect(db_path, config=duckdb_resource_config())
         try:
             with open(db_file, "r") as f:
@@ -208,13 +206,8 @@ def vacuum_model(db_path, db_type):
         connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         connection.close()
     elif db_type.upper() == "DUCKDB":
-        from .connection_duckdb import duckdb_resource_config, run_duckdb_operation
-
-        con = duckdb.connect(db_path, config=duckdb_resource_config())
-        try:
-            run_duckdb_operation(con, lambda: con.execute("CHECKPOINT"))
-        finally:
-            con.close()
+        with duckdb_connection(-1, db_path, db_access=1) as conn:
+            conn.execute("CHECKPOINT")
     else:
         raise ValueError(f"Unsupported database type: {db_type}")
 
@@ -239,13 +232,8 @@ def copy_database(src_db_path, dest_db_path, db_type, restore=False):
             connection.execute("VACUUM INTO ?", (dest_db_path,))
             connection.close()
     elif db_type.upper() == "DUCKDB":
-        from .connection_duckdb import duckdb_resource_config, run_duckdb_operation
-
-        conn = duckdb.connect(src_db_path, config=duckdb_resource_config())
-        try:
-            run_duckdb_operation(conn, lambda: conn.execute("CHECKPOINT"))
-        finally:
-            conn.close()
+        with duckdb_connection(-1, src_db_path, db_access=1) as conn:
+            conn.execute("CHECKPOINT")
         dest_wal = f"{dest_db_path}.wal"
         shutil.copy(src_db_path, dest_db_path)
         if os.path.exists(dest_wal):
