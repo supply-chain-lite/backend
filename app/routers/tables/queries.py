@@ -3,6 +3,9 @@ from fastapi import HTTPException
 get_column_order = """select ifnull(ColumnOrder, '[]') as ColumnOrder
                     from S_TableGroup WHERE TableName = ? collate nocase"""
 
+get_table_type = """select ifnull(TableType, 'NA') as TableType
+                    from S_TableGroup WHERE TableName = ? collate nocase"""
+
 get_access_level = """SELECT lower(S_UserModels.AccessLevel) as AccessLevel,
                         ifnull(json_extract(ifnull(S_Models.JsonData, '{}'), '$.IsLocked'), 0) as IsRunning
                         FROM S_UserModels, S_Models
