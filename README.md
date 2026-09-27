@@ -329,7 +329,7 @@ Defined in `.env` (see `.env.example`). Variables marked **Required** must be se
 | `S3_ACCESS_KEY` | — | S3 access key |
 | `S3_SECRET_KEY` | — | S3 secret key |
 | `S3_BUCKET_NAME` | — | S3 bucket name |
-| `S3_URL` | — | S3-compatible endpoint URL |
+| `S3_URL` | — | S3-compatible endpoint URL (for Hetzner, use `https://<region>.your-objectstorage.com`; a trailing bucket path is also accepted) |
 | `DUCKDB_S3_CREDENTIAL_CHAIN` | `false` | Enable AWS credential discovery for DuckDB when explicit S3 keys are absent |
 | `SETUP_S3` | `0` | Set to `1` to enable S3-backed storage setup |
 

@@ -1,16 +1,20 @@
 import os
+from urllib.parse import urlsplit
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import HTTPException
 
-from app.config import S3_ACCESS_KEY, S3_SECRET_KEY, S3_URL
+from app.config import S3_ACCESS_KEY, S3_SECRET_KEY
 
 
 def _make_s3_client(
     access_key: str | None = None,
     secret_key: str | None = None,
     allow_server_credentials: bool = True,
+    endpoint_url: str | None = None,
+    region: str | None = None,
 ):
     """Create an S3 client using request credentials, configured keys, or AWS discovery."""
     if bool(access_key) != bool(secret_key):
@@ -27,10 +31,18 @@ def _make_s3_client(
         if bool(key_id) != bool(secret):
             raise HTTPException(status_code=500, detail="S3 access key configuration is incomplete")
 
-    client_options = {}
-    if S3_URL:
-        client_options["endpoint_url"] = S3_URL
-    region = os.getenv("S3_REGION") or os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION")
+    client_options = {
+        # Path-style addressing is supported by AWS and required by many
+        # S3-compatible providers, including Hetzner Object Storage.
+        "config": Config(signature_version="s3v4", s3={"addressing_style": "path"}),
+    }
+    if endpoint_url:
+        client_options["endpoint_url"] = endpoint_url
+    region = region or os.getenv("S3_REGION") or os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION")
+    if not region and endpoint_url:
+        host = urlsplit(endpoint_url).hostname or ""
+        if host.endswith(".your-objectstorage.com"):
+            region = host.split(".", 1)[0]
     if region:
         client_options["region_name"] = region
     if key_id and secret:
@@ -43,14 +55,21 @@ def _make_s3_client(
 
 def list_files(
     bucket: str,
+    endpoint_url: str,
     prefix: str = "",
+    region: str | None = None,
     access_key: str | None = None,
     secret_key: str | None = None,
     allow_server_credentials: bool = True,
 ):
-    """List the immediate files and folders under an S3 bucket prefix."""
+    """List the immediate files and folders in an S3 bucket."""
     if not bucket.strip():
         raise HTTPException(status_code=400, detail="bucket must not be empty")
+    if not endpoint_url.strip():
+        raise HTTPException(status_code=400, detail="endpointURL must not be empty")
+    endpoint = urlsplit(endpoint_url)
+    if endpoint.scheme not in {"http", "https"} or not endpoint.netloc:
+        raise HTTPException(status_code=400, detail="endpointURL must be an http(s) S3 endpoint URL")
 
     normalized_prefix = prefix.lstrip("/")
     if normalized_prefix and not normalized_prefix.endswith("/"):
@@ -58,7 +77,13 @@ def list_files(
 
     entries = {}
     try:
-        client = _make_s3_client(access_key, secret_key, allow_server_credentials)
+        client = _make_s3_client(
+            access_key,
+            secret_key,
+            allow_server_credentials,
+            endpoint_url,
+            region,
+        )
         paginator = client.get_paginator("list_objects_v2")
         for page in paginator.paginate(Bucket=bucket, Prefix=normalized_prefix, Delimiter="/"):
             for folder in page.get("CommonPrefixes", []):
@@ -68,8 +93,11 @@ def list_files(
 
             for item in page.get("Contents", []):
                 key = item["Key"]
-                # S3 may contain a zero-byte object used as a directory marker.
-                if key == normalized_prefix and key.endswith("/"):
+                # S3 may contain zero-byte objects used as directory markers.
+                if key.endswith("/"):
+                    if key != normalized_prefix:
+                        name = key[len(normalized_prefix) :].rstrip("/")
+                        entries[key] = {"key": key, "name": name, "type": "folder"}
                     continue
                 presigned_url = client.generate_presigned_url(
                     "get_object",

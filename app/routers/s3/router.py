@@ -19,10 +19,12 @@ def list_folder_contents(
     with master_connection() as cursor:
         check_module_access(cursor, role_name, this_api)
     files = s3_methods.list_files(
-        request.bucket,
-        request.prefix,
-        request.access_key,
-        request.secret_key,
+        bucket=request.bucket,
+        endpoint_url=request.endpoint,
+        prefix=request.prefix,
+        region=request.region,
+        access_key=request.access_key,
+        secret_key=request.secret_key,
         allow_server_credentials=role_name == "SUPER_ADMIN",
     )
     return s3_schemas.fileListResponse(files=files)

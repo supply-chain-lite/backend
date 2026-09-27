@@ -1,14 +1,16 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class fileListRequest(BaseModel):
-    bucket: str
-    prefix: str = ""
-    access_key: str | None = None
-    secret_key: str | None = None
+    endpoint: str = Field(min_length=1)
+    bucket: str = Field(min_length=1)
+    prefix: str
+    region: str = ""
+    access_key: str = ""
+    secret_key: str = ""
 
 
 class S3Object(BaseModel):
