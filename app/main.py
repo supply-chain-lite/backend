@@ -18,6 +18,7 @@ from app.routers.auth.router import router as auth_router
 from app.routers.models.router import router as models_router
 from app.routers.notifications.router import router as notifications_router
 from app.routers.projects.router import router as projects_router
+from app.routers.s3.router import router as s3_router
 from app.routers.scheduler.router import router as scheduler_router
 from app.routers.sql_client.router import router as sql_client_router
 from app.routers.tables.router import router as tables_router
@@ -63,6 +64,7 @@ app.include_router(tables_router, prefix="/api/tables", tags=["tables"])
 app.include_router(sql_client_router, prefix="/api/sql-client", tags=["sql-client"])
 app.include_router(tasks_router, prefix="/api/tasks", tags=["tasks"])
 app.include_router(scheduler_router, prefix="/api/scheduler", tags=["scheduler"])
+app.include_router(s3_router, prefix="/api/s3", tags=["s3"])
 app.include_router(user_management_router, prefix="/api/user-management", tags=["user-management"])
 app.mount("/", StaticFiles(directory=STATIC_FOLDER, html=True), name="static")
 

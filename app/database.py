@@ -206,6 +206,7 @@ module_data = [
     ("Scheduler", "Schedule recurring tasks and manage schedules", "/api/scheduler", "scheduler.html"),
     ("Notifications", "Manage user notifications", "/api/notifications", "notifications.html"),
     ("UserManagement", "Manage user accounts and roles", "/api/user-management", "user-management.html"),
+    ("S3", "Manage S3 buckets and files", "/api/s3", "s3-browser.html"),
 ]
 
 admin_role = {
