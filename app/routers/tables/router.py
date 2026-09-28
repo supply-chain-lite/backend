@@ -494,6 +494,25 @@ def upload_excel_file(
     return table_schemas.UploadExcelToTableResponse(response=request_resp)
 
 
+@router.post("/upload-file", response_model=table_schemas.UploadFileResponse)
+def upload_table_file(
+    project_name: str = Form(...),
+    model_name: str = Form(...),
+    table_name: str = Form(...),
+    file_type: str = Form(...),
+    upload_file: UploadFile = File(...),
+    user_data: tuple = Depends(_get_user_from_token),
+) -> table_schemas.UploadFileResponse:
+    """Replace a table's rows with data from a CSV, TSV, Parquet, JSON, or TXT file."""
+    useremail, _display_name, role_name = user_data
+    with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
+        result = table_methods.upload_file(
+            cursor, useremail, model_name, project_name, table_name, file_type, upload_file
+        )
+    return table_schemas.UploadFileResponse(table_name=table_name, rows_imported=result)
+
+
 @router.post("/check-excel-sheets", response_model=table_schemas.checkExcelSheetResponse)
 def check_excel_sheet(
     request: table_schemas.checkExcelSheetRequest, user_data: tuple = Depends(_get_user_from_token)
