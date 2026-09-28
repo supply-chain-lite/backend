@@ -129,7 +129,10 @@ def _s3_secret_sql():
         fields.append(f"REGION {_quoted(region)}")
     endpoint = os.getenv("S3_URL")
     if endpoint:
-        parsed_endpoint = urlsplit(endpoint.strip())
+        endpoint = endpoint.strip()
+        if "://" not in endpoint:
+            endpoint = "https://" + endpoint
+        parsed_endpoint = urlsplit(endpoint)
         host = parsed_endpoint.netloc
         if not region and (parsed_endpoint.hostname or "").endswith(".your-objectstorage.com"):
             region = (parsed_endpoint.hostname or "").split(".", 1)[0]
