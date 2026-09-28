@@ -265,6 +265,14 @@ All routes accept **POST** only and are prefixed with `/api`. Static files are s
 | `POST /api/tasks/restore-db` | Restore the database from a task snapshot |
 | `POST /api/tasks/get-diff` | Get the diff produced by a task |
 
+### S3 (`/api/s3`)
+
+| Route | Description |
+|---|---|
+| `POST /api/s3/list` | List objects and folders under a bucket prefix |
+| `POST /api/s3/presigned-url` | Generate a temporary download URL for an object |
+| `POST /api/s3/preview` | Preview up to 500 rows from a CSV, TXT, JSON, Parquet, or XLSX object |
+
 ### Scheduler (`/api/scheduler`)
 
 | Route | Description |
