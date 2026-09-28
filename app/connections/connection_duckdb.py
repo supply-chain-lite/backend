@@ -4,6 +4,7 @@ import math
 import os
 import re
 import threading
+from urllib.parse import urlsplit
 
 import duckdb
 
@@ -128,8 +129,19 @@ def _s3_secret_sql():
         fields.append(f"REGION {_quoted(region)}")
     endpoint = os.getenv("S3_URL")
     if endpoint:
-        scheme, _, host = endpoint.rpartition("://")
-        fields += [f"ENDPOINT {_quoted(host)}", f"USE_SSL {_quoted(scheme != 'http')}", "URL_STYLE 'path'"]
+        endpoint = endpoint.strip()
+        if "://" not in endpoint:
+            endpoint = "https://" + endpoint
+        parsed_endpoint = urlsplit(endpoint)
+        host = parsed_endpoint.netloc
+        if not region and (parsed_endpoint.hostname or "").endswith(".your-objectstorage.com"):
+            region = (parsed_endpoint.hostname or "").split(".", 1)[0]
+            fields.append(f"REGION {_quoted(region)}")
+        fields += [
+            f"ENDPOINT {_quoted(host)}",
+            f"USE_SSL {_quoted(parsed_endpoint.scheme != 'http')}",
+            "URL_STYLE 'path'",
+        ]
     return "CREATE OR REPLACE SECRET model_s3 (" + ", ".join(fields) + ");"
 
 

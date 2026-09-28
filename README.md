@@ -265,6 +265,14 @@ All routes accept **POST** only and are prefixed with `/api`. Static files are s
 | `POST /api/tasks/restore-db` | Restore the database from a task snapshot |
 | `POST /api/tasks/get-diff` | Get the diff produced by a task |
 
+### S3 (`/api/s3`)
+
+| Route | Description |
+|---|---|
+| `POST /api/s3/list` | List objects and folders under a bucket prefix |
+| `POST /api/s3/presigned-url` | Generate a temporary download URL for an object |
+| `POST /api/s3/preview` | Preview up to 500 rows from a CSV, TXT, JSON, Parquet, or XLSX object |
+
 ### Scheduler (`/api/scheduler`)
 
 | Route | Description |
@@ -329,7 +337,7 @@ Defined in `.env` (see `.env.example`). Variables marked **Required** must be se
 | `S3_ACCESS_KEY` | — | S3 access key |
 | `S3_SECRET_KEY` | — | S3 secret key |
 | `S3_BUCKET_NAME` | — | S3 bucket name |
-| `S3_URL` | — | S3-compatible endpoint URL |
+| `S3_URL` | — | S3-compatible endpoint URL (for Hetzner, use `https://<region>.your-objectstorage.com`; a trailing bucket path is also accepted) |
 | `DUCKDB_S3_CREDENTIAL_CHAIN` | `false` | Enable AWS credential discovery for DuckDB when explicit S3 keys are absent |
 | `SETUP_S3` | `0` | Set to `1` to enable S3-backed storage setup |
 
