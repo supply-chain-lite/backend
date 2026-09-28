@@ -145,6 +145,9 @@ class this_cursor:
             logger.exception("Query execution failed: %s", query)
             raise
 
+    def get_db_type(self):
+        return "sqlite"
+
     def fetchall(self):
         return self.cursor.fetchall()
 

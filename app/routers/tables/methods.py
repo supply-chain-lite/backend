@@ -1,20 +1,23 @@
 import datetime
 import json
+import os
 import re
 import tempfile
 
+import duckdb
 import pandas as pd
 import xlsxwriter as xw
 from fastapi import HTTPException, UploadFile, responses
 from python_calamine import CalamineWorkbook
 
+from app.config import MAX_UPLOAD_SIZE_BYTES
 from app.connections.connection import sql_connection
 from app.routers.models.methods import get_model_details
 from app.serialization import serialize_database_cell
 
 from . import queries as table_queries
 
-SQLITE_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_ ]*$")
+SQLITE_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_ -]*$")
 
 
 def _mask_blob_values(
@@ -1114,6 +1117,131 @@ def upload_excel(
         return response_status
 
 
+def upload_file(
+    cursor, user_email: str, model_name: str, project_name: str, table_name: str, file_type: str, file: UploadFile
+) -> int:
+    """Parse and atomically replace table rows with records from a delimited, JSON, Parquet, or text file."""
+    supported_types = {"csv", "tsv", "parquet", "json", "txt"}
+    if file_type not in supported_types:
+        raise HTTPException(status_code=400, detail="Unsupported file_type. Use csv, tsv, parquet, json, or txt.")
+    extension = os.path.splitext(file.filename or "")[1].lower().lstrip(".")
+    if extension != file_type:
+        raise HTTPException(status_code=400, detail="file_type must match the uploaded file extension.")
+
+    content = file.file.read(MAX_UPLOAD_SIZE_BYTES + 1)
+    if len(content) > MAX_UPLOAD_SIZE_BYTES:
+        raise HTTPException(status_code=413, detail="The uploaded file exceeds the configured size limit.")
+    if not content:
+        raise HTTPException(status_code=400, detail="The uploaded file is empty.")
+
+    try:
+        if file_type in ("csv", "tsv", "txt"):
+            headers, rows = _parse_delimited_upload(content, file_type)
+        elif file_type == "json":
+            headers, rows = _parse_json_upload(content)
+        else:
+            headers, rows = _parse_parquet_upload(content)
+    except HTTPException:
+        raise
+    except (UnicodeDecodeError, json.JSONDecodeError, OSError, ValueError, duckdb.Error) as exc:
+        raise HTTPException(status_code=400, detail=f"Could not read the uploaded {file_type} file: {exc}") from exc
+
+    model = get_model_details(cursor, model_name, project_name, user_email)
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+    if model.access_level in ("read", "reader", "readonly"):
+        raise HTTPException(status_code=403, detail="User does not have permission to modify the model")
+    if model.is_running:
+        raise HTTPException(status_code=403, detail="Cannot modify the model while a task using the model is running")
+
+    with sql_connection(model.model_id, model.model_path, db_type=model.db_type, db_access=1) as model_cursor:
+        try:
+            object_type = _validate_table_and_column_names(model_cursor, table_name, [])
+            if object_type != "table":
+                raise HTTPException(status_code=404, detail=f"View: {table_name} is not updatable")
+            table_headers = _get_table_headers_with_types(model_cursor, table_name, True)
+            column_formats = _get_column_formatting(model_cursor, table_name)
+            return _import_excel_to_table(
+                model_cursor,
+                [headers, *rows],
+                table_name,
+                table_headers,
+                column_formats,
+            )
+        except HTTPException:
+            model_cursor.rollback_changes()
+            raise
+        except Exception as exc:
+            model_cursor.rollback_changes()
+            raise HTTPException(status_code=400, detail=f"Could not import file into table: {exc}") from exc
+
+
+def _parse_delimited_upload(content: bytes, file_type: str) -> tuple[list[str], list[list[object]]]:
+    """Read CSV, TSV, and plain-text uploads through DuckDB's CSV reader."""
+    file_descriptor, upload_path = tempfile.mkstemp(suffix=f".{file_type}")
+    os.close(file_descriptor)
+    try:
+        with open(upload_path, "wb") as upload_file:
+            upload_file.write(content)
+
+        connection = duckdb.connect(database=":memory:")
+        try:
+            result = connection.execute("SELECT * FROM read_csv_auto(?)", [upload_path])
+            headers = [str(column[0]).strip() for column in result.description]
+            rows = [list(row) for row in result.fetchall()]
+        finally:
+            connection.close()
+    finally:
+        os.unlink(upload_path)
+
+    if not headers or not any(header.strip() for header in headers):
+        raise ValueError("The file must contain a header row.")
+    if any(not header for header in headers):
+        raise ValueError("Column names cannot be empty.")
+    if len({header.lower() for header in headers}) != len(headers):
+        raise ValueError("Column names must be unique, ignoring case.")
+    return headers, rows
+
+
+def _parse_json_upload(content: bytes) -> tuple[list[str], list[list[object]]]:
+    records = json.loads(content.decode("utf-8-sig"))
+    if not isinstance(records, list) or not records or any(not isinstance(row, dict) for row in records):
+        raise ValueError("The JSON file must contain a non-empty array of objects.")
+    headers = list(dict.fromkeys(key for record in records for key in record))
+    if not headers or any(not isinstance(key, str) or not key.strip() for key in headers):
+        raise ValueError("JSON object keys must be non-empty column names.")
+    if len({header.lower() for header in headers}) != len(headers):
+        raise ValueError("Column names must be unique, ignoring case.")
+    for record in records:
+        if any(not isinstance(key, str) for key in record):
+            raise ValueError("JSON object keys must be strings.")
+        if any(isinstance(value, (dict, list)) for value in record.values()):
+            raise ValueError("JSON values must be scalar values that can fit in a table cell.")
+    return headers, [[record.get(header) for header in headers] for record in records]
+
+
+def _parse_parquet_upload(content: bytes) -> tuple[list[str], list[list[object]]]:
+    if not content.startswith(b"PAR1"):
+        raise ValueError("The file does not have a Parquet signature.")
+    file_descriptor, parquet_path = tempfile.mkstemp(suffix=".parquet")
+    os.close(file_descriptor)
+    try:
+        with open(parquet_path, "wb") as parquet_file:
+            parquet_file.write(content)
+        connection = duckdb.connect(database=":memory:")
+        try:
+            result = connection.execute("SELECT * FROM read_parquet(?)", [parquet_path])
+            headers = [column[0] for column in result.description]
+            rows = result.fetchall()
+        finally:
+            connection.close()
+    finally:
+        os.unlink(parquet_path)
+    if not headers:
+        raise ValueError("The Parquet file must contain at least one column.")
+    return headers, [list(row) for row in rows]
+
+
 def _import_excel_to_table(model_cursor, all_rows, table_name, table_headers, column_formats):
     """
     Import rows from an Excel worksheet into the specified database table by matching Excel headers to table columns, replacing existing table rows with the imported data.
@@ -1163,7 +1291,10 @@ def _import_excel_to_table(model_cursor, all_rows, table_name, table_headers, co
         if default_value:
             default_values[column_name.lower()] = default_value
 
-    delete_query, insert_query = table_queries.get_excel_upload_insert_query(table_name, common_columns, default_values)
+    db_type = model_cursor.get_db_type()
+    delete_query, insert_query = table_queries.get_excel_upload_insert_query(
+        table_name, common_columns, default_values, db_type=db_type
+    )
     insert_rows = []
     for row_idx, row in enumerate(all_rows[1:]):
         values = []
@@ -1180,9 +1311,18 @@ def _import_excel_to_table(model_cursor, all_rows, table_name, table_headers, co
             values.append(cell_value)
         insert_rows.append(values)
     rows_inserted = len(insert_rows)
+    if db_type == "duckdb":
+        this_df = pd.DataFrame(insert_rows, columns=common_columns)
     model_cursor.execute(delete_query)
     if rows_inserted > 0:
-        model_cursor.executemany(insert_query, insert_rows)
+        if db_type == "duckdb":
+            model_cursor.register("this_df", this_df)
+            try:
+                model_cursor.execute(insert_query)
+            finally:
+                model_cursor.unregister("this_df")
+        else:
+            model_cursor.executemany(insert_query, insert_rows)
     model_cursor.intermediate_commit()
     return rows_inserted
 

@@ -568,7 +568,7 @@ def add_row(table_name, values, generated_columns):
     return insert_query, params
 
 
-def get_excel_upload_insert_query(table_name, column_names, default_values):
+def get_excel_upload_insert_query(table_name, column_names, default_values, db_type="sqlite"):
     """
     Prepare companion DELETE and INSERT SQL statements for bulk uploading Excel rows into a table.
 
@@ -599,4 +599,16 @@ def get_excel_upload_insert_query(table_name, column_names, default_values):
     placeholders = placeholders.rstrip(", ")
     insert_query = f"INSERT INTO {quote_identifier(table_name)} ({columns}) VALUES ({placeholders})"
     delete_query = f"DELETE FROM {quote_identifier(table_name)}"
+    if db_type == "duckdb":
+        select_expressions = []
+        for column_name in column_names:
+            quoted_column = quote_identifier(column_name)
+            if column_name in default_values and ";" not in str(default_values[column_name]):
+                select_expressions.append(f"COALESCE({quoted_column}, {default_values[column_name]})")
+            else:
+                select_expressions.append(quoted_column)
+        insert_query = (
+            f"INSERT INTO {quote_identifier(table_name)} ({columns}) "
+            f"SELECT {', '.join(select_expressions)} FROM this_df"
+        )
     return delete_query, insert_query

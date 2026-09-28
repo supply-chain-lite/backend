@@ -240,7 +240,10 @@ All routes accept **POST** only and are prefixed with `/api`. Static files are s
 | `POST /api/tables/add-row` | Add a new row to a table |
 | `POST /api/tables/download-excel` | Export selected tables to Excel |
 | `POST /api/tables/upload-excel` | Import an Excel file into tables |
+| `POST /api/tables/upload-file` | Replace a table's rows from CSV, TSV, Parquet, JSON, or TXT |
 | `POST /api/tables/check-excel-sheets` | Check whether sheet names exist in the model |
+
+`upload-file` accepts `project_name`, `model_name`, `table_name`, `file_type`, and the file field `upload_file` as multipart form data. `file_type` must be lowercase and match the filename extension. CSV and TSV files use UTF-8 with a header row; JSON files contain an array of objects; Parquet column names come from its schema; TXT files import one line per row into a column named `value`. The import replaces existing rows using the Excel upload rules: column names match case-insensitively, unmatched file columns are ignored, and omitted table columns use their database defaults or NULL. Model write access and non-running model checks apply. Uploads are limited by `MAX_UPLOAD_SIZE_BYTES`.
 
 ### SQL Client (`/api/sql-client`)
 
@@ -328,6 +331,7 @@ Defined in `.env` (see `.env.example`). Variables marked **Required** must be se
 |---|---|---|
 | `BROKER_URL` | `redis://localhost:6379/0` | Celery broker URL |
 | `TASK_PROCESS_TIMEOUT_MINUTES` | `120` | Hard timeout for a task process in minutes |
+| `MAX_UPLOAD_SIZE_BYTES` | `52428800` | Maximum accepted upload size in bytes (50 MiB) |
 | `DEFAULT_MAX_RUN_HOURS` | `24` | Max hours a task can run before it is auto-cancelled |
 
 ### S3 (Optional)

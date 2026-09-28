@@ -167,6 +167,12 @@ class UploadExcelToTableResponse(BaseModel):
     response: dict[str, dict[str, str | int | float | bool | None]]
 
 
+class UploadFileResponse(BaseModel):
+    status: str = "success"
+    table_name: str
+    rows_imported: int
+
+
 class checkExcelSheetRequest(BaseModel):
     model_name: str
     project_name: str

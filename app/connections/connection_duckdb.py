@@ -394,6 +394,15 @@ class this_cursor:
             self._rowcount += len(rows)
         return rows
 
+    def get_db_type(self):
+        return "duckdb"
+
+    def register(self, name, value):
+        return self._run_with_timeout(lambda: self.conn.register(name, value))
+
+    def unregister(self, name):
+        return self._run_with_timeout(lambda: self.conn.unregister(name))
+
     def description(self):
         return self._description
 
