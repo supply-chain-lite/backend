@@ -1003,6 +1003,8 @@ def _write_to_worksheet(workbook, worksheet, table_headers, data, column_formats
     # Write data rows
     for row_idx, row in enumerate(data, start=1):
         for col_idx, value in enumerate(row):
+            if isinstance(value, (list, tuple, dict, bytes, bytearray, memoryview)):
+                value = serialize_database_cell(value)
             cell_format = column_cell_formats[col_idx]
             if cell_format is not None:
                 worksheet.write(row_idx, col_idx, value, cell_format)

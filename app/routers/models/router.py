@@ -15,7 +15,7 @@ this_api = "/api/models"
 
 @router.post("/list", response_model=model_schemas.ModelListResponse)
 def get_user_models_by_project(user_data: tuple = Depends(_get_user_from_token)) -> model_schemas.ModelListResponse:
-    """Return all models grouped by project that are visible to the authenticated user."""
+    """Return visible models grouped by project with (access_level, model_id) pairs."""
     useremail, _display_name, role_name = user_data
     with master_connection() as cursor:
         check_module_access(cursor, role_name, this_api)

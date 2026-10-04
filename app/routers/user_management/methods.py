@@ -47,9 +47,27 @@ def get_users(cursor) -> list[user_schema.UserDetail]:
             "EndDate": end_date,
             "MaxConcurrentRuns": max_concurrent_runs,
             "CreatedAt": created_at,
+            "userModels": get_user_models(cursor, user_email),
         }
         user_details.append(user_schema.UserDetail(**this_user_detail))
     return user_details
+
+
+def get_user_models(cursor, user_email: str) -> list[user_schema.UserModel]:
+    """Return a user's non-owned models with their access levels."""
+    rows = cursor.execute(user_queries.get_user_models, (user_email,)).fetchall()
+    return [user_schema.UserModel(ModelId=model_id, AccessLevel=access_level) for model_id, access_level in rows]
+
+
+def update_user_models(cursor, user_email: str, user_models: list[user_schema.UserModel]) -> None:
+    """Placeholder for syncing a user's non-owned models to the supplied list.
+
+    An empty list requests clearing all non-owned models. Routes skip this
+    method when userModels is omitted or null.
+    """
+    # TODO: Add, update, and remove non-owned S_UserModels entries for user_email
+    # based on each input's ModelId and AccessLevel, preserving owned models.
+    pass
 
 
 def get_templates(cursor) -> list[str]:

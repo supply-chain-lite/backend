@@ -46,5 +46,6 @@ update_user = """UPDATE S_Users
                 WHERE UserEmail = ?
                 RETURNING 1"""
 
+get_user_models = "select ModelId, AccessLevel from S_UserModels where AccessLevel != 'owner' AND UserEmail = ?"
 
 get_role_id = "select RoleId from S_UserRoles where RoleName = ?"
