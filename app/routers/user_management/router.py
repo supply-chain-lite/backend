@@ -21,7 +21,7 @@ def get_users(user_data: tuple = Depends(_get_user_from_token)) -> user_schemas.
 
     with master_connection() as cursor:
         check_module_access(cursor, role_name, this_api)
-        user_details = user_methods.get_users(cursor)
+        user_details = user_methods.get_users(cursor, useremail)
 
     return user_schemas.UserDetailResponse(userDetails=user_details)
 
@@ -87,7 +87,7 @@ def add_user(
         check_module_access(cursor, role_name, this_api)
         user_methods.add_new_user(cursor, request)
         if request.userModels is not None:
-            user_methods.update_user_models(cursor, request.UserEmail, request.userModels)
+            user_methods.update_user_models(cursor, useremail, request.UserEmail, request.userModels)
 
     return user_schemas.MessageResponse(message="User added successfully")
 
@@ -117,7 +117,7 @@ def update_user(
         check_module_access(cursor, role_name, this_api)
         user_methods.update_user(cursor, request)
         if request.userModels is not None:
-            user_methods.update_user_models(cursor, request.UserEmail, request.userModels)
+            user_methods.update_user_models(cursor, useremail, request.UserEmail, request.userModels)
 
     return user_schemas.MessageResponse(message="User updated successfully")
 

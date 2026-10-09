@@ -46,6 +46,21 @@ update_user = """UPDATE S_Users
                 WHERE UserEmail = ?
                 RETURNING 1"""
 
-get_user_models = "select ModelId, AccessLevel from S_UserModels where AccessLevel != 'owner' AND UserEmail = ?"
-
 get_role_id = "select RoleId from S_UserRoles where RoleName = ?"
+
+
+get_access_level = """SELECT lower(S_UserModels.AccessLevel) as AccessLevel
+                        FROM S_UserModels
+                        WHERE S_UserModels.ModelId = ? AND S_UserModels.UserEmail = ? """
+
+get_shared_models = """select S_UserModels.ModelId, S_UserModels.AccessLevel
+                        from S_Models, S_UserModels
+                        where S_Models.ModelId = S_UserModels.ModelId
+                        and  S_Models.OwnerEmail != S_UserModels.UserEmail
+                        and  S_Models.OwnerEmail = ?
+                        and  S_UserModels.UserEmail = ?
+                        """
+
+delete_shared_model = """DELETE FROM S_UserModels
+                        WHERE ModelId = ?
+                        AND UserEmail = ?"""
