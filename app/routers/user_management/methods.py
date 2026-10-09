@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException
 
 from app.routers.auth.methods import forgot_password
+from app.routers.auth.queries import add_default_project
 from app.routers.models import queries as model_queries
 from app.routers.models.methods import get_model_details
 from app.routers.projects.methods import add_new_project
@@ -239,6 +240,7 @@ def add_new_user(cursor, user_data: user_schema.AddNewUserRequest):
     ).fetchone()
     if row is None:
         raise HTTPException(status_code=400, detail=f"User with email {user_data.UserEmail} already exists.")
+    cursor.execute(add_default_project, (user_data.UserEmail, user_data.UserEmail))
     forgot_password(cursor, user_data.UserEmail)  # Send forgot password email to the new user
     return
 
