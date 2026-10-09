@@ -4,7 +4,7 @@ from pydantic import BaseModel
 
 
 class ModelListResponse(BaseModel):
-    project_models: dict[str, dict[str, str]]
+    project_models: dict[str, dict[str, tuple[str, int]]]  # model name -> (access_level, model_id)
 
 
 class ModelTemplatesResponse(BaseModel):
