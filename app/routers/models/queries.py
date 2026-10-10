@@ -41,11 +41,14 @@ get_model_templates = """SELECT DISTINCT S_ModelTemplates.TemplateName
 get_template_sql_file = "SELECT {column_name} FROM S_ModelTemplates WHERE TemplateName = ?"
 
 get_user_models_by_project = """SELECT  S_Projects.ProjectName, S_UserModels.ModelName,
-                            S_UserModels.AccessLevel, S_UserModels.ModelId
+                            S_UserModels.AccessLevel, S_UserModels.ModelId,
+                            ifnull(json_extract(ifnull(S_Models.JsonData, '{}'), '$.db_type'), 'SQLITE') as db_type
                             FROM S_Projects
                             LEFT JOIN S_UserModels
                             ON  S_Projects.ProjectId = S_UserModels.ProjectId
                             AND S_Projects.UserEmail = S_UserModels.UserEmail
+                            LEFT JOIN S_Models
+                            ON S_UserModels.ModelId = S_Models.ModelId
                             WHERE S_Projects.UserEmail = ?"""
 
 get_template_name = "SELECT TemplateName FROM S_Models WHERE ModelId = ?"
