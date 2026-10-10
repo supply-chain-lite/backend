@@ -74,11 +74,12 @@ def _get_table_headers_with_types(model_cursor, table_name: str, get_all_columns
 
     if get_all_columns:
         return all_rows
-    try:
+    row = model_cursor.check_if_table_exists("S_TableGroup")
+    if row:
         column_order_row = model_cursor.execute(table_queries.get_column_order, (table_name,)).fetchone()
         decoded = json.loads(column_order_row[0]) if column_order_row else []
         column_order = decoded if isinstance(decoded, list) else []
-    except Exception:  # cathed broadly to avoid any issues even if S_TableGroup doesnt exists
+    else:  # catched broadly to avoid any issues even if S_TableGroup doesnt exists
         column_order = []
     table_columns = {name: col_type for name, col_type in all_rows}
     table_headers = []
@@ -152,10 +153,14 @@ def get_table_data(
         if access_level in ("read", "reader", "readonly") or is_running:
             object_type = "read_only_object"
         if object_type == "table":
-            table_type = model_cursor.execute(table_queries.get_table_type, (table_name,)).fetchone()
-            table_type = table_type[0] if table_type else "NA"
-            if table_type.lower().startswith("output"):
-                object_type = "output_object"
+            row = model_cursor.check_if_table_exists("S_TableGroup")
+            if row:
+                table_type = model_cursor.execute(table_queries.get_table_type, (table_name,)).fetchone()
+                table_type = table_type[0] if table_type else "NA"
+                if table_type.lower().startswith("output"):
+                    object_type = "output_object"
+            else:
+                table_type = "NA"
         select_columns = ["rowid", *column_names] if object_type == "table" else list(column_names or [])
         query, params = table_queries.get_table_query(
             table_name,

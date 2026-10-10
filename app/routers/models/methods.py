@@ -93,11 +93,11 @@ def get_model_templates(cursor, user_email: str):
 def get_user_models_by_project(cursor, user_email: str):
     rows = cursor.execute(model_queries.get_user_models_by_project, (user_email,)).fetchall()
     models_by_project = {}
-    for project_name, model_name, access_level, model_id in rows:
+    for project_name, model_name, access_level, model_id, db_type in rows:
         if project_name not in models_by_project:
             models_by_project[project_name] = {}
         if model_name is not None:
-            models_by_project[project_name][model_name] = (access_level, model_id)
+            models_by_project[project_name][model_name] = (access_level, model_id, db_type)
     return models_by_project
 
 
