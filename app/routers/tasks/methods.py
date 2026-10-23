@@ -198,7 +198,7 @@ def update_task_param_values(model_cursor, task_code: int, new_param_values: lis
         return task_name, task_display_name
     task_params = json.loads(task_params_json) if task_params_json else []
     for this_dict in task_params:
-        if this_dict["ParameterType"] == "FIXED":
+        if this_dict.get("ParameterType", "TEXT") == "FIXED":
             continue  # skip fixed parameters since they can't be updated
         for new_param in new_param_values:
             if this_dict["ParameterName"] == new_param.ParameterName:

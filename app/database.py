@@ -262,14 +262,16 @@ def install_duckdb_extensions() -> None:
     extensions = _duckdb_extensions()
     with duckdb.connect(":memory:") as connection:
         for extension in extensions:
+            repository = "community" if extension == "orc" else "core"
             try:
                 # INSTALL reuses an existing installation; do not force updates.
-                connection.install_extension(extension, repository="core")
+                connection.install_extension(extension, repository=repository)
             except Exception as exc:
                 raise RuntimeError(
                     f"Failed to install DuckDB extension '{extension}'. "
-                    "Check access to the core extension repository and permissions "
-                    "on the service account's DuckDB extension directory."
+                    f"Check access to the {repository} extension repository and permissions "
+                    "on the service account's DuckDB extension directory. "
+                    f"DuckDB {duckdb.__version__} reported: {exc}"
                 ) from exc
     logger.info("DuckDB extensions are installed: %s", ", ".join(extensions))
 
