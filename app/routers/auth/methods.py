@@ -31,6 +31,7 @@ logger = get_logger(__name__)
 
 ACTIVATION_CODE_PREFIX = "AC-"
 RESET_CODE_PREFIX = "RE-"
+PASSWORD_RESET_TTL_MINUTES = 30
 
 
 def _hash_password(password: str, salt: bytes) -> str:
@@ -162,7 +163,8 @@ def forgot_password(cursor, useremail: str):
         raise HTTPException(status_code=400, detail="User account is not active")
 
     verification_code = f"{RESET_CODE_PREFIX}{os.urandom(8).hex()}"
-    cursor.execute(queries.update_password_reset_code, (verification_code, useremail))
+    expires_at = int((datetime.now(timezone.utc) + timedelta(minutes=PASSWORD_RESET_TTL_MINUTES)).timestamp())
+    cursor.execute(queries.update_password_reset_code, (verification_code, expires_at, useremail))
     cursor.intermediate_commit()
 
     subject = "Supply Chain Lite Password Reset"
@@ -170,6 +172,7 @@ def forgot_password(cursor, useremail: str):
     reset_link = f"{BASE_URL}/reset-password.html?{params}"
     body = "Hello,\n\nWe received a request to reset your password for your Supply Chain Lite account. "
     body = f"{body}Please click the following link to reset your password: {reset_link}\n\n"
+    body = f"{body}This link expires in {PASSWORD_RESET_TTL_MINUTES} minutes.\n\n"
     body = f"{body}If you did not request a password reset, please ignore this email.\n\nBest regards,\nSCL Team\n"
 
     _send_email(useremail, subject, body)
@@ -179,16 +182,20 @@ def reset_password(cursor, useremail: str, verification_code: str, password: str
     if not verification_code.startswith(RESET_CODE_PREFIX):
         logger.warning("Password reset attempt failed due to invalid verification code prefix for user: %s", useremail)
         raise HTTPException(status_code=400, detail="Password reset request unsuccessful")
-    row = cursor.execute(queries.get_status_activation_code, (useremail,)).fetchone()
+    row = cursor.execute(queries.get_password_reset_code, (useremail,)).fetchone()
     if not row:
         logger.warning("Password reset attempt failed for non-existent user: %s", useremail)
         raise HTTPException(status_code=400, detail="Password reset request unsuccessful")
-    status, verification_code_db = row
+    status, verification_code_db, expires_at = row
     if status == 0:
         logger.warning("Password reset attempt failed for inactive user: %s", useremail)
         raise HTTPException(status_code=400, detail="Password reset request unsuccessful")
     if verification_code_db != verification_code:
         logger.warning("Password reset attempt failed due to invalid verification code for user: %s", useremail)
+        raise HTTPException(status_code=400, detail="Password reset request unsuccessful")
+
+    # Fail closed for legacy codes without expiry and invalid stored timestamps.
+    if type(expires_at) is not int or expires_at <= datetime.now(timezone.utc).timestamp():
         raise HTTPException(status_code=400, detail="Password reset request unsuccessful")
 
     salt = os.urandom(16)
@@ -197,6 +204,7 @@ def reset_password(cursor, useremail: str, verification_code: str, password: str
     cursor.execute(
         queries.update_password_reset_code,
         (
+            None,
             None,
             useremail,
         ),

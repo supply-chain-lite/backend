@@ -13,8 +13,8 @@ class ListTasksRequest(TaskBaseModel):
 class TaskParams(BaseModel):
     ParameterName: str
     ParameterValue: str | int | float | bool | None | list
-    ParameterType: str
-    ParameterValues: list | None
+    ParameterType: str = "TEXT"
+    ParameterValues: list | None = None
 
 
 class TaskDetails(BaseModel):
