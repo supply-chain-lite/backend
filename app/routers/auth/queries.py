@@ -14,7 +14,13 @@ get_status_activation_code = "SELECT IsActive, ActivationCode FROM S_Users WHERE
 
 update_user_activation = "UPDATE S_Users SET IsActive = 1, ActivationCode = NULL WHERE UserEmail = ?"
 
-update_password_reset_code = "UPDATE S_Users SET ActivationCode = ? WHERE UserEmail = ?"
+get_password_reset_code = """SELECT IsActive, ActivationCode,
+                            json_extract(JsonData, '$.password_reset_expires_at')
+                            FROM S_Users WHERE UserEmail = ?"""
+
+update_password_reset_code = """UPDATE S_Users SET ActivationCode = ?,
+                            JsonData = json_set(ifnull(JsonData, '{}'), '$.password_reset_expires_at', ?)
+                            WHERE UserEmail = ?"""
 
 update_user_password = """UPDATE S_Users SET PasswordHash = ?, UpdatedAt = DATETIME('now'),
                             TokenVersion = TokenVersion + 1,
