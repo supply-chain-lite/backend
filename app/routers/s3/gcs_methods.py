@@ -28,7 +28,7 @@ def list_files(bucket: str, prefix: str) -> list[S3Object]:
     if not _BUCKET_NAME.fullmatch(bucket):
         raise HTTPException(status_code=400, detail="Invalid GCS bucket name")
 
-    normalized_prefix = prefix.lstrip("/")
+    normalized_prefix = prefix
     if normalized_prefix and not normalized_prefix.endswith("/"):
         normalized_prefix += "/"
 
