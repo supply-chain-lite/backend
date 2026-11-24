@@ -1,13 +1,19 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.connections.connection import master_connection
 from app.routers.auth.methods import _get_user_from_token, check_module_access
 
+from . import gcs_methods
 from . import methods as s3_methods
 from . import schemas as s3_schemas
 
 router = APIRouter()
 this_api = "/api/s3"
+
+
+def _check_object_browser_access(role_name: str) -> None:
+    with master_connection() as cursor:
+        check_module_access(cursor, role_name, this_api)
 
 
 @router.post("/list", response_model=s3_schemas.fileListResponse)
@@ -16,8 +22,10 @@ def list_folder_contents(
     user_data: tuple = Depends(_get_user_from_token),
 ) -> s3_schemas.fileListResponse:
     _useremail, _display_name, role_name = user_data
-    with master_connection() as cursor:
-        check_module_access(cursor, role_name, this_api)
+    _check_object_browser_access(role_name)
+    if request.scheme == "gs":
+        return s3_schemas.fileListResponse(files=gcs_methods.list_files(request.bucket, request.prefix))
+
     files = s3_methods.list_files(
         bucket=request.bucket,
         endpoint_url=request.endpoint,
@@ -36,8 +44,11 @@ def create_presigned_url(
     user_data: tuple = Depends(_get_user_from_token),
 ) -> s3_schemas.PresignedURLResponse:
     _useremail, _display_name, role_name = user_data
-    with master_connection() as cursor:
-        check_module_access(cursor, role_name, this_api)
+    _check_object_browser_access(role_name)
+    if request.scheme == "gs":
+        url = gcs_methods.get_presigned_url(request.bucket, request.key, request.expires_in)
+        return s3_schemas.PresignedURLResponse(presigned_url=url, expires_in=request.expires_in)
+
     url = s3_methods.get_presigned_url(
         bucket=request.bucket,
         endpoint_url=request.endpoint,
@@ -57,8 +68,13 @@ def preview_s3_file(
     user_data: tuple = Depends(_get_user_from_token),
 ) -> s3_schemas.PreviewResponse:
     _useremail, _display_name, role_name = user_data
-    with master_connection() as cursor:
-        check_module_access(cursor, role_name, this_api)
+    _check_object_browser_access(role_name)
+    if request.scheme == "gs":
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Google Cloud Storage preview is not implemented yet",
+        )
+
     preview = s3_methods.preview_file(
         bucket=request.bucket,
         endpoint_url=request.endpoint,
