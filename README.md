@@ -268,13 +268,28 @@ All routes accept **POST** only and are prefixed with `/api`. Static files are s
 | `POST /api/tasks/restore-db` | Restore the database from a task snapshot |
 | `POST /api/tasks/get-diff` | Get the diff produced by a task |
 
-### S3 (`/api/s3`)
+### Object Browser (`/api/s3`)
 
 | Route | Description |
 |---|---|
 | `POST /api/s3/list` | List objects and folders under a bucket prefix |
 | `POST /api/s3/presigned-url` | Generate a temporary download URL for an object |
-| `POST /api/s3/preview` | Preview up to 500 rows from a CSV, TXT, JSON, Parquet, or XLSX object |
+| `POST /api/s3/preview` | Preview up to 500 rows from an S3 CSV, TXT, JSON, Parquet, or XLSX object |
+
+For Google Cloud Storage, send `scheme: "gs"` and a bare bucket name to the list
+and presigned URL routes. Users with access to the Object Browser module can
+use these operations on buckets accessible to the backend's service account.
+The backend uses Application Default Credentials for the service account.
+Attach the service account to the workload and grant it
+`roles/storage.objectViewer` on the buckets it should access. On Compute
+Engine, use the `cloud-platform` access scope.
+
+For signed URLs, enable the IAM Service Account Credentials API and grant the
+runtime service account `iam.serviceAccounts.signBlob` on itself, for example
+using `roles/iam.serviceAccountTokenCreator` on that service account. The default
+URL lifetime is 600 seconds. IAM signing keys rotate, so URLs requested for
+more than 12 hours can stop working before their requested expiry. GCS preview
+returns HTTP 501.
 
 ### Scheduler (`/api/scheduler`)
 
