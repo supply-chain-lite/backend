@@ -1,6 +1,7 @@
 import re
 from contextlib import closing
 
+import duckdb
 import google.auth
 from fastapi import HTTPException
 from google.api_core.exceptions import BadRequest, Forbidden, GoogleAPIError, NotFound, Unauthorized
@@ -8,6 +9,13 @@ from google.auth.exceptions import DefaultCredentialsError, GoogleAuthError
 from google.auth.transport.requests import Request
 from google.cloud import storage
 
+from app.connections.connection_duckdb import (
+    create_duckdb_gcs_secret,
+    duckdb_resource_config,
+    run_duckdb_operation,
+)
+
+from .preview import preview_reader, read_preview
 from .schemas import S3Object
 
 _CLOUD_PLATFORM_SCOPES = ("https://www.googleapis.com/auth/cloud-platform",)
@@ -94,3 +102,41 @@ def get_presigned_url(bucket: str, key: str, expires_in: int) -> str:
         raise HTTPException(
             status_code=502, detail="GCS URL signing failed; check the IAM Credentials API and signBlob permission"
         ) from exc
+
+
+def preview_file(bucket: str, key: str) -> dict:
+    if not _BUCKET_NAME.fullmatch(bucket):
+        raise HTTPException(status_code=400, detail="Invalid GCS bucket name")
+    if not key.strip():
+        raise HTTPException(status_code=400, detail="GCS key must not be empty")
+    # The browser previews one object, while DuckDB readers also accept glob patterns.
+    if any(character in key for character in "*?["):
+        raise HTTPException(status_code=400, detail="GCS preview does not support glob characters in object keys")
+
+    reader = preview_reader(key)
+    # This scheme selects the native GCS extension even when httpfs is installed.
+    object_url = f"gcss://{bucket}/{key}"
+    with duckdb.connect(database=":memory:", config=duckdb_resource_config()) as connection:
+        try:
+            connection.execute("LOAD gcs")
+        except duckdb.Error as exc:
+            raise HTTPException(status_code=503, detail="DuckDB GCS extension is unavailable") from exc
+
+        try:
+            create_duckdb_gcs_secret(connection)
+        except duckdb.Error as exc:
+            raise HTTPException(status_code=503, detail="DuckDB could not configure Google Cloud credentials") from exc
+
+        try:
+            return run_duckdb_operation(connection, lambda: read_preview(connection, reader, object_url))
+        except TimeoutError as exc:
+            raise HTTPException(status_code=504, detail="GCS preview timed out") from exc
+        except duckdb.Error as exc:
+            message = str(exc).lower()
+            if re.search(r"\b(401|403|unauthenticated|permission[ _]denied|forbidden)\b", message):
+                raise HTTPException(status_code=403, detail="GCS access denied; check bucket IAM permissions") from exc
+            if re.search(r"\b(404|not[ _]found|no files found)\b", message):
+                raise HTTPException(status_code=404, detail="GCS bucket or object not found") from exc
+            if isinstance(exc, duckdb.IOException):
+                raise HTTPException(status_code=502, detail="DuckDB could not read the GCS object") from exc
+            raise HTTPException(status_code=400, detail="DuckDB could not read the object in this file format") from exc

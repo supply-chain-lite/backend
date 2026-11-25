@@ -65,9 +65,10 @@ uv run uvicorn app.main:app --reload
 
 The API will be available at `http://127.0.0.1:8000`. Interactive docs at `http://127.0.0.1:8000/docs`.
 
-API startup installs the comma-separated extensions in `DUCKDB_EXTENSIONS` from DuckDB's
-official `core` repository through `app.database.init_db()`. The default is `httpfs`; this
-project's `.env` configures `httpfs,aws,json,excel`. Existing installations are reused.
+API startup installs the comma-separated extensions in `DUCKDB_EXTENSIONS` through
+`app.database.init_db()`. It uses DuckDB's `community` repository for `gcs` and `orc`
+and `core` for the other extensions. The default is `httpfs`. The example `.env`
+configures `httpfs,aws,json,excel`. Existing installations are reused.
 The first startup for each DuckDB version and platform requires network access and permission
 to write the service account's extension directory (normally `~/.duckdb/extensions/`).
 Installation failure stops startup with an explanatory error. Each model connection loads the
@@ -78,6 +79,33 @@ To use AWS environment credentials, profiles, or instance roles instead, set
 `DUCKDB_S3_CREDENTIAL_CHAIN=true`. Discovery is off by default to avoid repeated
 credential lookup delays on local machines. Configured S3 keys take precedence;
 only credential-chain connections load the `aws` extension.
+
+#### Read tables from Google Cloud Storage
+
+Append `gcs` to `DUCKDB_EXTENSIONS` and restart the API. DuckDB uses Google
+Application Default Credentials from the backend process. For a GCP deployment,
+grant its attached service account `roles/storage.objectViewer` on the buckets
+it needs to read. That role also permits listing objects for wildcard queries.
+
+The object browser's `gs` preview reads up to 500 rows from a single CSV, TXT,
+JSON, Parquet, or XLSX object. Preview keys containing `*`, `?`, or `[` are
+rejected because DuckDB treats those characters as glob syntax.
+
+For model SQL, also add the required `gcss://` bucket or folder prefixes to
+`DUCKDB_ALLOWED_DIRECTORIES`, keeping any existing entries. For example:
+
+```dotenv
+DUCKDB_EXTENSIONS=httpfs,aws,json,excel,gcs
+DUCKDB_ALLOWED_DIRECTORIES=gcss://my-bucket/supply-chain/
+```
+
+```sql
+SELECT * FROM read_parquet('gcss://my-bucket/supply-chain/demand.parquet') LIMIT 10;
+```
+
+The `gcss://` scheme selects the native GCS filesystem when `httpfs` is also
+loaded. Use read-only bucket IAM for the backend identity to enforce read-only
+access to GCS objects.
 
 DuckDB model connections coordinate access per database file within one process.
 Readers can run together; an update waits for readers to close, and new readers wait

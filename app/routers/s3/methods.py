@@ -9,10 +9,8 @@ from fastapi import HTTPException
 
 from app.config import S3_ACCESS_KEY, S3_SECRET_KEY
 from app.connections.connection_duckdb import duckdb_resource_config
-from app.serialization import serialize_database_cell
 
-_PREVIEW_LIMIT = 500
-_PREVIEW_EXTENSIONS = {".csv", ".txt", ".json", ".parquet", ".xlsx"}
+from .preview import preview_reader, read_preview
 
 
 def _make_s3_client(
@@ -198,12 +196,7 @@ def preview_file(
     if endpoint.scheme not in {"http", "https"} or not endpoint.netloc:
         raise HTTPException(status_code=400, detail="endpointURL must be an http(s) S3 endpoint URL")
 
-    extension = os.path.splitext(key)[1].lower()
-    if extension not in _PREVIEW_EXTENSIONS:
-        raise HTTPException(
-            status_code=415,
-            detail="Preview supports only csv, txt, json, parquet, and xlsx files",
-        )
+    reader = preview_reader(key)
 
     if bool(access_key) != bool(secret_key):
         raise HTTPException(status_code=400, detail="Both S3 access_key and secret_key must be provided")
@@ -222,22 +215,10 @@ def preview_file(
     if not region and (endpoint.hostname or "").endswith(".your-objectstorage.com"):
         region = (endpoint.hostname or "").split(".", 1)[0]
 
-    s3_url = f"s3://{bucket}/{key}"
-    read_function = {
-        ".csv": "read_csv_auto",
-        ".txt": "read_csv_auto",
-        ".json": "read_json_auto",
-        ".parquet": "read_parquet",
-        ".xlsx": "read_xlsx",
-    }[extension]
-
     connection = None
     try:
         connection = duckdb.connect(database=":memory:", config=duckdb_resource_config())
         connection.execute("LOAD httpfs")
-        if extension == ".xlsx":
-            connection.execute("LOAD excel")
-
         secret_fields = ["TYPE s3"]
         if key_id and secret:
             secret_fields.extend([f"KEY_ID {_sql_string(key_id)}", f"SECRET {_sql_string(secret)}"])
@@ -256,17 +237,7 @@ def preview_file(
             ]
         )
         connection.execute("CREATE OR REPLACE SECRET s3_preview (" + ", ".join(secret_fields) + ")")
-        result = connection.execute(f"SELECT * FROM {read_function}({_sql_string(s3_url)}) LIMIT {_PREVIEW_LIMIT + 1}")
-        rows = result.fetchall()
-        columns = [column[0] for column in result.description]
-        return {
-            "columns": columns,
-            "rows": [
-                {column: serialize_database_cell(value) for column, value in zip(columns, row)}
-                for row in rows[:_PREVIEW_LIMIT]
-            ],
-            "truncated": len(rows) > _PREVIEW_LIMIT,
-        }
+        return read_preview(connection, reader, f"s3://{bucket}/{key}")
     except HTTPException:
         raise
     except duckdb.Error as exc:

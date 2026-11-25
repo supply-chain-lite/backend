@@ -13,7 +13,7 @@ from ..logging_config import get_logger
 logger = get_logger(__name__)
 
 
-def _duckdb_extensions():
+def duckdb_extensions():
     """Return unique, normalized DuckDB extensions configured for loading."""
     configured = os.getenv("DUCKDB_EXTENSIONS", "httpfs")
     extensions = tuple(
@@ -22,6 +22,11 @@ def _duckdb_extensions():
     if not extensions:
         raise ValueError("DUCKDB_EXTENSIONS must contain at least one extension")
     return extensions
+
+
+def create_duckdb_gcs_secret(connection):
+    """Use Application Default Credentials for native GCS reads."""
+    connection.execute("CREATE TEMPORARY SECRET IF NOT EXISTS app_gcp (TYPE gcp, PROVIDER credential_chain)")
 
 
 def _quoted(value):
@@ -168,10 +173,10 @@ class duckdb_connection:
             self._loaded_extensions = set()
             # Secret-manager settings must precede any secret use (including shared
             # instance state from another connection). Extensions load next, then
-            # the remaining sandbox settings, then the optional S3 secret, then
+            # the remaining sandbox settings, then the optional cloud secrets, then
             # external access is disabled.
             self._apply_settings("SET allow_persistent_secrets = false;")
-            for extension in _duckdb_extensions():
+            for extension in duckdb_extensions():
                 self.connection.execute(f"LOAD {extension};")
                 self._loaded_extensions.add(extension)
             self._apply_settings(
@@ -180,6 +185,8 @@ class duckdb_connection:
                 "SET autoload_known_extensions = false;",
             )
             self._create_s3_secret()
+            if "gcs" in self._loaded_extensions:
+                create_duckdb_gcs_secret(self.connection)
             self._apply_settings("SET enable_external_access = false;")
             # DuckDB's cursor() creates another connection. Use this connection itself
             # for both execution and transactions so they always share one session.

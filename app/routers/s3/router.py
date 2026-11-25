@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 
 from app.connections.connection import master_connection
 from app.routers.auth.methods import _get_user_from_token, check_module_access
@@ -70,10 +70,7 @@ def preview_s3_file(
     _useremail, _display_name, role_name = user_data
     _check_object_browser_access(role_name)
     if request.scheme == "gs":
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="Google Cloud Storage preview is not implemented yet",
-        )
+        return s3_schemas.PreviewResponse(**gcs_methods.preview_file(request.bucket, request.key))
 
     preview = s3_methods.preview_file(
         bucket=request.bucket,
