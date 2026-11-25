@@ -1,11 +1,11 @@
 import json
-import os
 import random
 import time
 
 import duckdb
 
 from .connections.connection import master_connection
+from .connections.connection_duckdb import duckdb_extensions
 from .logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -246,23 +246,12 @@ def migrate_user_end_dates(cursor):
     cursor.execute(set_super_admin_end_date)
 
 
-def _duckdb_extensions():
-    """Return unique, normalized DuckDB extensions configured for installation."""
-    configured = os.getenv("DUCKDB_EXTENSIONS", "httpfs")
-    extensions = tuple(
-        dict.fromkeys(extension.strip().lower() for extension in configured.split(",") if extension.strip())
-    )
-    if not extensions:
-        raise ValueError("DUCKDB_EXTENSIONS must contain at least one extension")
-    return extensions
-
-
 def install_duckdb_extensions() -> None:
     """Install trusted extensions for this DuckDB version and service account."""
-    extensions = _duckdb_extensions()
+    extensions = duckdb_extensions()
     with duckdb.connect(":memory:") as connection:
         for extension in extensions:
-            repository = "community" if extension == "orc" else "core"
+            repository = "community" if extension in {"orc", "gcs"} else "core"
             try:
                 # INSTALL reuses an existing installation; do not force updates.
                 connection.install_extension(extension, repository=repository)
