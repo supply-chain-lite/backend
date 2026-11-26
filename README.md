@@ -91,8 +91,9 @@ The object browser's `gs` preview reads up to 500 rows from a single CSV, TXT,
 JSON, Parquet, or XLSX object. Preview keys containing `*`, `?`, or `[` are
 rejected because DuckDB treats those characters as glob syntax.
 
-For model SQL, also add the required `gcss://` bucket or folder prefixes to
-`DUCKDB_ALLOWED_DIRECTORIES`, keeping any existing entries. For example:
+For model SQL, also add the required bucket or folder prefixes to
+`DUCKDB_ALLOWED_DIRECTORIES`, keeping any existing entries. The backend normalizes
+`gs://` and `gcs://` entries to `gcss://`. Use `gcss://` in model SQL.
 
 ```dotenv
 DUCKDB_EXTENSIONS=httpfs,aws,json,excel,gcs
