@@ -36,8 +36,15 @@ def _quoted(value):
 def _allowed_directories_sql():
     """Render the configured remote prefixes as a DuckDB list literal."""
     raw_value = os.getenv("DUCKDB_ALLOWED_DIRECTORIES", "")
-    directories = [part.strip() for part in raw_value.split(",") if part.strip()]
-    return "[" + ", ".join(_quoted(directory) for directory in directories) + "]"
+    directories = []
+    for part in raw_value.split(","):
+        directory = part.strip()
+        if not directory:
+            continue
+        if directory.startswith(("gs://", "gcs://")):
+            directory = "gcss://" + directory.split("://", 1)[1]
+        directories.append(_quoted(directory))
+    return "[" + ", ".join(directories) + "]"
 
 
 def _positive_int_env(name, default):
